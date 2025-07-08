@@ -1,4 +1,28 @@
-[build-system]
-requires = ["setuptools>=42", "wheel"]
-build-backend = "setuptools.build_meta"
+[project]
+authors = [{name = "Paul Gierz", email = "pgierz@awi.de"}]
+dependencies = []
+name = "tellus"
+requires-python = ">= 3.11"
+version = "0.1.0"
 
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["osx-arm64"]
+
+[tool.pixi.pypi-dependencies]
+tellus = { path = ".", editable = true }
+
+[tool.pixi.tasks]
+
+[tool.pixi.feature.test.dependencies]
+pytest = "*"
+
+[tool.pixi.feature.test.tasks]
+test = "pytest"
+
+[tool.pixi.environments]
+test = ["test"]
