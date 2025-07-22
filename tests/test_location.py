@@ -1,9 +1,15 @@
 import pytest
 
-from tellus.location import (ALLOWED_LOCATIONS, LOCATION_REGISTRY,
-                             BaseLocationHandler, FileServerHandler,
-                             HPCHandler, HSMHandler, Location,
-                             create_location_handler)
+from tellus.location import (
+    ALLOWED_LOCATIONS,
+    LOCATION_REGISTRY,
+    BaseLocationHandler,
+    FileServerHandler,
+    HPCHandler,
+    HSMHandler,
+    Location,
+    create_location_handler,
+)
 
 
 def test_location_initialization():
@@ -93,10 +99,10 @@ def test_file_server_handler_methods(capsys):
 
 def test_location_registry():
     """Test that the location registry contains the expected handlers"""
-    assert set(LOCATION_REGISTRY.keys()) == {"HSM", "HPC", "FileServer"}
-    assert issubclass(LOCATION_REGISTRY["HSM"], BaseLocationHandler)
-    assert issubclass(LOCATION_REGISTRY["HPC"], BaseLocationHandler)
-    assert issubclass(LOCATION_REGISTRY["FileServer"], BaseLocationHandler)
+    assert set(LOCATION_REGISTRY.keys()) == {"hsm", "hpc", "fileserver"}
+    assert issubclass(LOCATION_REGISTRY["hsm"], BaseLocationHandler)
+    assert issubclass(LOCATION_REGISTRY["hpc"], BaseLocationHandler)
+    assert issubclass(LOCATION_REGISTRY["fileserver"], BaseLocationHandler)
 
 
 def test_create_location_handler():
@@ -111,4 +117,4 @@ def test_create_location_handler():
 def test_allowed_locations_constant():
     """Test that ALLOWED_LOCATIONS contains the expected values"""
     assert isinstance(ALLOWED_LOCATIONS, set)
-    assert ALLOWED_LOCATIONS == {"HSM", "HPC", "FileServer"}
+    assert ALLOWED_LOCATIONS == {"hsm", "hpc", "fileserver"}

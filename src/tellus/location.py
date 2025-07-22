@@ -1,21 +1,60 @@
 from dataclasses import dataclass
-from typing import Dict, Type
+from enum import Enum, auto
+from typing import Dict, Optional, Type
+
+import fsspec
+
 
 # Allowed location names
-ALLOWED_LOCATIONS = {"HSM", "HPC", "FileServer"}
+class LocationKind(Enum):
+    TAPE = auto()
+    COMPUTE = auto()
+    DISK = auto()
+
+
+class LocationExistsError(Exception):
+    pass
 
 
 @dataclass
 class Location:
     name: str
-    kind: str
+    kinds: list[LocationKind]
     config: dict
+    optional: Optional[bool] = False
 
     def __post_init__(self):
-        if self.kind not in ALLOWED_LOCATIONS:
-            raise ValueError(
-                f"Location kind '{self.kind}' is not allowed. Allowed: {ALLOWED_LOCATIONS}"
-            )
+        for kind in self.kinds:
+            if not isinstance(kind, LocationKind):
+                raise ValueError(
+                    f"Location kind '{kind}' is not a valid LocationKind. "
+                    f"Allowed values: {', '.join(e.name for e in LocationKind)}"
+                )
+
+    @classmethod
+    def from_dict(cls, data):
+        data["kinds"] = [LocationKind[kind.upper()] for kind in data["kinds"]]
+        return cls(**data)
+
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "kinds": [kind.name for kind in self.kinds],
+            "config": self.config,
+            "optional": self.optional,
+        }
+
+    @property
+    def fs(self) -> fsspec.AbstractFileSystem:
+        storage_options = self.config.get("storage_options", {})
+        if "host" not in storage_options:
+            storage_options["host"] = self.name
+        fs = fsspec.filesystem(
+            self.config.get("protocol", "file"),
+            **storage_options,
+        )  # [NOTE] Local filesystem
+
+        return fs
 
 
 # Handlers for each location type
@@ -69,15 +108,15 @@ class FileServerHandler(BaseLocationHandler):
 
 
 # The registry mapping allowed names to handler classes
-LOCATION_REGISTRY: Dict[str, Type[BaseLocationHandler]] = {
-    "HSM": HSMHandler,
-    "HPC": HPCHandler,
-    "FileServer": FileServerHandler,
+LOCATION_REGISTRY: Dict[LocationKind, Type[BaseLocationHandler]] = {
+    LocationKind.TAPE: HSMHandler,
+    LocationKind.COMPUTE: HPCHandler,
+    LocationKind.DISK: FileServerHandler,
 }
 
 
-def create_location_handler(location: Location) -> BaseLocationHandler:
-    handler_cls = LOCATION_REGISTRY.get(location.kind)
-    if not handler_cls:
-        raise ValueError(f"No handler registered for location: {location.kind}")
-    return handler_cls()
+def create_location_handlers(location: Location) -> list[BaseLocationHandler]:
+    handler_clses = [LOCATION_REGISTRY.get(kind) for kind in location.kinds]
+    if not all(handler_clses):
+        raise ValueError(f"No handler registered for location: {location.kinds}")
+    return [cls() for cls in handler_clses]

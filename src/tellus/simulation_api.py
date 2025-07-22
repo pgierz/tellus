@@ -20,51 +20,64 @@ class LocationModel(BaseModel):
 
 
 class SimulationModel(BaseModel):
-    path: str
+    simulation_id: Optional[str] = None
+    path: Optional[str] = None
 
 
 @app.post("/simulations/", response_model=dict)
-def create_simulation(sim: SimulationModel):
-    if sim.path in simulations:
-        raise HTTPException(status_code=400, detail="Simulation already exists")
-    s = Simulation(path=sim.path)
-    simulations[sim.path] = s
-    return {"status": "created", "simulation": sim.path}
+async def create_simulation(sim: SimulationModel):
+    if sim.simulation_id and sim.simulation_id in simulations:
+        raise HTTPException(
+            status_code=400, detail="Simulation with this ID already exists"
+        )
+    s = Simulation(simulation_id=sim.simulation_id, path=sim.path)
+    simulations[s.simulation_id] = s
+    return {"status": "created", "simulation_id": s.simulation_id}
 
 
-@app.post("/simulations/{sim_path}/locations/", response_model=dict)
-def add_location(sim_path: str, location: LocationModel):
-    if sim_path not in simulations:
+@app.post("/simulations/{simulation_id}/locations/", response_model=dict)
+async def add_location(simulation_id: str, location: LocationModel):
+    if simulation_id not in simulations:
         raise HTTPException(status_code=404, detail="Simulation not found")
     loc = Location(**location.dict())
-    simulations[sim_path].set_location(loc)
-    return {"status": "location added", "location": location.name}
+    simulations[simulation_id].set_location(loc)
+    return {
+        "status": "location added",
+        "simulation_id": simulation_id,
+        "location": location.name,
+    }
 
 
-@app.get("/simulations/{sim_path}/locations/", response_model=dict)
-def list_locations(sim_path: str):
-    if sim_path not in simulations:
+@app.get("/simulations/{simulation_id}/locations/", response_model=dict)
+async def list_locations(simulation_id: str):
+    if simulation_id not in simulations:
         raise HTTPException(status_code=404, detail="Simulation not found")
-    locs = simulations[sim_path].list_locations()
-    return {"locations": locs}
+    locs = simulations[simulation_id].list_locations()
+    return {"simulation_id": simulation_id, "locations": locs}
 
 
 @app.post(
-    "/simulations/{sim_path}/locations/{location_name}/post/", response_model=dict
+    "/simulations/{simulation_id}/locations/{location_name}/post/", response_model=dict
 )
-async def post_to_location(sim_path: str, location_name: str, data: dict):
-    if sim_path not in simulations:
+async def post_to_location(simulation_id: str, location_name: str, data: dict):
+    if simulation_id not in simulations:
         raise HTTPException(status_code=404, detail="Simulation not found")
     # In a real app, this could be an async call to a handler
-    await simulations[sim_path].post_to_location(location_name, data)
-    return {"status": "posted", "location": location_name}
+    await simulations[simulation_id].post_to_location(location_name, data)
+    return {
+        "status": "posted",
+        "simulation_id": simulation_id,
+        "location": location_name,
+    }
 
 
 @app.get(
-    "/simulations/{sim_path}/locations/{location_name}/fetch/", response_model=dict
+    "/simulations/{simulation_id}/locations/{location_name}/fetch/", response_model=dict
 )
-async def fetch_from_location(sim_path: str, location_name: str, identifier: str):
-    if sim_path not in simulations:
+async def fetch_from_location(simulation_id: str, location_name: str, identifier: str):
+    if simulation_id not in simulations:
         raise HTTPException(status_code=404, detail="Simulation not found")
-    result = await simulations[sim_path].fetch_from_location(location_name, identifier)
-    return {"data": result}
+    result = await simulations[simulation_id].fetch_from_location(
+        location_name, identifier
+    )
+    return {"simulation_id": simulation_id, "location": location_name, "data": result}
