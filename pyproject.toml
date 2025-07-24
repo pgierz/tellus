@@ -15,6 +15,7 @@ platforms = ["osx-arm64", "linux-64"]
 
 [tool.pixi.pypi-dependencies]
 tellus = { path = ".", editable = true }
+animavox = { path = "./vendor/animavox", editable = true }
 
 [tool.pixi.tasks]
 
@@ -37,3 +38,5 @@ test-py312 = ["py312", "test"]
 
 [tool.pixi.dependencies]
 python = "*"
+fsspec = ">=2025.7.0,<2026"
+pytest-trio = ">=0.8.0,<0.9"
