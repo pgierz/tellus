@@ -1923,7 +1923,7 @@ packages:
 - pypi: ./
   name: tellus
   version: 0.1.0
-  sha256: 5244db9cfc2ffa71d7e0bdad854fd5209985bf72018e47ce5d92325fc93e25f0
+  sha256: 56df98daab7384304d6f9add9fc9a02acfb1c628c6f167cbc987e027392e3ee4
   requires_python: '>=3.11'
   editable: true
 - conda: https://conda.anaconda.org/conda-forge/linux-64/tk-8.6.13-noxft_hd72426e_102.conda

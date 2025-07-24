@@ -18,6 +18,7 @@ tellus = { path = ".", editable = true }
 animavox = { path = "./vendor/animavox", editable = true }
 
 [tool.pixi.tasks]
+sandbox = "python3 sandbox/manual_tests.py"
 
 [tool.pixi.feature.test.dependencies]
 pytest = "*"
