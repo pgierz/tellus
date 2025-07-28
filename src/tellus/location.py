@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import ClassVar, Dict, Optional, Type, List
 
 import fsspec
+from . import scoutfs  # noqa: F401
 
 
 # Allowed location names

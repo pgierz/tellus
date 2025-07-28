@@ -121,15 +121,15 @@ def list_locations():
     table.add_column("Types", style="green")
     table.add_column("Protocol", style="blue")
     table.add_column("Path", style="yellow")
-    table.add_column("Optional", justify="center")
+    table.add_column("Python FS Representation", justify="center")
 
     for loc in sorted(locations, key=lambda x: x.name):
         types = ", ".join(kind.name for kind in loc.kinds)
         protocol = loc.config.get("protocol", "file")
         storage_opts = loc.config.get("storage_options", {})
         path = storage_opts.get("path", "-")
-        optional = "[green]✓[/green]" if loc.optional else "[red]✗[/red]"
-        table.add_row(loc.name, types, protocol, path, optional)
+        fs = loc.fs.to_json()
+        table.add_row(loc.name, types, protocol, path, fs)
 
     console.print(Panel.fit(table))
 
