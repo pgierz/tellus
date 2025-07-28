@@ -12,7 +12,7 @@ import uuid
 
 import fsspec
 
-from .location import Location, LocationExistsError, create_location_handlers
+from ..location import Location, LocationExistsError, create_location_handlers
 
 # from snakemake.workflow import Rules, Workflow
 

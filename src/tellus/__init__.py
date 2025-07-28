@@ -1,2 +1,13 @@
-# from .location import Location
-from .simulation import Simulation
+"""
+Tellus - A tool for managing Earth System Model simulations and their data.
+"""
+
+from .simulation.simulation import Simulation
+from .simulation.cli import cli as simulation_cli
+from .simulation.api import app as simulation_api
+
+__all__ = [
+    'Simulation',
+    'simulation_cli',
+    'simulation_api',
+]
