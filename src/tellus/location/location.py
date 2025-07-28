@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import ClassVar, Dict, Optional, Type, List
 
 import fsspec
-from . import scoutfs  # noqa: F401
+from .. import scoutfs  # noqa: F401
 
 
 # Allowed location names
@@ -32,7 +32,7 @@ class Location:
     # Class variable to track all location instances
     _locations: ClassVar[Dict[str, "Location"]] = {}
     _locations_file: ClassVar[Path] = (
-        Path(__file__).parent.parent.parent / "locations.json"
+        Path(__file__).parent.parent.parent.parent / "locations.json"
     )
 
     # Instance variables
