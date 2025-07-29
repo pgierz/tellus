@@ -7,7 +7,6 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 
-from ..location import Location, LocationKind, LocationExistsError
 from .simulation import Simulation
 
 # In-memory store of simulations (for demo)
@@ -88,6 +87,7 @@ def show(sim_id: str):
         f"[bold]Path:[/bold] {sim.path or 'Not specified'}",
     ]
 
+    # List locations associated with this simulation
     locations = sim.list_locations()
     if locations:
         info.append("\n[bold]Locations:[/bold]")

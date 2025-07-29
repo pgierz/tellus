@@ -5217,7 +5217,7 @@ packages:
 - pypi: .
   name: tellus
   version: 0.1.0
-  sha256: 8e53ac26811894bb21da83d00bdfd525a1cdff384faa2d2e3dee4ddca38e5b40
+  sha256: 5c516dac6b7e913bedd5fe8f8568255e8f1d2f8aa9ec0077793d2dee10e7495c
   requires_python: '>=3.11'
   editable: true
 - conda: https://conda.anaconda.org/conda-forge/noarch/throttler-1.2.2-pyhd8ed1ab_0.conda
