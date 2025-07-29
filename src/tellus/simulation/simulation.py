@@ -4,7 +4,8 @@
 
 import io
 import json
-from typing import Any, Dict, Optional, Union
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 # import itertools
 import tarfile
@@ -17,39 +18,113 @@ from ..location import Location, LocationExistsError, create_location_handlers
 # from snakemake.workflow import Rules, Workflow
 
 
+class SimulationExistsError(Exception):
+    pass
+
+
 class Simulation:
     """A Earth System Model Simulation
 
     This class represents a simulation in the Tellus system. A simulation can have
     multiple locations associated with it, which are used to store and retrieve data.
 
-    Args:
-        simulation_id: Optional unique identifier for the simulation. If not provided,
-                     a UUID will be generated automatically.
-        path: Optional filesystem path for the simulation data. If not provided,
-              the simulation will be in-memory only.
+    Class Attributes:
+        _simulations: Class variable to store all simulation instances
+        _simulations_file: Path to the JSON file for persistence
     """
+    _simulations: Dict[str, 'Simulation'] = {}
+    _simulations_file: Path = Path(__file__).parent.parent.parent.parent / "simulations.json"
 
     def __init__(self, simulation_id: str | None = None, path: str | None = None):
         """Initialize a new simulation.
 
         Args:
             simulation_id: Optional unique identifier for the simulation.
+                         If not provided, a UUID will be generated.
             path: Optional filesystem path for the simulation data.
         """
         _uid = str(uuid.uuid4())
         if simulation_id:
+            if simulation_id in Simulation._simulations:
+                raise SimulationExistsError(f"Simulation with ID '{simulation_id}' already exists")
             self.simulation_id = simulation_id
         else:
             self.simulation_id = _uid
+        
         self._uid = _uid
         self.path = path
         self.attrs = {}
         self.data = None
         self.namelists = {}
         self.locations: dict[str, dict[str, object]] = {}
-        self.snakemakes = {}
+        self.snakemakes: Dict[str, Any] = {}
         """dict: A collection of snakemake rules this simulation knows about"""
+        
+        # Add to class registry
+        Simulation._simulations[self.simulation_id] = self
+    
+    @classmethod
+    def save_simulations(cls):
+        """Save all simulations to disk."""
+        # Convert simulations to a serializable format
+        data = {}
+        for sim_id, sim in cls._simulations.items():
+            data[sim_id] = {
+                'simulation_id': sim.simulation_id,
+                'path': sim.path,
+                'attrs': sim.attrs,
+                'locations': sim.locations,
+                # Add other attributes as needed
+            }
+        
+        # Write to file atomically
+        temp_file = cls._simulations_file.with_suffix('.tmp')
+        with open(temp_file, 'w') as f:
+            json.dump(data, f, indent=2)
+        temp_file.replace(cls._simulations_file)
+    
+    @classmethod
+    def load_simulations(cls):
+        """Load simulations from disk."""
+        if not cls._simulations_file.exists():
+            return
+            
+        with open(cls._simulations_file, 'r') as f:
+            data = json.load(f)
+        
+        cls._simulations = {}
+        for sim_id, sim_data in data.items():
+            sim = Simulation(simulation_id=sim_data['simulation_id'], path=sim_data['path'])
+            sim.attrs = sim_data.get('attrs', {})
+            sim.locations = sim_data.get('locations', {})
+            # Set other attributes as needed
+    
+    @classmethod
+    def get_simulation(cls, simulation_id: str) -> Optional['Simulation']:
+        """Get a simulation by ID."""
+        return cls._simulations.get(simulation_id)
+    
+    @classmethod
+    def list_simulations(cls) -> List['Simulation']:
+        """List all simulations."""
+        return list(cls._simulations.values())
+    
+    @classmethod
+    def delete_simulation(cls, simulation_id: str) -> bool:
+        """Delete a simulation.
+        
+        Returns:
+            bool: True if the simulation was deleted, False if it didn't exist.
+        """
+        if simulation_id in cls._simulations:
+            del cls._simulations[simulation_id]
+            return True
+        return False
+        
+    def __del__(self):
+        """Clean up when a simulation is deleted."""
+        if self.simulation_id in Simulation._simulations:
+            del Simulation._simulations[self.simulation_id]
 
     @property
     def uid(self):
