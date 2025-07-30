@@ -24,6 +24,7 @@ platforms = ["osx-arm64", "linux-64"]
 tellus = { path = ".", editable = true }
 animavox = { path = "./vendor/animavox", editable = true }
 # snakemake-storage-plugin-fsspec = { git = "git+https://github.com/pgierz/snakemake-storage-plugin-fsspec.git" }
+snakemake-storage-plugin-fsspec = { git = "git+https://github.com/pgierz/snakemake-storage-plugin-fsspec.git" }
 
 [tool.pixi.tasks]
 # sandbox = "python3 sandbox/manual_tests.py"
@@ -49,14 +50,13 @@ test-py312 = ["py312", "test"]
 
 [tool.pixi.dependencies]
 python = "*"
-fsspec = ">=2025.7.0,<2026"
-inquirerpy = ">=0.3.4,<0.4"
-loguru = ">=0.7.3,<0.8"
-paramiko = ">=3.5.1,<4"
-pytest-trio = ">=0.8.0,<0.9"
-questionary = ">=2.1.0,<3"
-requests = ">=2.32.4,<3"
 rich-click = ">=1.8.9,<2"
+fsspec = ">=2025.7.0,<2026"
+questionary = ">=2.1.0,<3"
+paramiko = ">=3.5.1,<4"
+requests = ">=2.32.4,<3"
+loguru = ">=0.7.3,<0.8"
+inquirerpy = ">=0.3.4,<0.4"
 snakemake = ">=9.8.0,<10"
 fastapi = ">=0.116.1,<0.117"
 uvicorn = ">=0.35.0,<0.36"
