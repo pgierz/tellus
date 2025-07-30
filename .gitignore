@@ -179,3 +179,9 @@ pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/python
 
+simulations.json
+locations.json
+sandbox
+.snakemake/
+demo-experiment/
+trash/

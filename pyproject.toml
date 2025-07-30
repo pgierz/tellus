@@ -26,9 +26,9 @@ animavox = { path = "./vendor/animavox", editable = true }
 # snakemake-storage-plugin-fsspec = { git = "git+https://github.com/pgierz/snakemake-storage-plugin-fsspec.git" }
 
 [tool.pixi.tasks]
-sandbox = "python3 sandbox/manual_tests.py"
+# sandbox = "python3 sandbox/manual_tests.py"
 tellus = "python -m tellus.core.cli"
-# sandbox = { cmd = "python3 my_tellus_script.py", cwd = "sandbox" , description = "Run a dummy script using tellus"}
+sandbox = { cmd = "python3 my_tellus_script.py", cwd = "sandbox" , description = "Run a dummy script using tellus"}
 
 [tool.pixi.feature.test.dependencies]
 pytest = "*"
