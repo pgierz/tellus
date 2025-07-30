@@ -311,6 +311,91 @@ def list_locations(sim_id: str):
     console.print(Panel.fit(table))
 
 
+@location.command(name="ls")
+@click.argument("sim_id")
+@click.argument("location_name")
+@click.argument("path", required=False, default="")
+@click.option("--recursive", "-r", is_flag=True, help="List recursively")
+@click.option("--detail", "-l", is_flag=True, help="Show detailed information")
+def list_files(
+    sim_id: str, location_name: str, path: str, recursive: bool, detail: bool
+):
+    """List files in a location with context-aware path resolution.
+
+    SIM_ID: ID of the simulation
+    LOCATION_NAME: Name of the location to list files from
+    PATH: Optional path relative to the location's base path
+    """
+    sim = get_simulation_or_exit(sim_id)
+
+    if location_name not in sim.locations:
+        console.print(
+            f"[red]Error:[/red] Location '{location_name}' not found in simulation"
+        )
+        raise click.Abort(1)
+
+    loc_data = sim.locations[location_name]
+    location = loc_data["location"]
+
+    # Get the base path with context applied
+    base_path = sim.get_location_path(location_name)
+    full_path = f"{base_path}/{path}" if path else base_path
+
+    try:
+        if not hasattr(location, "fs"):
+            console.print(
+                f"[red]Error:[/red] Location '{location_name}' does not support file operations"
+            )
+            raise click.Abort(1)
+
+        # List files
+        if recursive:
+            files = []
+            for root, _, filenames in location.fs.walk(full_path):
+                for filename in filenames:
+                    files.append(
+                        f"{root}/{filename}" if root != full_path else filename
+                    )
+        else:
+            files = location.fs.ls(full_path, detail=detail)
+
+        # Display results
+        console.print(f"[bold]Listing files in:[/bold] {full_path}\n")
+
+        if detail and files:
+            table = Table(show_header=True, header_style="bold magenta")
+            table.add_column("Name", style="cyan")
+            table.add_column("Type", style="green")
+            table.add_column("Size", style="blue")
+            table.add_column("Modified", style="yellow")
+            table.add_column("Staged", style="blue")
+
+            for file_info in files:
+                name = file_info["name"] if "name" in file_info else file_info
+                file_type = (
+                    "directory" if file_info.get("type") == "directory" else "file"
+                )
+                size = file_info.get("size", "")
+                modified = file_info.get("mtime", "")
+                staged = file_info.get("staged", "")
+
+                table.add_row(
+                    name,
+                    file_type,
+                    str(size) if size else "",
+                    str(modified) if modified else "",
+                    "✓" if staged else "✗",
+                )
+            console.print(table)
+        else:
+            for file in files:
+                console.print(f"- {file}")
+
+    except Exception as e:
+        console.print(f"[red]Error listing files:[/red] {str(e)}")
+        raise click.Abort(1)
+
+
 @location.command(name="show")
 @click.argument("sim_id")
 @click.argument("location_name")
