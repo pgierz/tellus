@@ -2,6 +2,7 @@ from dataclasses import dataclass, asdict
 from enum import Enum, auto
 import json
 import os
+import contextlib
 from pathlib import Path
 from typing import ClassVar, Dict, List, Optional, Type, Union, Generator, Tuple
 import os
@@ -189,7 +190,7 @@ class Location:
         """
         remote_path = str(remote_path)
         local_path = Path(local_path) if local_path else Path(Path(remote_path).name)
-        
+
         if local_path.exists() and not overwrite:
             raise FileExistsError(f"File already exists: {local_path}")
 
@@ -200,20 +201,35 @@ class Location:
         self.fs.get_file(remote_path, str(local_path))
         return str(local_path)
 
-    def get_fileobj(self, remote_path: str) -> tuple:
+    @contextlib.contextmanager
+    def get_fileobj(self, remote_path: str, progress=None, task_id=None, console=None):
         """
         Get a file-like object for reading from the remote location.
-        
+
         Args:
             remote_path: Path to the file in the location
-            
-        Returns:
+            progress: Optional progress bar object
+            task_id: Optional task ID for the progress bar
+            console: Optional console instance to use for output
+
+        Yields:
             Tuple of (file-like object, file size in bytes)
         """
         remote_path = str(remote_path)
-        file_obj = self.fs.open(remote_path, 'rb')
-        file_size = self.fs.size(remote_path)
-        return file_obj, file_size
+        file_obj = None
+        try:
+            file_obj = self.fs.open(
+                remote_path,
+                "rb",
+                progress=progress,
+                task_id=task_id,
+                console=console,
+            )
+            file_size = self.fs.size(remote_path)
+            yield file_obj, file_size
+        finally:
+            if file_obj is not None:
+                file_obj.close()
 
     def find_files(
         self, pattern: str, base_path: str = "", recursive: bool = False
@@ -229,17 +245,16 @@ class Location:
         Yields:
             Tuple of (file_path, file_info) for each matching file
         """
-        with self.fs as fs:
-            if recursive:
-                for root, _, files in fs.walk(base_path):
-                    for file in files:
-                        file_path = os.path.join(root, file)
-                        if fnmatch.fnmatch(file_path, pattern):
-                            yield file_path, fs.info(file_path)
-            else:
-                for file in fs.glob(os.path.join(base_path, pattern)):
-                    if fs.isfile(file):
-                        yield file, fs.info(file)
+        if recursive:
+            for root, _, files in self.fs.walk(base_path):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    if fnmatch.fnmatch(file_path, pattern):
+                        yield file_path, self.fs.info(file_path)
+        else:
+            for file in self.fs.glob(os.path.join(base_path, pattern)):
+                if self.fs.isfile(file):
+                    yield file, self.fs.info(file)
 
     def mget(
         self,

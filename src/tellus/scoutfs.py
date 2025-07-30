@@ -198,19 +198,33 @@ class ScoutFSFileSystem(fsspec.implementations.sftp.SFTPFileSystem):
         mode="r",
         stage_before_opening=True,
         timeout=None,
+        console=None,
         **kwargs,
     ):
-        if stage_before_opening:
-            if not self.is_online(path):
-                self.stage(path)
-            # [FIXME] Is this blocking? Should it be...?
+        if stage_before_opening and not self.is_online(path):
+            self.stage(path)
             timeout = timeout or datetime.datetime.now() + datetime.timedelta(minutes=3)
-            console = Console()
-            with console.status("[bold green] Staging file...", spinner="dots"):
-                # [TODO] Progress bar would be nice
-                console.print(f"{datetime.datetime.now()} Current status: ")
-                console.print(self._scoutfs_online_status(path))
+
+            # Use provided console or create a new one if not provided
+            if console is None:
+                console = Console()
+                use_context = True
+            else:
+                use_context = False
+
+            try:
+                if use_context:
+                    status = console.status(
+                        "[bold green]Staging file...", spinner="dots"
+                    )
+                    status.__enter__()
+                else:
+                    console.print("[bold green]Staging file...")
+
                 while not self.is_online(path):
+                    if use_context:
+                        console.print(f"{datetime.datetime.now()} Current status: ")
+                        console.print(self._scoutfs_online_status(path))
                     time.sleep(1)
                     if self.is_online(path):
                         break
@@ -218,10 +232,12 @@ class ScoutFSFileSystem(fsspec.implementations.sftp.SFTPFileSystem):
                         raise TimeoutError(
                             f"Timeout while waiting for file {path} to be staged."
                         )
-        else:
-            # Let the filesystem handle staging somehow outside of our world...
-            pass
-        return super().open(path, mode, **kwargs)
+            finally:
+                if use_context and "status" in locals():
+                    status.__exit__(None, None, None)
+
+        # Now open the file using the parent class's open method
+        return super().open(path, mode=mode, **kwargs)
 
 
 register_implementation("scoutfs", ScoutFSFileSystem)
