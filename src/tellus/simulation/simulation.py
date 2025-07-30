@@ -13,7 +13,7 @@ import uuid
 
 import fsspec
 
-from ..location import Location, LocationExistsError, create_location_handlers
+from ..location import Location, LocationExistsError
 from .context import LocationContext
 
 # from snakemake.workflow import Rules, Workflow
@@ -143,12 +143,10 @@ class Simulation:
 
                 # Create location and handlers
                 location = Location.from_dict(location_data)
-                handlers = create_location_handlers(location)
 
                 # Create location entry
                 entry = {
                     "location": location,
-                    "handlers": handlers,
                 }
 
                 # Add context if present

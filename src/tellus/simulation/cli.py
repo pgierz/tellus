@@ -1,8 +1,8 @@
 """Command-line interface for Tellus simulation management."""
 
-from tkinter import W
-from typing import Optional, List
+import os
 from pathlib import Path
+from typing import Optional, List
 
 import rich_click as click
 from rich.table import Table
@@ -311,6 +311,254 @@ def list_locations(sim_id: str):
     console.print(Panel.fit(table))
 
 
+def _get_remote_file(location, remote_path, local_path, force=False, progress=None, task_id=None):
+    """Helper function to download a single file with progress tracking"""
+    if progress is None:
+        # If no progress tracking, use the simple get method
+        return location.get(remote_path, local_path, overwrite=force)
+    
+    # Get file object and size for progress tracking
+    remote_file, file_size = location.get_fileobj(remote_path)
+    
+    # Ensure local directory exists
+    local_path = Path(local_path)
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Update progress bar total if provided
+    if task_id is not None:
+        progress.update(task_id, total=file_size)
+    
+    # Download in chunks to track progress
+    chunk_size = 1024 * 1024  # 1MB chunks
+    bytes_downloaded = 0
+    
+    try:
+        with open(local_path, 'wb') as f:
+            while True:
+                chunk = remote_file.read(chunk_size)
+                if not chunk:
+                    break
+                f.write(chunk)
+                bytes_downloaded += len(chunk)
+                if progress is not None and task_id is not None:
+                    progress.update(task_id, completed=bytes_downloaded)
+    finally:
+        remote_file.close()
+    
+    return str(local_path)
+
+
+@location.command(name="get")
+@click.argument("sim_id")
+@click.argument("location_name")
+@click.argument("remote_path")
+@click.argument("local_path", required=False, default=".")
+@click.option("--force", "-f", is_flag=True, help="Overwrite existing files")
+def get_file(sim_id: str, location_name: str, remote_path: str, local_path: str, force: bool):
+    """Download a file from a location to the local filesystem.
+
+    SIM_ID: ID of the simulation
+    LOCATION_NAME: Name of the location to get the file from
+    REMOTE_PATH: Path to the file on the remote location
+    LOCAL_PATH: Local path to save the file (default: current directory)
+    """
+    from rich.progress import (
+        Progress,
+        TextColumn,
+        BarColumn,
+        DownloadColumn,
+        TransferSpeedColumn,
+        TimeRemainingColumn,
+    )
+
+    sim = get_simulation_or_exit(sim_id)
+
+    if location_name not in sim.locations:
+        console.print(f"[red]Error:[/red] Location '{location_name}' not found in simulation")
+        raise click.Abort(1)
+
+    loc_data = sim.locations[location_name]
+    location = loc_data["location"]
+    
+    # Resolve paths
+    base_path = sim.get_location_path(location_name)
+    full_remote_path = f"{base_path}/{remote_path}" if not remote_path.startswith(base_path) else remote_path
+    local_path = Path(local_path)
+    
+    # If local_path is a directory, use the remote filename
+    if local_path.is_dir() or local_path == Path('.'):
+        local_path = local_path / Path(remote_path).name
+    
+    # Set up progress bar
+    progress_columns = [
+        TextColumn("[bold blue]{task.fields[filename]}", justify="right"),
+        BarColumn(bar_width=None),
+        "[progress.percentage]{task.percentage:>3.1f}%",
+        "•",
+        DownloadColumn(),
+        "•",
+        TransferSpeedColumn(),
+        "•",
+        TimeRemainingColumn(),
+    ]
+
+    try:
+        with Progress(*progress_columns, console=console) as progress:
+            # Get file size for progress bar
+            try:
+                full_remote_path_str = str(full_remote_path)
+                file_size = location.fs.size(full_remote_path_str) if location.fs.exists(full_remote_path_str) else 0
+            except Exception:
+                file_size = 0
+                
+            task_id = progress.add_task(
+                "downloading",
+                filename=Path(remote_path).name,
+                total=file_size
+            )
+            
+            # Download the file with progress tracking
+            local_path = _get_remote_file(
+                location,
+                full_remote_path_str,
+                str(local_path),
+                force=force,
+                progress=progress,
+                task_id=task_id
+            )
+            
+            progress.print(f"✅ [green]Downloaded:[/green] {local_path}")
+            return local_path
+            
+    except Exception as e:
+        console.print(f"[red]Error downloading file: {str(e)}[/red]")
+        raise click.Abort(1)
+
+
+@location.command(name="mget")
+@click.argument("sim_id")
+@click.argument("location_name")
+@click.argument("remote_pattern")
+@click.argument("local_dir", required=False, default=".")
+@click.option("--recursive", "-r", is_flag=True, help="Download directories recursively")
+@click.option("--force", "-f", is_flag=True, help="Overwrite existing files")
+def get_multiple_files(sim_id: str, location_name: str, remote_pattern: str, local_dir: str, recursive: bool, force: bool):
+    """Download multiple files matching a pattern from a location.
+
+    SIM_ID: ID of the simulation
+    LOCATION_NAME: Name of the location to get files from
+    REMOTE_PATTERN: Pattern to match files (e.g., '*.txt' or 'data/*.nc')
+    LOCAL_DIR: Local directory to save files (default: current directory)
+    """
+    from rich.progress import (
+        Progress,
+        TextColumn,
+        BarColumn,
+        DownloadColumn,
+        TransferSpeedColumn,
+        TimeRemainingColumn,
+        SpinnerColumn,
+        TaskProgressColumn,
+    )
+
+    sim = get_simulation_or_exit(sim_id)
+
+    if location_name not in sim.locations:
+        console.print(f"[red]Error:[/red] Location '{location_name}' not found in simulation")
+        raise click.Abort(1)
+
+    loc_data = sim.locations[location_name]
+    location = loc_data["location"]
+    
+    # Resolve base path
+    base_path = sim.get_location_path(location_name)
+    
+    try:
+        # First, find all files to download
+        files_to_download = list(location.find_files(remote_pattern, base_path, recursive))
+        
+        if not files_to_download:
+            console.print(f"[yellow]No files found matching pattern: {remote_pattern}[/yellow]")
+            return
+            
+        # Set up progress bar
+        progress_columns = [
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(bar_width=None),
+            TaskProgressColumn(),
+            "•",
+            DownloadColumn(),
+            "•",
+            TransferSpeedColumn(),
+            "•",
+            TimeRemainingColumn(),
+        ]
+        
+        with Progress(*progress_columns, console=console) as progress:
+            # Create tasks for each file
+            tasks = []
+            total_size = 0
+            
+            # First pass: calculate total size and create tasks
+            for remote_path, file_info in files_to_download:
+                rel_path = os.path.relpath(remote_path, base_path) if base_path else os.path.basename(remote_path)
+                local_path = Path(local_dir) / rel_path
+                
+                if local_path.exists() and not force:
+                    progress.console.print(f"[yellow]Skipping existing file: {local_path}[/yellow]")
+                    continue
+                    
+                file_size = file_info.get('size', 0)
+                total_size += file_size
+                
+                task_id = progress.add_task(
+                    f"[cyan]{Path(remote_path).name}",
+                    total=file_size,
+                    visible=False  # Will be made visible when download starts
+                )
+                tasks.append((remote_path, local_path, task_id, file_size))
+            
+            if not tasks:
+                progress.console.print("[yellow]No files to download (use --force to overwrite existing files)[/yellow]")
+                return
+                
+            # Download files one by one with progress tracking
+            success_count = 0
+            for remote_path, local_path, task_id, file_size in tasks:
+                progress.update(task_id, visible=True)
+                
+                try:
+                    local_path.parent.mkdir(parents=True, exist_ok=True)
+                    _get_remote_file(
+                        location,
+                        remote_path,
+                        str(local_path),
+                        force=force,
+                        progress=progress,
+                        task_id=task_id
+                    )
+                    success_count += 1
+                    progress.console.print(f"✅ [green]Downloaded:[/green] {local_path}")
+                    
+                except Exception as e:
+                    progress.console.print(f"[red]Error downloading {remote_path}: {str(e)}[/red]")
+                    progress.update(task_id, visible=False)
+                    continue
+            
+            # Show summary
+            if success_count > 0:
+                progress.console.print(
+                    f"\n✅ [green]Successfully downloaded {success_count}/{len(tasks)} files to {local_dir}[/green]"
+                )
+            
+    except Exception as e:
+        console.print(f"[red]Error during download: {str(e)}[/red]")
+        raise click.Abort(1)
+        
+    return success_count, len(tasks)
+
+
 @location.command(name="ls")
 @click.argument("sim_id")
 @click.argument("location_name")
@@ -384,7 +632,7 @@ def list_files(
                     file_type,
                     str(size) if size else "",
                     str(modified) if modified else "",
-                    "✓" if staged else "✗",
+                    "[green]✓[/green]" if staged else "[red]✗[/red]",
                 )
             console.print(table)
         else:

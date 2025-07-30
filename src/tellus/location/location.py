@@ -3,10 +3,20 @@ from enum import Enum, auto
 import json
 import os
 from pathlib import Path
-from typing import ClassVar, Dict, Optional, Type, List
+from typing import ClassVar, Dict, List, Optional, Type, Union, Generator, Tuple
+import os
+import fnmatch
+import shutil
 
 import fsspec
-from .. import scoutfs  # noqa: F401
+from rich.console import Console
+from rich.progress import (
+    Progress,
+    TextColumn,
+    BarColumn,
+    TransferSpeedColumn,
+    TimeRemainingColumn,
+)
 
 
 # Allowed location names
@@ -158,67 +168,131 @@ class Location:
 
         return fs
 
+    def get(
+        self,
+        remote_path: str,
+        local_path: Optional[str] = None,
+        overwrite: bool = False,
+        progress: Optional[Progress] = None,
+        task_id: Optional[int] = None,
+    ) -> str:
+        """
+        Download a file from the location.
 
-# Handlers for each location type
-class BaseLocationHandler:
-    def post(self, data):
-        raise NotImplementedError
+        Args:
+            remote_path: Path to the file in the location
+            local_path: Local path to save the file (defaults to the remote filename in current dir)
+            overwrite: If True, overwrite existing files
 
-    def get(self, identifier):
-        # Separate method for possible direct access
-        raise NotImplementedError
+        Returns:
+            Path to the downloaded file
+        """
+        remote_path = str(remote_path)
+        local_path = Path(local_path) if local_path else Path(Path(remote_path).name)
+        
+        if local_path.exists() and not overwrite:
+            raise FileExistsError(f"File already exists: {local_path}")
 
-    def fetch(self, identifier):
-        # Separate method for possible "non-local" access
-        raise NotImplementedError
+        # Ensure parent directory exists
+        local_path.parent.mkdir(parents=True, exist_ok=True)
 
+        # Use fsspec's get_file for the transfer
+        self.fs.get_file(remote_path, str(local_path))
+        return str(local_path)
 
-class HSMHandler(BaseLocationHandler):
-    def post(self, data):
-        print("Storing to HSM...")
+    def get_fileobj(self, remote_path: str) -> tuple:
+        """
+        Get a file-like object for reading from the remote location.
+        
+        Args:
+            remote_path: Path to the file in the location
+            
+        Returns:
+            Tuple of (file-like object, file size in bytes)
+        """
+        remote_path = str(remote_path)
+        file_obj = self.fs.open(remote_path, 'rb')
+        file_size = self.fs.size(remote_path)
+        return file_obj, file_size
 
-    def get(self, identifier):
-        print("Getting from HSM...")
+    def find_files(
+        self, pattern: str, base_path: str = "", recursive: bool = False
+    ) -> Generator[Tuple[str, dict], None, None]:
+        """
+        Find files matching a pattern in the location.
 
-    def fetch(self, identifier):
-        # Separate method for possible "non-local" access
-        print("Fetching from HSM...")
+        Args:
+            pattern: Glob pattern to match files against
+            base_path: Base path to start searching from
+            recursive: Whether to search recursively
 
+        Yields:
+            Tuple of (file_path, file_info) for each matching file
+        """
+        with self.fs as fs:
+            if recursive:
+                for root, _, files in fs.walk(base_path):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        if fnmatch.fnmatch(file_path, pattern):
+                            yield file_path, fs.info(file_path)
+            else:
+                for file in fs.glob(os.path.join(base_path, pattern)):
+                    if fs.isfile(file):
+                        yield file, fs.info(file)
 
-class HPCHandler(BaseLocationHandler):
-    def post(self, data):
-        print("Storing to HPC...")
+    def mget(
+        self,
+        remote_pattern: str,
+        local_dir: str,
+        recursive: bool = False,
+        overwrite: bool = False,
+        base_path: str = "",
+    ) -> List[str]:
+        """
+        Download multiple files matching a pattern using fsspec's get.
 
-    def get(self, identifier):
-        print("Getting from HPC...")
+        Args:
+            remote_pattern: Pattern to match files against
+            local_dir: Local directory to save files to
+            recursive: Whether to search recursively
+            overwrite: Whether to overwrite existing files
+            base_path: Base path to start searching from
 
-    def fetch(self, identifier):
-        # Separate method for possible "non-local" access
-        print("Fetching from HPC...")
+        Returns:
+            List of paths to downloaded files
+        """
+        local_dir = Path(local_dir)
+        local_dir.mkdir(parents=True, exist_ok=True)
 
+        downloaded_files = []
 
-class FileServerHandler(BaseLocationHandler):
-    def post(self, data):
-        print("Storing to FileServer...")
+        # First, find all files to download
+        files_to_download = list(self.find_files(remote_pattern, base_path, recursive))
 
-    def get(self, identifier):
-        print("Getting from FileServer...")
+        if not files_to_download:
+            print(f"No files found matching pattern: {remote_pattern}")
+            return []
 
-    def fetch(self, identifier):
-        # Separate method for possible "non-local" access
-        print("Fetching from FileServer...")
+        # Download files
+        for remote_path, _ in files_to_download:
+            rel_path = (
+                os.path.relpath(remote_path, base_path)
+                if base_path
+                else os.path.basename(remote_path)
+            )
+            local_path = local_dir / rel_path
 
+            if local_path.exists() and not overwrite:
+                print(f"Skipping existing file: {local_path}")
+                continue
 
-# The registry mapping allowed names to handler classes
-LOCATION_REGISTRY: Dict[LocationKind, Type[BaseLocationHandler]] = {
-    LocationKind.TAPE: HSMHandler,
-    LocationKind.COMPUTE: HPCHandler,
-    LocationKind.DISK: FileServerHandler,
-}
+            try:
+                local_path.parent.mkdir(parents=True, exist_ok=True)
+                self.get(remote_path, str(local_path), overwrite=overwrite)
+                downloaded_files.append(str(local_path))
+                print(f"Downloaded: {remote_path} -> {local_path}")
+            except Exception as e:
+                print(f"Error downloading {remote_path}: {str(e)}")
 
-
-def create_location_handlers(location: Location) -> list[BaseLocationHandler]:
-    handler_clses = [LOCATION_REGISTRY.get(kind) for kind in location.kinds]
-    if not all(handler_clses):
-        raise ValueError(f"No handler registered for location: {location.kinds}")
-    return [cls() for cls in handler_clses]
+        return downloaded_files
