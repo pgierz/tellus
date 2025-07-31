@@ -7,6 +7,8 @@ from typing import Optional, List
 import rich_click as click
 from rich.table import Table
 from rich.panel import Panel
+from rich.prompt import Prompt, Confirm
+from rich import print as rprint
 
 from .simulation import Simulation, SimulationExistsError
 from ..core.cli import cli, console
@@ -225,30 +227,112 @@ def location():
 
 
 @location.command(name="add")
-@click.argument("sim_id")
-@click.argument("location_name")
+@click.argument("sim_id", required=False)
+@click.argument("location_name", required=False)
 @click.option(
     "--path-prefix",
     help="Path prefix with template variables (e.g., '/path/{{model_id}}/{{simulation_id}}')",
 )
 @click.option("--override", is_flag=True, help="Override if location already exists")
 def add_location(
-    sim_id: str, location_name: str, path_prefix: str = None, override: bool = False
+    sim_id: Optional[str] = None,
+    location_name: Optional[str] = None,
+    path_prefix: Optional[str] = None,
+    override: bool = False,
 ):
     """Add a location to a simulation with optional context.
 
-    SIM_ID: ID of the simulation
-    LOCATION_NAME: Name of the location to add
+    If no arguments are provided, an interactive wizard will guide you through the process.
     """
+    # Interactive wizard when no arguments are provided
+    if sim_id is None:
+        console.print("\n[bold blue]📝 Location Wizard[/bold blue]")
+        console.print(
+            "Let's add a location to a simulation. Press Ctrl+C to cancel at any time.\n"
+        )
+
+        # List available simulations
+        simulations = Simulation.list_simulations()
+        if not simulations:
+            console.print(
+                "[red]Error:[/red] No simulations found. Please create a simulation first."
+            )
+            raise click.Abort(1)
+
+        # Create choices for questionary
+        choices = [
+            {
+                "name": f"{sim.simulation_id} ({sim.path or 'No path'})",
+                "value": sim.simulation_id,
+            }
+            for sim in simulations
+        ]
+
+        # Let user select simulation using questionary
+        import questionary
+
+        sim_id = questionary.select(
+            "Select a simulation:",
+            choices=choices,
+            # style=lambda x: "",  # Disable questionary's built-in styling
+        ).ask()
+
+        if not sim_id:  # User pressed Ctrl+C or entered empty input
+            console.print("\nOperation cancelled.")
+            raise click.Abort(1)
+
+        # Get location name
+        location_name = Prompt.ask("\nEnter location name")
+
+        # Get path prefix (optional) with tab completion
+        from prompt_toolkit import prompt
+        from prompt_toolkit.completion import PathCompleter
+
+        path_completer = PathCompleter(expanduser=True)
+        path_prefix = (
+            prompt(
+                "Enter path prefix (press Tab to complete, Enter to skip): ",
+                completer=path_completer,
+                complete_while_typing=True,
+            )
+            or None
+        )
+
+        # Check if location already exists in simulation
+        sim = Simulation.get_simulation(sim_id)
+        if sim and location_name in sim.locations:
+            override = Confirm.ask(
+                f"[yellow]Location '{location_name}' already exists. Override?[/yellow]"
+            )
+            if not override:
+                console.print("Operation cancelled.")
+                return
+
+    # Validate required arguments
+    if not sim_id or not location_name:
+        raise click.UsageError("sim_id and location_name are required")
+
+    # Get the simulation or exit if not found
     sim = get_simulation_or_exit(sim_id)
 
     try:
-        # Get the location
+        # Check if location exists in the global locations
         from ..location.location import Location
 
         location = Location.get_location(location_name)
+        if not location:
+            console.print(
+                Panel.fit(
+                    f"[red]Error:[/red] Location '{location_name}' not found.\n"
+                    "Please create the location first using 'tellus location create'.",
+                    title="Error",
+                    subtitle="❌ Location Not Found",
+                    border_style="red",
+                )
+            )
+            raise click.Abort(1)
 
-        # Create context if path_prefix is provided
+        # Create context with path prefix if provided
         context = None
         if path_prefix:
             from .context import LocationContext
@@ -259,6 +343,7 @@ def add_location(
         sim.add_location(location, context=context, override=override)
         Simulation.save_simulations()
 
+        # Show success message
         console.print(
             Panel.fit(
                 f"✅ [bold green]Added location to simulation {sim_id}:[/bold green] {location_name}\n"
