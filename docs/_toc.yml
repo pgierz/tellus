@@ -1,0 +1,29 @@
+# Table of Contents
+# Learn more at https://jupyterbook.org/customize/toc.html
+
+format: jb-book
+root: index
+chapters:
+- file: installation
+- file: quickstart
+- file: user-guide/index
+  sections:
+  - file: user-guide/simulations
+  - file: user-guide/locations  
+  - file: user-guide/workflows
+- file: examples/index
+  sections:
+  - file: examples/basic-usage
+  - file: examples/remote-data
+  - file: examples/workflow-integration
+- file: api/index
+  sections:
+  - file: api/simulation
+  - file: api/location
+  - file: api/core
+- file: development/index
+  sections:
+  - file: development/contributing
+  - file: development/architecture
+- file: changelog
+- file: references

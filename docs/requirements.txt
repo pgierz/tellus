@@ -1,0 +1,8 @@
+# Documentation build requirements
+jupyter-book>=0.15.0
+pydata-sphinx-theme>=0.13.0
+sphinx>=4.0
+myst-nb>=0.17.0
+sphinx-copybutton
+sphinx-design
+jupyter
