@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Optional, List
 
 import rich_click as click
+from rich.console import Console
+from rich.text import Text
 from rich.table import Table
 from rich.panel import Panel
 from rich.prompt import Prompt, Confirm
@@ -281,17 +283,101 @@ def add_location(
             console.print("\nOperation cancelled.")
             raise click.Abort(1)
 
-        # Get location name
-        location_name = Prompt.ask("\nEnter location name")
+        # Get location name with option to select from existing or create new
+        from ..location.location import Location as LocationModel
+
+        # Get all existing locations
+        existing_locations = LocationModel.list_locations()
+        location_choices = [
+            {
+                "name": f"{loc.name} (Base Path: {loc.config.get('path') or 'No path'})",
+                "value": loc.name,
+            }
+            for loc in existing_locations
+        ]
+
+        # Add option to create a new location
+        location_choices.append(
+            {
+                "name": "Create new location...",
+                "value": "__new__",
+            }
+        )
+
+        # Let user select or create a location
+        import questionary
+        from rich.markup import escape
+
+        # Configure questionary to use rich markup
+        questionary.text.ask = lambda text, **kwargs: Prompt.ask(escape(text), **kwargs)
+        questionary.confirm.ask = lambda text, **kwargs: Confirm.ask(
+            escape(text), **kwargs
+        )
+        questionary.select.ask = lambda text, **kwargs: Select.ask(
+            escape(text), **kwargs
+        )
+
+        location_choice = questionary.select(
+            "\nSelect a location or create a new one:",
+            choices=location_choices,
+            style=questionary.Style(
+                [
+                    ("selected", "fg:#00FF00 bg:#000000"),
+                    ("highlighted", "fg:#ffffff bg:#000000"),
+                ]
+            ),
+        ).ask()
+
+        if not location_choice:  # User cancelled
+            console.print("\nOperation cancelled.")
+            raise click.Abort(1)
+
+        if location_choice == "__new__":
+            # Get new location name
+            location_name = Prompt.ask("\nEnter name for new location")
+            if not location_name:
+                console.print("\nOperation cancelled.")
+                raise click.Abort(1)
+
+            # Get location path
+            from prompt_toolkit import prompt
+            from prompt_toolkit.completion import PathCompleter
+
+            path_completer = PathCompleter(
+                expanduser=True,
+            )
+            location_path = prompt(
+                "Enter path for the new location (press Tab to complete): ",
+                completer=path_completer,
+                complete_while_typing=True,
+            )
+
+            if not location_path:
+                console.print("\nOperation cancelled.")
+                raise click.Abort(1)
+
+            # Create the new location
+            try:
+                location = LocationModel(name=location_name, path=location_path)
+                location.save()
+                console.print(f"\n✅ Created new location: {location_name}")
+            except Exception as e:
+                console.print(f"[red]Error creating location:[/red] {str(e)}")
+                raise click.Abort(1)
+        else:
+            location_name = location_choice
 
         # Get path prefix (optional) with tab completion
         from prompt_toolkit import prompt
         from prompt_toolkit.completion import PathCompleter
 
-        path_completer = PathCompleter(expanduser=True)
+        path_completer = PathCompleter(
+            expanduser=True,
+            only_directories=True,
+        )
         path_prefix = (
             prompt(
-                "Enter path prefix (press Tab to complete, Enter to skip): ",
+                "\nEnter path prefix (press Tab to complete, Enter to skip): ",
                 completer=path_completer,
                 complete_while_typing=True,
             )
@@ -302,7 +388,7 @@ def add_location(
         sim = Simulation.get_simulation(sim_id)
         if sim and location_name in sim.locations:
             override = Confirm.ask(
-                f"[yellow]Location '{location_name}' already exists. Override?[/yellow]"
+                f"[yellow]Location '{location_name}' already exists in this simulation. Override?[/yellow]"
             )
             if not override:
                 console.print("Operation cancelled.")
@@ -316,21 +402,14 @@ def add_location(
     sim = get_simulation_or_exit(sim_id)
 
     try:
-        # Check if location exists in the global locations
+        # Get the location (should exist at this point)
         from ..location.location import Location
 
         location = Location.get_location(location_name)
         if not location:
-            console.print(
-                Panel.fit(
-                    f"[red]Error:[/red] Location '{location_name}' not found.\n"
-                    "Please create the location first using 'tellus location create'.",
-                    title="Error",
-                    subtitle="❌ Location Not Found",
-                    border_style="red",
-                )
+            raise click.UsageError(
+                f"Location '{location_name}' not found. This should not happen."
             )
-            raise click.Abort(1)
 
         # Create context with path prefix if provided
         context = None
