@@ -11,13 +11,8 @@ import shutil
 
 import fsspec
 from rich.console import Console
-from rich.progress import (
-    Progress,
-    TextColumn,
-    BarColumn,
-    TransferSpeedColumn,
-    TimeRemainingColumn,
-)
+
+from ..progress import get_progress_callback, get_default_progress
 
 
 # Allowed location names
@@ -174,8 +169,7 @@ class Location:
         remote_path: str,
         local_path: Optional[str] = None,
         overwrite: bool = False,
-        progress: Optional[Progress] = None,
-        task_id: Optional[int] = None,
+        show_progress: bool = True,
     ) -> str:
         """
         Download a file from the location.
@@ -184,6 +178,7 @@ class Location:
             remote_path: Path to the file in the location
             local_path: Local path to save the file (defaults to the remote filename in current dir)
             overwrite: If True, overwrite existing files
+            show_progress: If True, show progress bar during download
 
         Returns:
             Path to the downloaded file
@@ -197,8 +192,25 @@ class Location:
         # Ensure parent directory exists
         local_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Use fsspec's get_file for the transfer
-        self.fs.get_file(remote_path, str(local_path))
+        if show_progress:
+            # Get file size for progress tracking
+            try:
+                file_size = self.fs.size(remote_path)
+            except Exception:
+                file_size = None
+            
+            # Use progress callback for download
+            callback = get_progress_callback(
+                description=f"Downloading {Path(remote_path).name}",
+                size=file_size
+            )
+            
+            with callback:
+                self.fs.get_file(remote_path, str(local_path), callback=callback)
+        else:
+            # Use fsspec's get_file for the transfer without progress
+            self.fs.get_file(remote_path, str(local_path))
+        
         return str(local_path)
 
     @contextlib.contextmanager
@@ -263,6 +275,8 @@ class Location:
         recursive: bool = False,
         overwrite: bool = False,
         base_path: str = "",
+        show_progress: bool = True,
+        console: Optional[Console] = None,
     ) -> List[str]:
         """
         Download multiple files matching a pattern using fsspec's get.
@@ -273,10 +287,15 @@ class Location:
             recursive: Whether to search recursively
             overwrite: Whether to overwrite existing files
             base_path: Base path to start searching from
+            show_progress: Whether to show progress bars
+            console: Optional console instance for output
 
         Returns:
             List of paths to downloaded files
         """
+        if console is None:
+            console = Console()
+            
         local_dir = Path(local_dir)
         local_dir.mkdir(parents=True, exist_ok=True)
 
@@ -286,28 +305,69 @@ class Location:
         files_to_download = list(self.find_files(remote_pattern, base_path, recursive))
 
         if not files_to_download:
-            print(f"No files found matching pattern: {remote_pattern}")
+            console.print(f"[yellow]No files found matching pattern: {remote_pattern}[/yellow]")
             return []
 
-        # Download files
-        for remote_path, _ in files_to_download:
-            rel_path = (
-                os.path.relpath(remote_path, base_path)
-                if base_path
-                else os.path.basename(remote_path)
-            )
-            local_path = local_dir / rel_path
+        if show_progress and len(files_to_download) > 1:
+            # Use rich progress for multiple files
+            with get_default_progress() as progress:
+                overall_task = progress.add_task(
+                    f"Downloading {len(files_to_download)} files", 
+                    total=len(files_to_download)
+                )
+                
+                for i, (remote_path, file_info) in enumerate(files_to_download):
+                    rel_path = (
+                        os.path.relpath(remote_path, base_path)
+                        if base_path
+                        else os.path.basename(remote_path)
+                    )
+                    local_path = local_dir / rel_path
 
-            if local_path.exists() and not overwrite:
-                print(f"Skipping existing file: {local_path}")
-                continue
+                    if local_path.exists() and not overwrite:
+                        console.print(f"[yellow]Skipping existing file: {local_path}[/yellow]")
+                        progress.update(overall_task, advance=1)
+                        continue
 
-            try:
-                local_path.parent.mkdir(parents=True, exist_ok=True)
-                self.get(remote_path, str(local_path), overwrite=overwrite)
-                downloaded_files.append(str(local_path))
-                print(f"Downloaded: {remote_path} -> {local_path}")
-            except Exception as e:
-                print(f"Error downloading {remote_path}: {str(e)}")
+                    try:
+                        local_path.parent.mkdir(parents=True, exist_ok=True)
+                        
+                        # Update progress description for current file
+                        progress.update(overall_task, description=f"Downloading {Path(remote_path).name}")
+                        
+                        # Download with individual file progress
+                        self.get(remote_path, str(local_path), overwrite=overwrite, show_progress=False)
+                        downloaded_files.append(str(local_path))
+                        console.print(f"✅ [green]Downloaded:[/green] {local_path}")
+                        
+                    except Exception as e:
+                        console.print(f"[red]Error downloading {remote_path}: {str(e)}[/red]")
+                    
+                    progress.update(overall_task, advance=1)
+                    
+            # Show summary
+            if downloaded_files:
+                console.print(f"\n✅ [green]Successfully downloaded {len(downloaded_files)}/{len(files_to_download)} files to {local_dir}[/green]")
+        else:
+            # Download files without progress tracking or single file
+            for remote_path, _ in files_to_download:
+                rel_path = (
+                    os.path.relpath(remote_path, base_path)
+                    if base_path
+                    else os.path.basename(remote_path)
+                )
+                local_path = local_dir / rel_path
+
+                if local_path.exists() and not overwrite:
+                    console.print(f"[yellow]Skipping existing file: {local_path}[/yellow]")
+                    continue
+
+                try:
+                    local_path.parent.mkdir(parents=True, exist_ok=True)
+                    self.get(remote_path, str(local_path), overwrite=overwrite, show_progress=show_progress)
+                    downloaded_files.append(str(local_path))
+                    console.print(f"✅ [green]Downloaded:[/green] {local_path}")
+                except Exception as e:
+                    console.print(f"[red]Error downloading {remote_path}: {str(e)}[/red]")
 
         return downloaded_files

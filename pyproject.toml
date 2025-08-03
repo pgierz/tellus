@@ -47,6 +47,7 @@ python = "3.12.*"
 test = ["test"]
 test-py311 = ["py311", "test"]
 test-py312 = ["py312", "test"]
+docs = ["docs"]
 
 [tool.pixi.dependencies]
 python = "*"
@@ -60,3 +61,17 @@ inquirerpy = ">=0.3.4,<0.4"
 snakemake = ">=9.8.0,<10"
 fastapi = ">=0.116.1,<0.117"
 uvicorn = ">=0.35.0,<0.36"
+
+[tool.pixi.feature.docs.dependencies]
+jupyter-book = "*"
+pydata-sphinx-theme = "*"
+sphinx = ">=4.0"
+myst-nb = "*"
+sphinx-copybutton = "*"
+sphinx-design = "*"
+jupyter = "*"
+
+[tool.pixi.feature.docs.tasks]
+docs-build = "jupyter-book build docs"
+docs-clean = "jupyter-book clean docs"
+docs-serve = { cmd = "python -m http.server 8000", cwd = "docs/_build/html", description = "Serve documentation locally" }
