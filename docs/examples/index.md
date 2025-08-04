@@ -26,11 +26,25 @@ Access data from SSH servers, cloud storage, and other remote locations with aut
 Integrate Tellus with Snakemake workflows for automated data management in computational pipelines.
 :::
 
-:::{grid-item-card} {octicon}`database` Archive Management
-:link: archive-management
+:::{grid-item-card} {octicon}`database` Archive System - Getting Started
+:link: archive-system-getting-started
 :link-type: doc
 
-Manage long-term data archives and implement data lifecycle policies.
+Learn the basics of Tellus's intelligent archive system with automatic caching, tagging, and file extraction.
+:::
+
+:::{grid-item-card} {octicon}`gear` Archive System - Advanced Features
+:link: archive-system-advanced-features
+:link-type: doc
+
+Explore advanced features including location integration, custom tagging, path mapping, and production deployment.
+:::
+
+:::{grid-item-card} {octicon}`terminal` Archive System - CLI Examples
+:link: archive-system-cli-examples
+:link-type: doc
+
+Master the command-line interface for archive operations, batch processing, and workflow automation.
 :::
 ::::
 
@@ -83,5 +97,7 @@ See our {doc}`../development/contributing` guide for more details.
 basic-usage
 remote-data  
 workflow-integration
-archive-management
+archive-system-getting-started
+archive-system-advanced-features
+archive-system-cli-examples
 ```
