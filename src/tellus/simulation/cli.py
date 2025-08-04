@@ -2,7 +2,7 @@
 
 import os
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Union, Tuple, Dict, Any
 
 import rich_click as click
 from rich.console import Console
@@ -479,6 +479,117 @@ def list_locations(sim_id: str):
     console.print(Panel.fit(table))
 
 
+def _get_remote_file(
+    location,
+    remote_path: str,
+    local_path: Union[str, Path],
+    force: bool = False,
+    progress: Optional[Any] = None,
+    task_id: Optional[str] = None,
+) -> str:
+    """Helper function to download a single file with progress tracking.
+
+    Args:
+        location: Location instance to download from
+        remote_path: Path to the remote file
+        local_path: Local path to save the file
+        force: If True, overwrite existing files
+        progress: Rich Progress instance for tracking
+        task_id: Task ID for the progress bar
+
+    Returns:
+        Path to the downloaded file
+    """
+    local_path = Path(local_path)
+
+    # Create a progress callback if we have a progress bar
+    progress_callback = None
+    if progress is not None and task_id is not None:
+        # Create a callback that updates our progress bar
+        from tellus.progress import FSSpecProgressCallback
+
+        progress_callback = FSSpecProgressCallback(progress=progress, task_id=task_id)
+        progress_callback.set_description(os.path.basename(remote_path))
+
+    try:
+        return location.get(
+            remote_path=remote_path,
+            local_path=local_path,
+            overwrite=force,
+            progress_callback=progress_callback,
+        )
+    except Exception as e:
+        if progress is not None and task_id is not None:
+            progress.print(f"[red]Error downloading {remote_path}: {str(e)}")
+        raise
+
+
+def _download_files(
+    location,
+    files: List[Tuple[str, Dict[str, Any]]],
+    force: bool = False,
+) -> Tuple[int, int]:
+    """Download multiple files with progress tracking.
+
+    Args:
+        location: Location instance to download from
+        files: List of (path, info) tuples to download
+        force: If True, overwrite existing files
+
+    Returns:
+        Tuple of (success_count, total_count)
+    """
+    from rich.progress import Progress, SpinnerColumn, TextColumn
+    from tellus.progress import FSSpecProgressCallback
+
+    success_count = 0
+    total_count = len(files)
+
+    if not files:
+        return 0, 0
+
+    # Create a progress bar for the overall operation
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        transient=True,
+    ) as progress:
+        task = progress.add_task("Downloading files...", total=total_count)
+
+        for file_path, file_info in files:
+            local_path = Path(file_path).name
+            file_size = file_info.get("size", 0)
+
+            # Update the task description to show the current file
+            progress.update(task, description=f"Downloading {file_path}")
+
+            try:
+                # Create a progress callback for this file
+                progress_callback = FSSpecProgressCallback(
+                    description=os.path.basename(file_path),
+                    size=file_size,
+                    progress=progress,
+                )
+
+                # Download the file with progress
+                local_path = location.get(
+                    remote_path=file_path,
+                    local_path=local_path,
+                    overwrite=force,
+                    progress_callback=progress_callback,
+                )
+
+                success_count += 1
+                console.print(f"✅ [green]Downloaded:[/green] {local_path}")
+
+            except Exception as e:
+                console.print(f"❌ [red]Error downloading {file_path}:[/red] {str(e)}")
+                continue
+            finally:
+                # Update the overall progress
+                progress.update(task, advance=1)
+
+    return success_count, total_count
 
 
 @location.command(name="get")
@@ -537,7 +648,7 @@ def get_file(
 @location.command(name="mget")
 @click.argument("sim_id")
 @click.argument("location_name")
-@click.argument("remote_pattern")
+@click.argument("pattern")
 @click.argument("local_dir", required=False, default=".")
 @click.option(
     "--recursive", "-r", is_flag=True, help="Download directories recursively"
@@ -546,7 +657,7 @@ def get_file(
 def get_multiple_files(
     sim_id: str,
     location_name: str,
-    remote_pattern: str,
+    pattern: str,
     local_dir: str,
     recursive: bool,
     force: bool,
@@ -555,7 +666,7 @@ def get_multiple_files(
 
     SIM_ID: ID of the simulation
     LOCATION_NAME: Name of the location to get files from
-    REMOTE_PATTERN: Pattern to match files (e.g., '*.txt' or 'data/*.nc')
+    PATTERN: Pattern to match files (e.g., '*.txt' or 'data/*.nc')
     LOCAL_DIR: Local directory to save files (default: current directory)
     """
     sim = get_simulation_or_exit(sim_id)
@@ -575,7 +686,7 @@ def get_multiple_files(
     try:
         # Use the Location's mget method with built-in progress tracking
         downloaded_files = location.mget(
-            remote_pattern=remote_pattern,
+            remote_pattern=pattern,
             local_dir=local_dir,
             recursive=recursive,
             overwrite=force,
@@ -589,7 +700,6 @@ def get_multiple_files(
     except Exception as e:
         console.print(f"[red]Error during download: {str(e)}[/red]")
         raise click.Abort(1)
-
 
 @location.command(name="ls")
 @click.argument("sim_id")

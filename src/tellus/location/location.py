@@ -1,18 +1,20 @@
-from dataclasses import dataclass, asdict
-from enum import Enum, auto
+import contextlib
+import fnmatch
 import json
 import os
-import contextlib
-from pathlib import Path
-from typing import ClassVar, Dict, List, Optional, Type, Union, Generator, Tuple
-import os
-import fnmatch
 import shutil
+from dataclasses import asdict, dataclass
+from enum import Enum, auto
+from pathlib import Path
+from typing import (ClassVar, Dict, Generator, List, Optional, Tuple, Type,
+                    Union)
 
 import fsspec
 from rich.console import Console
 
-from ..progress import get_progress_callback, get_default_progress
+from ..progress import get_default_progress, get_progress_callback
+
+# from tellus.progress import FSSpecProgressCallback
 
 
 # Allowed location names
@@ -170,6 +172,7 @@ class Location:
         local_path: Optional[str] = None,
         overwrite: bool = False,
         show_progress: bool = True,
+        progress_callback: Optional[FSSpecProgressCallback] = None,
     ) -> str:
         """
         Download a file from the location.
@@ -179,6 +182,7 @@ class Location:
             local_path: Local path to save the file (defaults to the remote filename in current dir)
             overwrite: If True, overwrite existing files
             show_progress: If True, show progress bar during download
+            progress_callback: Optional callback for progress tracking
 
         Returns:
             Path to the downloaded file
@@ -192,7 +196,20 @@ class Location:
         # Ensure parent directory exists
         local_path.parent.mkdir(parents=True, exist_ok=True)
 
-        if show_progress:
+        # Use fsspec's get_file for the transfer
+        if progress_callback:
+            with self.get_fileobj(remote_path, progress_callback) as (
+                remote_file,
+                file_size,
+            ):
+                with open(local_path, "wb") as local_file:
+                    while True:
+                        chunk = remote_file.read(1024 * 1024)  # 1MB chunks
+                        if not chunk:
+                            break
+                        local_file.write(chunk)
+                        progress_callback.relative_update(len(chunk))
+        elif show_progress:
             # Get file size for progress tracking
             try:
                 file_size = self.fs.size(remote_path)
@@ -210,19 +227,22 @@ class Location:
         else:
             # Use fsspec's get_file for the transfer without progress
             self.fs.get_file(remote_path, str(local_path))
-        
         return str(local_path)
 
     @contextlib.contextmanager
-    def get_fileobj(self, remote_path: str, progress=None, task_id=None, console=None):
+    def get_fileobj(
+        self,
+        remote_path: str,
+        progress_callback: Optional[FSSpecProgressCallback] = None,
+        **kwargs,
+    ):
         """
         Get a file-like object for reading from the remote location.
 
         Args:
             remote_path: Path to the file in the location
-            progress: Optional progress bar object
-            task_id: Optional task ID for the progress bar
-            console: Optional console instance to use for output
+            progress_callback: Optional callback for progress tracking
+            **kwargs: Additional arguments to pass to the filesystem's open method
 
         Yields:
             Tuple of (file-like object, file size in bytes)
@@ -230,15 +250,19 @@ class Location:
         remote_path = str(remote_path)
         file_obj = None
         try:
-            file_obj = self.fs.open(
-                remote_path,
-                "rb",
-                progress=progress,
-                task_id=task_id,
-                console=console,
-            )
+            # Use the callback if provided, otherwise use a no-op callback
+            callback = progress_callback or fsspec.callbacks.NoOpCallback()
+
+            # Open the file with the callback
+            file_obj = self.fs.open(remote_path, "rb", callback=callback, **kwargs)
+
+            # Get file size for progress tracking
             file_size = self.fs.size(remote_path)
+            if progress_callback:
+                progress_callback.set_size(file_size)
+
             yield file_obj, file_size
+
         finally:
             if file_obj is not None:
                 file_obj.close()
