@@ -75,7 +75,7 @@ Install Tellus and set up your environment
 Get up and running with Tellus in minutes
 :::
 
-:::{grid-item-card} {octicon}`magic-wand` Interactive Wizards
+:::{grid-item-card} {octicon}`zap` Interactive Wizards
 :link: interactive-wizards
 :link-type: doc
 
