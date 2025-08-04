@@ -14,7 +14,7 @@ from rich.console import Console
 
 from ..progress import get_default_progress, get_progress_callback
 
-# from tellus.progress import FSSpecProgressCallback
+from ..progress import FSSpecProgressCallback
 
 
 # Allowed location names

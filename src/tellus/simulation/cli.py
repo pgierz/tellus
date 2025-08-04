@@ -762,6 +762,12 @@ def list_files(
 
             for file_info in files:
                 name = file_info["name"] if "name" in file_info else file_info
+                # Strip the base path prefix to show relative paths
+                if isinstance(name, str) and name.startswith(base_path):
+                    # Remove base path and leading slash
+                    relative_name = name[len(base_path):].lstrip('/')
+                    name = relative_name if relative_name else name
+                
                 file_type = (
                     "directory" if file_info.get("type") == "directory" else "file"
                 )
@@ -779,6 +785,11 @@ def list_files(
             console.print(table)
         else:
             for file in files:
+                # Strip the base path prefix to show relative paths
+                if isinstance(file, str) and file.startswith(base_path):
+                    # Remove base path and leading slash
+                    relative_file = file[len(base_path):].lstrip('/')
+                    file = relative_file if relative_file else file
                 console.print(f"- {file}")
 
     except Exception as e:
