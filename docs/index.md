@@ -30,10 +30,10 @@ Access data from local disks, SSH/SFTP servers, and cloud storage (S3, Google Cl
 Beautiful progress bars and transfer statistics for all file operations using Rich and fsspec.
 :::
 
-:::{grid-item-card} 🔧 Interactive CLI
+:::{grid-item-card} 🧙‍♂️ Interactive Wizards
 :class-header: text-center
 
-Rich command-line interface with interactive wizards and tab completion for easy configuration.
+Comprehensive interactive wizards guide you through complex operations with step-by-step workflows.
 :::
 
 :::{grid-item-card} 🔗 Workflow Integration
@@ -60,7 +60,7 @@ tellus simulation location get my-experiment remote-storage "results/*.nc" ./loc
 
 ## Getting Started
 
-::::{grid} 1 2 2 3
+::::{grid} 2 2 3 3
 :::{grid-item-card} {octicon}`rocket` Installation
 :link: installation
 :link-type: doc
@@ -73,6 +73,13 @@ Install Tellus and set up your environment
 :link-type: doc
 
 Get up and running with Tellus in minutes
+:::
+
+:::{grid-item-card} {octicon}`magic-wand` Interactive Wizards
+:link: interactive-wizards
+:link-type: doc
+
+Step-by-step guided workflows for all operations
 :::
 
 :::{grid-item-card} {octicon}`book` User Guide
@@ -110,6 +117,7 @@ Contributing and architecture guides
 
 installation
 quickstart
+interactive-wizards
 user-guide/index
 examples/index
 api/index

@@ -48,21 +48,21 @@ def list_locations():
 
 
 @location.command()
-@click.argument("name")
+@click.argument("name", required=False)
 @click.option(
-    "-p", "--protocol", default="file", help="Storage protocol (e.g., file, s3, gs)"
+    "-p", "--protocol", default=None, help="Storage protocol (e.g., file, s3, gs)"
 )
 @click.option(
     "-k",
     "--kind",
-    default="disk",
+    default=None,
     help=f"Location type: {', '.join(e.name.lower() for e in LocationKind)}",
 )
 @click.option(
     "--optional/--not-optional",
     "is_optional",
     is_flag=True,
-    default=False,
+    default=None,
     help="Mark location as optional",
 )
 @click.option("--host", help="Hostname or IP for the storage")
@@ -71,14 +71,195 @@ def list_locations():
 @click.option("--username", help="Username for authentication")
 @click.option("--password", help="Password for authentication")
 def create(name, protocol, kind, is_optional, **storage_options):
-    """Create a new storage location."""
+    """Create a new storage location.
+    
+    If no arguments are provided, an interactive wizard will guide you through the process.
+    """
     # Load existing locations first
     Location.load_locations()
 
-    if Location.get_location(name):
-        raise click.UsageError(
-            f"Location '{name}' already exists. Use 'update' to modify it."
+    # Interactive wizard when no name is provided
+    if name is None:
+        console.print("\n[bold blue]📍 Location Creation Wizard[/bold blue]")
+        console.print(
+            "Let's create a new storage location. Press Ctrl+C to cancel at any time.\n"
         )
+
+        import questionary
+
+        # Get location name
+        name = questionary.text(
+            "Enter a name for this location:",
+            validate=lambda x: len(x.strip()) > 0 or "Name cannot be empty"
+        ).ask()
+        
+        if not name:
+            console.print("\nOperation cancelled.")
+            raise click.Abort(1)
+
+        # Check if location already exists
+        if Location.get_location(name):
+            override = questionary.confirm(
+                f"Location '{name}' already exists. Override?",
+                default=False
+            ).ask()
+            if not override:
+                console.print("Operation cancelled.")
+                return
+
+        # Get protocol
+        protocol_choices = [
+            {"name": "file - Local filesystem", "value": "file"},
+            {"name": "sftp - SSH File Transfer Protocol", "value": "sftp"},
+            {"name": "s3 - Amazon S3", "value": "s3"},
+            {"name": "gs - Google Cloud Storage", "value": "gs"},
+            {"name": "azure - Azure Blob Storage", "value": "azure"},
+            {"name": "ftp - File Transfer Protocol", "value": "ftp"},
+        ]
+
+        protocol = questionary.select(
+            "Select storage protocol:",
+            choices=protocol_choices,
+            default="file"
+        ).ask()
+
+        if not protocol:
+            console.print("\nOperation cancelled.")
+            raise click.Abort(1)
+
+        # Get location kind
+        kind_choices = [
+            {"name": f"{kind.name.lower()} - {kind.name}", "value": kind.name.lower()}
+            for kind in LocationKind
+        ]
+
+        kind = questionary.select(
+            "Select location type:",
+            choices=kind_choices,
+            default="disk"
+        ).ask()
+
+        if not kind:
+            console.print("\nOperation cancelled.")
+            raise click.Abort(1)
+
+        # Get optional flag
+        is_optional = questionary.confirm(
+            "Is this location optional?",
+            default=False
+        ).ask()
+
+        if is_optional is None:
+            console.print("\nOperation cancelled.")
+            raise click.Abort(1)
+
+        # Protocol-specific configuration
+        storage_opts = {}
+        
+        if protocol == "file":
+            from prompt_toolkit import prompt
+            from prompt_toolkit.completion import PathCompleter
+
+            path_completer = PathCompleter(expanduser=True, only_directories=True)
+            path = prompt(
+                "Enter base path (press Tab to complete): ",
+                completer=path_completer,
+                complete_while_typing=True,
+            )
+            if path:
+                storage_opts["path"] = path
+
+        elif protocol in ["sftp", "ftp"]:
+            host = questionary.text("Enter hostname:").ask()
+            if host:
+                storage_opts["host"] = host
+            
+            port_str = questionary.text(
+                f"Enter port (default: {22 if protocol == 'sftp' else 21}):",
+                default=""
+            ).ask()
+            if port_str:
+                try:
+                    storage_opts["port"] = int(port_str)
+                except ValueError:
+                    console.print("[yellow]Invalid port, using default[/yellow]")
+
+            username = questionary.text("Enter username (optional):").ask()
+            if username:
+                storage_opts["username"] = username
+
+            password = questionary.password("Enter password (optional):").ask()
+            if password:
+                storage_opts["password"] = password
+
+            from prompt_toolkit import prompt
+            from prompt_toolkit.completion import PathCompleter
+
+            path_completer = PathCompleter(expanduser=True, only_directories=True)
+            path = prompt(
+                "Enter remote base path: ",
+                completer=path_completer,
+                complete_while_typing=True,
+            )
+            if path:
+                storage_opts["path"] = path
+
+        elif protocol in ["s3", "gs", "azure"]:
+            console.print(f"\n[bold]{protocol.upper()} Configuration[/bold]")
+            console.print("Note: Credentials should be configured via environment variables or cloud SDK")
+            
+            if protocol == "s3":
+                bucket = questionary.text("Enter S3 bucket name:").ask()
+                if bucket:
+                    storage_opts["path"] = f"s3://{bucket}"
+                    
+            elif protocol == "gs":
+                bucket = questionary.text("Enter GCS bucket name:").ask()
+                if bucket:
+                    storage_opts["path"] = f"gs://{bucket}"
+                    
+            elif protocol == "azure":
+                container = questionary.text("Enter Azure container name:").ask()
+                account = questionary.text("Enter Azure storage account name:").ask()
+                if container and account:
+                    storage_opts["path"] = f"az://{container}"
+                    storage_opts["account_name"] = account
+
+        # Show summary
+        console.print("\n[bold]Summary:[/bold]")
+        console.print(f"  [bold]Name:[/bold] {name}")
+        console.print(f"  [bold]Protocol:[/bold] {protocol}")
+        console.print(f"  [bold]Kind:[/bold] {kind}")
+        console.print(f"  [bold]Optional:[/bold] {is_optional}")
+        if storage_opts:
+            console.print(f"  [bold]Configuration:[/bold]")
+            for key, value in storage_opts.items():
+                display_value = "*****" if key == "password" else value
+                console.print(f"    • {key}: {display_value}")
+
+        confirm = questionary.confirm(
+            "\nCreate this location?",
+            default=True,
+        ).ask()
+        
+        if not confirm:
+            console.print("Operation cancelled.")
+            return
+
+        # Update storage_options with collected values
+        storage_options.update({k: v for k, v in storage_opts.items()})
+
+    # Validate name
+    if Location.get_location(name) and not questionary.confirm(f"Location '{name}' exists. Override?", default=False).ask():
+        raise click.UsageError(f"Location '{name}' already exists. Use 'update' to modify it.")
+
+    # Set defaults if not provided
+    if protocol is None:
+        protocol = "file"
+    if kind is None:
+        kind = "disk"
+    if is_optional is None:
+        is_optional = False
 
     try:
         kinds = [LocationKind.from_str(kind)]

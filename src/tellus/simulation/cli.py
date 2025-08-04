@@ -84,8 +84,95 @@ def create(
 ):
     """Create a new simulation.
 
+    If no arguments are provided, an interactive wizard will guide you through the process.
+    
     SIM_ID: Optional identifier for the simulation. If not provided, a UUID will be generated.
     """
+    # Interactive wizard when no arguments are provided
+    if sim_id is None and path is None and not attr:
+        console.print("\n[bold blue]🚀 Simulation Creation Wizard[/bold blue]")
+        console.print(
+            "Let's create a new simulation. Press Ctrl+C to cancel at any time.\n"
+        )
+
+        # Get simulation ID
+        import questionary
+        
+        sim_id = questionary.text(
+            "Enter simulation ID (leave empty for auto-generated UUID):",
+            default="",
+        ).ask()
+        
+        if sim_id is None:  # User cancelled
+            console.print("\nOperation cancelled.")
+            raise click.Abort(1)
+            
+        # If empty, let Simulation class generate UUID
+        if not sim_id.strip():
+            sim_id = None
+
+        # Get simulation path with tab completion
+        from prompt_toolkit import prompt
+        from prompt_toolkit.completion import PathCompleter
+
+        path_completer = PathCompleter(
+            expanduser=True,
+            only_directories=True,
+        )
+        
+        path_input = prompt(
+            "Enter filesystem path for simulation data (press Tab to complete, Enter to skip): ",
+            completer=path_completer,
+            complete_while_typing=True,
+        )
+        
+        path = path_input.strip() if path_input else None
+
+        # Get attributes interactively
+        attrs = []
+        console.print("\n[bold]Attributes (optional)[/bold]")
+        console.print("Add key-value attributes to describe your simulation.")
+        
+        while True:
+            add_more = questionary.confirm(
+                "Would you like to add an attribute?" if not attrs else "Add another attribute?",
+                default=False if attrs else True,
+            ).ask()
+            
+            if not add_more:
+                break
+                
+            key = questionary.text("Attribute key:").ask()
+            if not key:
+                break
+                
+            value = questionary.text(f"Value for '{key}':").ask()
+            if value is not None:
+                attrs.append((key, value))
+                console.print(f"  ✓ Added: {key} = {value}")
+
+        attr = attrs if attrs else None
+
+        # Confirmation summary
+        console.print("\n[bold]Summary:[/bold]")
+        console.print(f"  [bold]ID:[/bold] {sim_id or 'Auto-generated UUID'}")
+        console.print(f"  [bold]Path:[/bold] {path or 'Not specified'}")
+        if attr:
+            console.print(f"  [bold]Attributes:[/bold]")
+            for key, value in attr:
+                console.print(f"    • {key}: {value}")
+        else:
+            console.print(f"  [bold]Attributes:[/bold] None")
+            
+        confirm = questionary.confirm(
+            "\nCreate this simulation?",
+            default=True,
+        ).ask()
+        
+        if not confirm:
+            console.print("Operation cancelled.")
+            return
+    
     try:
         # Convert path to Path object if provided
         path_obj = Path(path).resolve() if path else None
@@ -592,6 +679,232 @@ def _download_files(
     return success_count, total_count
 
 
+@location.command(name="browse")
+@click.argument("sim_id", required=False)
+@click.argument("location_name", required=False)
+def browse_files(sim_id: Optional[str] = None, location_name: Optional[str] = None):
+    """Interactive file browser for downloading files from locations.
+    
+    If no arguments are provided, an interactive wizard will guide you through browsing and downloading files.
+    """
+    if sim_id is None:
+        console.print("\n[bold blue]🗂️  Interactive File Browser[/bold blue]")
+        console.print(
+            "Browse and download files from simulation locations. Press Ctrl+C to cancel at any time.\n"
+        )
+
+        # Select simulation
+        simulations = Simulation.list_simulations()
+        if not simulations:
+            console.print("[red]Error:[/red] No simulations found. Please create a simulation first.")
+            raise click.Abort(1)
+
+        import questionary
+
+        sim_choices = [
+            {
+                "name": f"{sim.simulation_id} ({len(sim.locations)} locations)",
+                "value": sim.simulation_id,
+            }
+            for sim in simulations
+        ]
+
+        sim_id = questionary.select(
+            "Select a simulation:",
+            choices=sim_choices,
+        ).ask()
+
+        if not sim_id:
+            console.print("\nOperation cancelled.")
+            raise click.Abort(1)
+
+    sim = get_simulation_or_exit(sim_id)
+
+    if location_name is None:
+        if not sim.locations:
+            console.print(f"[red]Error:[/red] No locations found in simulation '{sim_id}'")
+            raise click.Abort(1)
+
+        # Select location
+        location_choices = [
+            {
+                "name": f"{name} ({loc_data['location'].config.get('protocol', 'unknown')})",
+                "value": name,
+            }
+            for name, loc_data in sim.locations.items()
+        ]
+
+        location_name = questionary.select(
+            "Select a location to browse:",
+            choices=location_choices,
+        ).ask()
+
+        if not location_name:
+            console.print("\nOperation cancelled.")
+            raise click.Abort(1)
+
+    # Start browsing from the base path
+    current_path = ""
+    loc_data = sim.locations[location_name]
+    location = loc_data["location"]
+    base_path = sim.get_location_path(location_name)
+    
+    while True:
+        full_path = f"{base_path}/{current_path}" if current_path else base_path
+        
+        try:
+            # List files in current directory
+            files = location.fs.ls(full_path, detail=True)
+            
+            # Build menu choices
+            choices = []
+            
+            # Add parent directory option if not at root
+            if current_path:
+                choices.append({
+                    "name": "📁 .. (go up)",
+                    "value": "__parent__"
+                })
+            
+            # Add directories first
+            dirs = [f for f in files if f.get("type") == "directory"]
+            for file_info in sorted(dirs, key=lambda x: x["name"]):
+                relative_name = file_info["name"]
+                if relative_name.startswith(base_path):
+                    relative_name = relative_name[len(base_path):].lstrip('/')
+                choices.append({
+                    "name": f"📁 {relative_name}/",
+                    "value": f"dir:{relative_name}"
+                })
+            
+            # Add files
+            files_list = [f for f in files if f.get("type") != "directory"]
+            for file_info in sorted(files_list, key=lambda x: x["name"]):
+                relative_name = file_info["name"]
+                if relative_name.startswith(base_path):
+                    relative_name = relative_name[len(base_path):].lstrip('/')
+                size = file_info.get("size", 0)
+                size_str = f" ({size} bytes)" if size else ""
+                choices.append({
+                    "name": f"📄 {relative_name}{size_str}",
+                    "value": f"file:{relative_name}"
+                })
+            
+            # Add action options
+            choices.extend([
+                {"name": "⬇️  Download selected files", "value": "__download__"},
+                {"name": "🔍 Search in current directory", "value": "__search__"},
+                {"name": "❌ Exit browser", "value": "__exit__"}
+            ])
+            
+            console.print(f"\n[bold]Current path:[/bold] {full_path}")
+            
+            selection = questionary.select(
+                "Select an item:",
+                choices=choices,
+            ).ask()
+            
+            if not selection or selection == "__exit__":
+                break
+            elif selection == "__parent__":
+                # Go up one directory
+                if "/" in current_path:
+                    current_path = "/".join(current_path.split("/")[:-1])
+                else:
+                    current_path = ""
+            elif selection == "__download__":
+                # Multi-select files for download
+                file_choices = [
+                    {
+                        "name": f"📄 {f['name'][len(base_path):].lstrip('/') if f['name'].startswith(base_path) else f['name']}",
+                        "value": f['name']
+                    }
+                    for f in files_list
+                ]
+                
+                if not file_choices:
+                    console.print("[yellow]No files in current directory[/yellow]")
+                    continue
+                
+                selected_files = questionary.checkbox(
+                    "Select files to download:",
+                    choices=file_choices,
+                ).ask()
+                
+                if selected_files:
+                    local_dir = questionary.text(
+                        "Enter local directory to save files:",
+                        default="."
+                    ).ask()
+                    
+                    if local_dir:
+                        for file_path in selected_files:
+                            try:
+                                local_path = Path(local_dir) / Path(file_path).name
+                                location.get(file_path, str(local_path), overwrite=True, show_progress=True)
+                                console.print(f"✅ [green]Downloaded:[/green] {local_path}")
+                            except Exception as e:
+                                console.print(f"❌ [red]Error downloading {file_path}:[/red] {str(e)}")
+                        
+                        if questionary.confirm("Continue browsing?", default=True).ask():
+                            continue
+                        else:
+                            break
+                            
+            elif selection == "__search__":
+                pattern = questionary.text(
+                    "Enter search pattern (e.g., '*.txt', '*data*'):"
+                ).ask()
+                
+                if pattern:
+                    try:
+                        import fnmatch
+                        matching_files = []
+                        for file_info in files_list:
+                            filename = file_info["name"]
+                            if filename.startswith(base_path):
+                                filename = filename[len(base_path):].lstrip('/')
+                            if fnmatch.fnmatch(filename, pattern):
+                                matching_files.append(file_info)
+                        
+                        if matching_files:
+                            console.print(f"\n[bold]Found {len(matching_files)} matching files:[/bold]")
+                            for file_info in matching_files:
+                                filename = file_info["name"]
+                                if filename.startswith(base_path):
+                                    filename = filename[len(base_path):].lstrip('/')
+                                console.print(f"  📄 {filename}")
+                        else:
+                            console.print(f"[yellow]No files matching '{pattern}' found[/yellow]")
+                    except Exception as e:
+                        console.print(f"[red]Search error:[/red] {str(e)}")
+                        
+            elif selection.startswith("dir:"):
+                # Navigate into directory
+                dir_name = selection[4:]  # Remove "dir:" prefix
+                current_path = f"{current_path}/{dir_name}" if current_path else dir_name
+            elif selection.startswith("file:"):
+                # Download single file
+                file_name = selection[5:]  # Remove "file:" prefix
+                file_path = f"{base_path}/{current_path}/{file_name}" if current_path else f"{base_path}/{file_name}"
+                
+                local_path = questionary.text(
+                    f"Save '{file_name}' as:",
+                    default=file_name
+                ).ask()
+                
+                if local_path:
+                    try:
+                        location.get(file_path, local_path, overwrite=True, show_progress=True)
+                        console.print(f"✅ [green]Downloaded:[/green] {local_path}")
+                    except Exception as e:
+                        console.print(f"❌ [red]Error downloading:[/red] {str(e)}")
+                        
+        except Exception as e:
+            console.print(f"[red]Error browsing directory:[/red] {str(e)}")
+            break
+
+
 @location.command(name="get")
 @click.argument("sim_id")
 @click.argument("location_name")
@@ -646,30 +959,87 @@ def get_file(
 
 
 @location.command(name="mget")
-@click.argument("sim_id")
-@click.argument("location_name")
-@click.argument("pattern")
+@click.argument("sim_id", required=False)
+@click.argument("location_name", required=False)
+@click.argument("pattern", required=False)
 @click.argument("local_dir", required=False, default=".")
 @click.option(
     "--recursive", "-r", is_flag=True, help="Download directories recursively"
 )
 @click.option("--force", "-f", is_flag=True, help="Overwrite existing files")
 def get_multiple_files(
-    sim_id: str,
-    location_name: str,
-    pattern: str,
-    local_dir: str,
-    recursive: bool,
-    force: bool,
+    sim_id: Optional[str] = None,
+    location_name: Optional[str] = None,
+    pattern: Optional[str] = None,
+    local_dir: str = ".",
+    recursive: bool = False,
+    force: bool = False,
 ):
     """Download multiple files matching a pattern from a location.
+
+    If no arguments are provided, an interactive wizard will guide you through pattern selection and preview.
 
     SIM_ID: ID of the simulation
     LOCATION_NAME: Name of the location to get files from
     PATTERN: Pattern to match files (e.g., '*.txt' or 'data/*.nc')
     LOCAL_DIR: Local directory to save files (default: current directory)
     """
+    # Interactive wizard when no arguments are provided
+    if sim_id is None:
+        console.print("\n[bold blue]📦 Bulk Download Wizard[/bold blue]")
+        console.print(
+            "Download multiple files with pattern matching. Press Ctrl+C to cancel at any time.\n"
+        )
+
+        # Select simulation
+        simulations = Simulation.list_simulations()
+        if not simulations:
+            console.print("[red]Error:[/red] No simulations found. Please create a simulation first.")
+            raise click.Abort(1)
+
+        import questionary
+
+        sim_choices = [
+            {
+                "name": f"{sim.simulation_id} ({len(sim.locations)} locations)",
+                "value": sim.simulation_id,
+            }
+            for sim in simulations
+        ]
+
+        sim_id = questionary.select(
+            "Select a simulation:",
+            choices=sim_choices,
+        ).ask()
+
+        if not sim_id:
+            console.print("\nOperation cancelled.")
+            raise click.Abort(1)
+
     sim = get_simulation_or_exit(sim_id)
+
+    if location_name is None:
+        if not sim.locations:
+            console.print(f"[red]Error:[/red] No locations found in simulation '{sim_id}'")
+            raise click.Abort(1)
+
+        # Select location
+        location_choices = [
+            {
+                "name": f"{name} ({loc_data['location'].config.get('protocol', 'unknown')})",
+                "value": name,
+            }
+            for name, loc_data in sim.locations.items()
+        ]
+
+        location_name = questionary.select(
+            "Select a location:",
+            choices=location_choices,
+        ).ask()
+
+        if not location_name:
+            console.print("\nOperation cancelled.")
+            raise click.Abort(1)
 
     if location_name not in sim.locations:
         console.print(
@@ -679,9 +1049,149 @@ def get_multiple_files(
 
     loc_data = sim.locations[location_name]
     location = loc_data["location"]
-
-    # Resolve base path
     base_path = sim.get_location_path(location_name)
+
+    # Interactive pattern selection and preview
+    if pattern is None:
+        import questionary
+
+        # Suggest common patterns
+        pattern_choices = [
+            {"name": "*.txt - All text files", "value": "*.txt"},
+            {"name": "*.nc - NetCDF files", "value": "*.nc"},
+            {"name": "*.csv - CSV files", "value": "*.csv"},
+            {"name": "*.json - JSON files", "value": "*.json"},
+            {"name": "*.log - Log files", "value": "*.log"},
+            {"name": "data* - Files starting with 'data'", "value": "data*"},
+            {"name": "*output* - Files containing 'output'", "value": "*output*"},
+            {"name": "Custom pattern...", "value": "__custom__"},
+        ]
+
+        pattern_choice = questionary.select(
+            "Select a file pattern:",
+            choices=pattern_choices,
+        ).ask()
+
+        if not pattern_choice:
+            console.print("\nOperation cancelled.")
+            raise click.Abort(1)
+
+        if pattern_choice == "__custom__":
+            pattern = questionary.text(
+                "Enter custom pattern (e.g., '*.txt', 'data/*.nc', '**/*.log'):",
+                validate=lambda x: len(x.strip()) > 0 or "Pattern cannot be empty"
+            ).ask()
+        else:
+            pattern = pattern_choice
+
+        if not pattern:
+            console.print("\nOperation cancelled.")
+            raise click.Abort(1)
+
+        # Preview matching files
+        console.print(f"\n[bold]Previewing files matching '{pattern}'...[/bold]")
+        
+        try:
+            import glob
+            import fnmatch
+            
+            # List all files in the location
+            try:
+                all_files = location.fs.ls(base_path, detail=True)
+                if recursive:
+                    # Get files recursively
+                    recursive_files = []
+                    for root, _, filenames in location.fs.walk(base_path):
+                        for filename in filenames:
+                            file_path = f"{root}/{filename}" if root != base_path else filename
+                            try:
+                                file_info = location.fs.info(file_path)
+                                recursive_files.append(file_info)
+                            except:
+                                # If we can't get info, create basic entry
+                                recursive_files.append({"name": file_path, "type": "file"})
+                    all_files.extend(recursive_files)
+            except Exception as e:
+                console.print(f"[red]Error listing files:[/red] {str(e)}")
+                raise click.Abort(1)
+
+            # Filter files by pattern
+            matching_files = []
+            for file_info in all_files:
+                if file_info.get("type") == "directory":
+                    continue
+                    
+                filename = file_info["name"]
+                if filename.startswith(base_path):
+                    relative_name = filename[len(base_path):].lstrip('/')
+                else:
+                    relative_name = filename
+                    
+                if fnmatch.fnmatch(relative_name, pattern):
+                    matching_files.append(file_info)
+
+            if not matching_files:
+                console.print(f"[yellow]No files matching pattern '{pattern}' found[/yellow]")
+                
+                if questionary.confirm("Try a different pattern?", default=True).ask():
+                    return get_multiple_files(sim_id, location_name, None, local_dir, recursive, force)
+                else:
+                    return
+
+            # Show preview
+            console.print(f"\n[bold green]Found {len(matching_files)} matching files:[/bold green]")
+            
+            # Show first 10 files as preview
+            preview_files = matching_files[:10]
+            for file_info in preview_files:
+                filename = file_info["name"]
+                if filename.startswith(base_path):
+                    filename = filename[len(base_path):].lstrip('/')
+                size = file_info.get("size", 0)
+                size_str = f" ({size} bytes)" if size else ""
+                console.print(f"  📄 {filename}{size_str}")
+            
+            if len(matching_files) > 10:
+                console.print(f"  ... and {len(matching_files) - 10} more files")
+
+            # Get download options
+            recursive = questionary.confirm(
+                "Download recursively (include subdirectories)?",
+                default=recursive
+            ).ask()
+
+            force = questionary.confirm(
+                "Overwrite existing files?",
+                default=force
+            ).ask()
+
+            from prompt_toolkit import prompt
+            from prompt_toolkit.completion import PathCompleter
+
+            path_completer = PathCompleter(expanduser=True, only_directories=True)
+            local_dir = prompt(
+                f"Enter local directory to save files (press Tab to complete): ",
+                default=local_dir,
+                completer=path_completer,
+                complete_while_typing=True,
+            )
+
+            # Final confirmation
+            console.print(f"\n[bold]Download Summary:[/bold]")
+            console.print(f"  [bold]Pattern:[/bold] {pattern}")
+            console.print(f"  [bold]Files found:[/bold] {len(matching_files)}")
+            console.print(f"  [bold]Local directory:[/bold] {local_dir}")
+            console.print(f"  [bold]Recursive:[/bold] {recursive}")
+            console.print(f"  [bold]Overwrite:[/bold] {force}")
+
+            if not questionary.confirm("\nProceed with download?", default=True).ask():
+                console.print("Operation cancelled.")
+                return
+
+        except Exception as e:
+            console.print(f"[red]Error during preview:[/red] {str(e)}")
+            if not questionary.confirm("Continue with download anyway?", default=False).ask():
+                return
 
     try:
         # Use the Location's mget method with built-in progress tracking
@@ -848,6 +1358,697 @@ def show_location(sim_id: str, location_name: str):
             expand=False,
         )
     )
+
+
+@simulation.command()
+@click.argument("sim_id", required=False)
+@click.argument("export_path", required=False)
+def export(sim_id: Optional[str] = None, export_path: Optional[str] = None):
+    """Export simulation configuration to a file.
+
+    If no arguments are provided, an interactive wizard will guide you through the export process.
+
+    SIM_ID: ID of the simulation to export
+    EXPORT_PATH: Path to save the exported configuration
+    """
+    if sim_id is None:
+        console.print("\n[bold blue]📤 Simulation Export Wizard[/bold blue]")
+        console.print(
+            "Export simulation configurations for sharing or backup. Press Ctrl+C to cancel at any time.\n"
+        )
+
+        # Select simulation
+        simulations = Simulation.list_simulations()
+        if not simulations:
+            console.print("[red]Error:[/red] No simulations found. Please create a simulation first.")
+            raise click.Abort(1)
+
+        import questionary
+
+        sim_choices = [
+            {
+                "name": f"{sim.simulation_id} ({len(sim.locations)} locations) - {sim.path or 'No path'}",
+                "value": sim.simulation_id,
+            }
+            for sim in simulations
+        ]
+
+        # Allow multiple selection for batch export
+        export_type = questionary.select(
+            "What would you like to export?",
+            choices=[
+                {"name": "Single simulation", "value": "single"},
+                {"name": "Multiple simulations", "value": "multiple"},
+                {"name": "All simulations", "value": "all"},
+            ]
+        ).ask()
+
+        if not export_type:
+            console.print("\nOperation cancelled.")
+            raise click.Abort(1)
+
+        if export_type == "single":
+            sim_ids = [questionary.select(
+                "Select a simulation to export:",
+                choices=sim_choices,
+            ).ask()]
+        elif export_type == "multiple":
+            sim_ids = questionary.checkbox(
+                "Select simulations to export:",
+                choices=sim_choices,
+            ).ask()
+        else:  # all
+            sim_ids = [sim.simulation_id for sim in simulations]
+
+        if not sim_ids or not any(sim_ids):
+            console.print("\nOperation cancelled.")
+            raise click.Abort(1)
+
+        # Get export path
+        if export_path is None:
+            from prompt_toolkit import prompt
+            from prompt_toolkit.completion import PathCompleter
+
+            path_completer = PathCompleter(expanduser=True)
+            default_name = f"tellus_export_{sim_ids[0] if len(sim_ids) == 1 else 'multiple'}.json"
+            
+            export_path = prompt(
+                "Enter export file path (press Tab to complete): ",
+                default=default_name,
+                completer=path_completer,
+                complete_while_typing=True,
+            )
+
+        if not export_path:
+            console.print("\nOperation cancelled.")
+            raise click.Abort(1)
+
+        # Export multiple simulations
+        export_data = {
+            "tellus_export_version": "1.0",
+            "export_timestamp": __import__("datetime").datetime.now().isoformat(),
+            "simulations": []
+        }
+
+        for sim_id in sim_ids:
+            sim = Simulation.get_simulation(sim_id)
+            if sim:
+                sim_data = {
+                    "simulation_id": sim.simulation_id,
+                    "path": sim.path,
+                    "attrs": sim.attrs,
+                    "locations": {}
+                }
+                
+                # Export location configurations (not the location objects themselves)
+                for loc_name, loc_data in sim.locations.items():
+                    location = loc_data["location"]
+                    context = loc_data.get("context")
+                    
+                    sim_data["locations"][loc_name] = {
+                        "name": location.name,
+                        "kinds": [kind.name for kind in location.kinds],
+                        "config": location.config,
+                        "optional": location.optional,
+                        "context": {
+                            "path_prefix": context.path_prefix if context else None,
+                            "overrides": context.overrides if context else {},
+                            "metadata": context.metadata if context else {},
+                        } if context else None
+                    }
+                
+                export_data["simulations"].append(sim_data)
+
+    else:
+        # Single simulation export (CLI mode)
+        sim = get_simulation_or_exit(sim_id)
+        
+        if export_path is None:
+            export_path = f"{sim_id}_export.json"
+
+        export_data = {
+            "tellus_export_version": "1.0",
+            "export_timestamp": __import__("datetime").datetime.now().isoformat(),
+            "simulations": [{
+                "simulation_id": sim.simulation_id,
+                "path": sim.path,
+                "attrs": sim.attrs,
+                "locations": {}
+            }]
+        }
+        
+        # Export location configurations
+        for loc_name, loc_data in sim.locations.items():
+            location = loc_data["location"]
+            context = loc_data.get("context")
+            
+            export_data["simulations"][0]["locations"][loc_name] = {
+                "name": location.name,
+                "kinds": [kind.name for kind in location.kinds],
+                "config": location.config,
+                "optional": location.optional,
+                "context": {
+                    "path_prefix": context.path_prefix if context else None,
+                    "overrides": context.overrides if context else {},
+                    "metadata": context.metadata if context else {},
+                } if context else None
+            }
+
+    # Write export file
+    try:
+        export_path_obj = Path(export_path)
+        export_path_obj.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(export_path_obj, 'w') as f:
+            json.dump(export_data, f, indent=2)
+        
+        console.print(
+            Panel.fit(
+                f"✅ [bold green]Exported {len(export_data['simulations'])} simulation(s) to:[/bold green] {export_path}\n"
+                f"[bold]File size:[/bold] {export_path_obj.stat().st_size} bytes",
+                title="Export Complete",
+            )
+        )
+    except Exception as e:
+        console.print(f"[red]Error writing export file:[/red] {str(e)}")
+        raise click.Abort(1)
+
+
+@simulation.command()
+@click.argument("import_path", required=False)
+@click.option("--overwrite", is_flag=True, help="Overwrite existing simulations")
+def import_(import_path: Optional[str] = None, overwrite: bool = False):
+    """Import simulation configurations from a file.
+
+    If no path is provided, an interactive wizard will guide you through the import process.
+
+    IMPORT_PATH: Path to the exported configuration file
+    """
+    if import_path is None:
+        console.print("\n[bold blue]📥 Simulation Import Wizard[/bold blue]")
+        console.print(
+            "Import simulation configurations from exported files. Press Ctrl+C to cancel at any time.\n"
+        )
+
+        import questionary
+        from prompt_toolkit import prompt
+        from prompt_toolkit.completion import PathCompleter
+
+        path_completer = PathCompleter(expanduser=True)
+        
+        import_path = prompt(
+            "Enter path to import file (press Tab to complete): ",
+            completer=path_completer,
+            complete_while_typing=True,
+        )
+
+        if not import_path:
+            console.print("\nOperation cancelled.")
+            raise click.Abort(1)
+
+    # Read and validate import file
+    try:
+        import_path_obj = Path(import_path)
+        if not import_path_obj.exists():
+            console.print(f"[red]Error:[/red] Import file '{import_path}' not found.")
+            raise click.Abort(1)
+
+        with open(import_path_obj, 'r') as f:
+            import_data = json.load(f)
+
+        # Validate format
+        if not isinstance(import_data, dict) or "simulations" not in import_data:
+            console.print("[red]Error:[/red] Invalid import file format.")
+            raise click.Abort(1)
+
+        simulations_to_import = import_data["simulations"]
+        if not simulations_to_import:
+            console.print("[yellow]No simulations found in import file.[/yellow]")
+            return
+
+        console.print(f"\n[bold]Found {len(simulations_to_import)} simulation(s) to import:[/bold]")
+        
+        # Show preview
+        for sim_data in simulations_to_import:
+            sim_id = sim_data.get("simulation_id", "Unknown")
+            path = sim_data.get("path", "No path")
+            num_locations = len(sim_data.get("locations", {}))
+            console.print(f"  • {sim_id} - {path} ({num_locations} locations)")
+
+        # Check for conflicts
+        conflicts = []
+        for sim_data in simulations_to_import:
+            sim_id = sim_data.get("simulation_id")
+            if sim_id and Simulation.get_simulation(sim_id):
+                conflicts.append(sim_id)
+
+        if conflicts and not overwrite:
+            console.print(f"\n[yellow]Warning: The following simulations already exist:[/yellow]")
+            for conflict in conflicts:
+                console.print(f"  • {conflict}")
+            
+            import questionary
+            overwrite = questionary.confirm(
+                "Overwrite existing simulations?",
+                default=False
+            ).ask()
+            
+            if overwrite is None:
+                console.print("\nOperation cancelled.")
+                raise click.Abort(1)
+
+        # Final confirmation
+        if import_path is None:  # Interactive mode
+            if not questionary.confirm(
+                f"\nImport {len(simulations_to_import)} simulation(s)?",
+                default=True
+            ).ask():
+                console.print("Operation cancelled.")
+                return
+
+    except json.JSONDecodeError as e:
+        console.print(f"[red]Error parsing import file:[/red] {str(e)}")
+        raise click.Abort(1)
+    except Exception as e:
+        console.print(f"[red]Error reading import file:[/red] {str(e)}")
+        raise click.Abort(1)
+
+    # Import simulations
+    imported_count = 0
+    skipped_count = 0
+    
+    for sim_data in simulations_to_import:
+        try:
+            sim_id = sim_data.get("simulation_id")
+            if not sim_id:
+                console.print("[yellow]Skipping simulation with no ID[/yellow]")
+                skipped_count += 1
+                continue
+
+            # Check if simulation exists
+            if Simulation.get_simulation(sim_id) and not overwrite:
+                console.print(f"[yellow]Skipping existing simulation:[/yellow] {sim_id}")
+                skipped_count += 1
+                continue
+
+            # Create or update simulation
+            if overwrite and Simulation.get_simulation(sim_id):
+                Simulation.delete_simulation(sim_id)
+
+            sim = Simulation(
+                simulation_id=sim_id,
+                path=sim_data.get("path")
+            )
+
+            # Add attributes
+            attrs = sim_data.get("attrs", {})
+            for key, value in attrs.items():
+                sim.attrs[key] = value
+
+            # Import locations
+            locations_data = sim_data.get("locations", {})
+            for loc_name, loc_info in locations_data.items():
+                # First ensure the location exists
+                from ..location.location import Location, LocationKind
+                
+                existing_location = Location.get_location(loc_info["name"])
+                if not existing_location:
+                    # Create the location
+                    kinds = [LocationKind[kind_name] for kind_name in loc_info.get("kinds", ["DISK"])]
+                    location = Location(
+                        name=loc_info["name"],
+                        kinds=kinds,
+                        config=loc_info.get("config", {}),
+                        optional=loc_info.get("optional", False)
+                    )
+                else:
+                    location = existing_location
+
+                # Add location to simulation with context
+                context = None
+                if loc_info.get("context"):
+                    from .context import LocationContext
+                    context_data = loc_info["context"]
+                    if context_data.get("path_prefix"):
+                        context = LocationContext(
+                            path_prefix=context_data["path_prefix"],
+                            overrides=context_data.get("overrides", {}),
+                            metadata=context_data.get("metadata", {})
+                        )
+
+                sim.add_location(location, context=context, override=True)
+
+            imported_count += 1
+            console.print(f"✅ [green]Imported simulation:[/green] {sim_id}")
+
+        except Exception as e:
+            console.print(f"❌ [red]Error importing simulation {sim_data.get('simulation_id', 'Unknown')}:[/red] {str(e)}")
+            skipped_count += 1
+
+    # Save all simulations
+    Simulation.save_simulations()
+
+    # Show summary
+    console.print(
+        Panel.fit(
+            f"✅ [bold green]Import completed![/bold green]\n"
+            f"[bold]Imported:[/bold] {imported_count} simulations\n"
+            f"[bold]Skipped:[/bold] {skipped_count} simulations",
+            title="Import Summary",
+        )
+    )
+
+
+@simulation.command()
+@click.argument("template_name", required=False)
+def template(template_name: Optional[str] = None):
+    """Create simulations from predefined templates.
+
+    If no template is specified, an interactive wizard will show available templates.
+
+    TEMPLATE_NAME: Name of the template to use
+    """
+    # Define predefined templates
+    templates = {
+        "climate_model": {
+            "name": "Climate Model Simulation",
+            "description": "Standard setup for Earth System Model simulations",
+            "attrs": {
+                "model": "ESM",
+                "type": "climate",
+                "resolution": "standard"
+            },
+            "suggested_locations": [
+                {
+                    "name": "input_data",
+                    "description": "Model input files (forcing data, initial conditions)",
+                    "path_prefix": "input/{model_id}/{simulation_id}",
+                    "protocol": "file"
+                },
+                {
+                    "name": "output_data", 
+                    "description": "Model output files (NetCDF, logs)",
+                    "path_prefix": "output/{model_id}/{simulation_id}",
+                    "protocol": "file"
+                },
+                {
+                    "name": "restart_files",
+                    "description": "Model restart/checkpoint files",
+                    "path_prefix": "restart/{model_id}/{simulation_id}",
+                    "protocol": "file"
+                }
+            ]
+        },
+        "data_processing": {
+            "name": "Data Processing Pipeline", 
+            "description": "Setup for data analysis and processing workflows",
+            "attrs": {
+                "type": "processing",
+                "stage": "analysis"
+            },
+            "suggested_locations": [
+                {
+                    "name": "raw_data",
+                    "description": "Raw input data files",
+                    "path_prefix": "raw/{project_id}",
+                    "protocol": "file"
+                },
+                {
+                    "name": "processed_data",
+                    "description": "Processed/cleaned data files", 
+                    "path_prefix": "processed/{project_id}",
+                    "protocol": "file"
+                },
+                {
+                    "name": "results",
+                    "description": "Analysis results and outputs",
+                    "path_prefix": "results/{project_id}",
+                    "protocol": "file"
+                }
+            ]
+        },
+        "remote_hpc": {
+            "name": "HPC Remote Storage",
+            "description": "High-performance computing with remote storage", 
+            "attrs": {
+                "compute": "hpc",
+                "storage": "remote"
+            },
+            "suggested_locations": [
+                {
+                    "name": "hpc_scratch",
+                    "description": "HPC scratch space for temporary files",
+                    "path_prefix": "scratch/{username}/{job_id}",
+                    "protocol": "sftp"
+                },
+                {
+                    "name": "archive_storage",
+                    "description": "Long-term archive storage",
+                    "path_prefix": "archive/{project_id}/{simulation_id}",
+                    "protocol": "sftp"
+                }
+            ]
+        },
+        "cloud_storage": {
+            "name": "Cloud-based Workflow",
+            "description": "Cloud storage for distributed computing",
+            "attrs": {
+                "platform": "cloud",
+                "scalable": "true"
+            },
+            "suggested_locations": [
+                {
+                    "name": "s3_input",
+                    "description": "S3 bucket for input data",
+                    "path_prefix": "s3://my-bucket/input/{project_id}",
+                    "protocol": "s3"
+                },
+                {
+                    "name": "s3_output", 
+                    "description": "S3 bucket for output data",
+                    "path_prefix": "s3://my-bucket/output/{project_id}",
+                    "protocol": "s3"
+                }
+            ]
+        }
+    }
+
+    if template_name is None:
+        console.print("\n[bold blue]🏗️  Template-based Simulation Wizard[/bold blue]")
+        console.print(
+            "Create simulations from predefined templates. Press Ctrl+C to cancel at any time.\n"
+        )
+
+        import questionary
+
+        # Show available templates
+        template_choices = [
+            {
+                "name": f"{template['name']} - {template['description']}",
+                "value": key
+            }
+            for key, template in templates.items()
+        ]
+
+        template_name = questionary.select(
+            "Select a template:",
+            choices=template_choices,
+        ).ask()
+
+        if not template_name:
+            console.print("\nOperation cancelled.")
+            raise click.Abort(1)
+
+    if template_name not in templates:
+        console.print(f"[red]Error:[/red] Template '{template_name}' not found.")
+        available = ", ".join(templates.keys())
+        console.print(f"Available templates: {available}")
+        raise click.Abort(1)
+
+    template = templates[template_name]
+    
+    console.print(f"\n[bold]Using template:[/bold] {template['name']}")
+    console.print(f"[bold]Description:[/bold] {template['description']}")
+
+    import questionary
+
+    # Get simulation details
+    sim_id = questionary.text(
+        "Enter simulation ID (leave empty for auto-generated UUID):",
+        default="",
+    ).ask()
+    
+    if sim_id is None:
+        console.print("\nOperation cancelled.")
+        raise click.Abort(1)
+        
+    if not sim_id.strip():
+        sim_id = None
+
+    # Get simulation path with tab completion
+    from prompt_toolkit import prompt
+    from prompt_toolkit.completion import PathCompleter
+
+    path_completer = PathCompleter(expanduser=True, only_directories=True)
+    
+    path_input = prompt(
+        "Enter base filesystem path for simulation (press Tab to complete, Enter to skip): ",
+        completer=path_completer,
+        complete_while_typing=True,
+    )
+    
+    path = path_input.strip() if path_input else None
+
+    # Customize template attributes
+    console.print(f"\n[bold]Template attributes:[/bold]")
+    attrs = {}
+    for key, default_value in template["attrs"].items():
+        value = questionary.text(
+            f"Enter value for '{key}':",
+            default=str(default_value)
+        ).ask()
+        if value is not None:
+            attrs[key] = value
+
+    # Allow additional custom attributes
+    while True:
+        add_more = questionary.confirm(
+            "Add custom attribute?",
+            default=False
+        ).ask()
+        
+        if not add_more:
+            break
+            
+        key = questionary.text("Attribute key:").ask()
+        if not key:
+            break
+            
+        value = questionary.text(f"Value for '{key}':").ask()
+        if value is not None:
+            attrs[key] = value
+
+    # Show simulation summary
+    console.print(f"\n[bold]Simulation Summary:[/bold]")
+    console.print(f"  [bold]Template:[/bold] {template['name']}")
+    console.print(f"  [bold]ID:[/bold] {sim_id or 'Auto-generated UUID'}")
+    console.print(f"  [bold]Path:[/bold] {path or 'Not specified'}")
+    console.print(f"  [bold]Attributes:[/bold]")
+    for key, value in attrs.items():
+        console.print(f"    • {key}: {value}")
+
+    # Configure locations
+    console.print(f"\n[bold]Suggested locations for this template:[/bold]")
+    locations_to_create = []
+    
+    for i, loc_template in enumerate(template["suggested_locations"], 1):
+        console.print(f"\n[bold]{i}. {loc_template['name']}[/bold]")
+        console.print(f"   Description: {loc_template['description']}")
+        console.print(f"   Suggested path: {loc_template['path_prefix']}")
+        console.print(f"   Protocol: {loc_template['protocol']}")
+        
+        include = questionary.confirm(
+            f"Include '{loc_template['name']}' location?",
+            default=True
+        ).ask()
+        
+        if include:
+            # Customize location
+            location_name = questionary.text(
+                "Location name:",
+                default=loc_template['name']
+            ).ask()
+            
+            path_prefix = questionary.text(
+                "Path prefix template:",
+                default=loc_template['path_prefix']
+            ).ask()
+            
+            protocol = questionary.select(
+                "Storage protocol:",
+                choices=[
+                    {"name": "file - Local filesystem", "value": "file"},
+                    {"name": "sftp - SSH File Transfer Protocol", "value": "sftp"},
+                    {"name": "s3 - Amazon S3", "value": "s3"},
+                    {"name": "gs - Google Cloud Storage", "value": "gs"},
+                    {"name": "azure - Azure Blob Storage", "value": "azure"},
+                ],
+                default=loc_template['protocol']
+            ).ask()
+            
+            locations_to_create.append({
+                "name": location_name,
+                "path_prefix": path_prefix,
+                "protocol": protocol,
+                "description": loc_template['description']
+            })
+
+    # Final confirmation
+    console.print(f"\n[bold]Final Summary:[/bold]")
+    console.print(f"  [bold]Simulation ID:[/bold] {sim_id or 'Auto-generated UUID'}")
+    console.print(f"  [bold]Locations to create:[/bold] {len(locations_to_create)}")
+    for loc in locations_to_create:
+        console.print(f"    • {loc['name']} ({loc['protocol']})")
+
+    if not questionary.confirm("\nCreate simulation with template?", default=True).ask():
+        console.print("Operation cancelled.")
+        return
+
+    # Create the simulation
+    try:
+        sim = Simulation(simulation_id=sim_id, path=path)
+        
+        # Add attributes
+        for key, value in attrs.items():
+            sim.attrs[key] = value
+
+        # Create and add locations
+        for loc_config in locations_to_create:
+            # Check if location already exists
+            from ..location.location import Location, LocationKind
+            
+            existing_location = Location.get_location(loc_config["name"])
+            if existing_location:
+                location = existing_location
+                console.print(f"📍 [yellow]Using existing location:[/yellow] {loc_config['name']}")
+            else:
+                # Create new location with minimal config
+                config = {"protocol": loc_config["protocol"], "storage_options": {}}
+                location = Location(
+                    name=loc_config["name"],
+                    kinds=[LocationKind.DISK],  # Default kind
+                    config=config,
+                    optional=False
+                )
+                console.print(f"📍 [green]Created location:[/green] {loc_config['name']}")
+
+            # Add location to simulation with context
+            from .context import LocationContext
+            context = LocationContext(path_prefix=loc_config["path_prefix"])
+            sim.add_location(location, context=context, override=True)
+
+        # Save simulation
+        Simulation.save_simulations()
+        
+        console.print(
+            Panel.fit(
+                f"✅ [bold green]Created template-based simulation:[/bold green] {sim.simulation_id}\n"
+                f"[bold]Template:[/bold] {template['name']}\n"
+                f"[bold]Locations:[/bold] {len(locations_to_create)}\n"
+                f"[bold]Path:[/bold] {path or 'Not specified'}",
+                title="Template Simulation Created",
+            )
+        )
+
+        # Show next steps
+        console.print(f"\n[bold]Next steps:[/bold]")
+        console.print("  1. Configure location credentials if needed")
+        console.print("  2. Test connectivity with 'tellus simulation location ls'")
+        console.print("  3. Start transferring data with 'tellus simulation location get/mget'")
+        
+    except Exception as e:
+        console.print(f"[red]Error creating simulation:[/red] {str(e)}")
+        raise click.Abort(1)
 
 
 @simulation.command()
