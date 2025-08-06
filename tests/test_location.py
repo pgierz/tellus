@@ -55,6 +55,88 @@ class TestLocationBasics:
                 name="dupe", kinds=[LocationKind.TAPE], config={"protocol": "file"}
             )
 
+    def test_location_kinds_enum(self):
+        """Test LocationKind enum functionality."""
+        # Test enum values exist
+        assert LocationKind.DISK
+        assert LocationKind.TAPE
+        assert LocationKind.COMPUTE
+        
+        # Test from_str method
+        assert LocationKind.from_str("disk") == LocationKind.DISK
+        assert LocationKind.from_str("TAPE") == LocationKind.TAPE
+        
+        with pytest.raises(ValueError):
+            LocationKind.from_str("invalid")
+
+
+class TestLocationFilesystemIntegration:
+    """Test Location filesystem integration and properties."""
+
+    def setup_method(self):
+        """Clear any existing locations before each test."""
+        Location._locations = {}
+
+    @patch('fsspec.filesystem')
+    def test_location_fs_property(self, mock_fsspec):
+        """Test Location.fs property creates correct filesystem."""
+        mock_fs = MagicMock()
+        mock_fsspec.return_value = mock_fs
+        
+        config = {
+            "protocol": "sftp",
+            "storage_options": {"username": "test", "port": 22}
+        }
+        location = Location(
+            name="fs_test",
+            kinds=[LocationKind.COMPUTE],
+            config=config
+        )
+        
+        # Access fs property
+        fs = location.fs
+        
+        # Verify fsspec.filesystem was called correctly
+        expected_options = {"username": "test", "port": 22, "host": "fs_test"}
+        mock_fsspec.assert_called_once_with("sftp", **expected_options)
+        assert fs == mock_fs
+
+    @patch('fsspec.filesystem')
+    def test_location_get_method(self, mock_fsspec):
+        """Test Location.get method for file downloads."""
+        # Mock filesystem
+        mock_fs = MagicMock()
+        mock_fs.size.return_value = 1024
+        mock_fs.get_file = MagicMock()
+        mock_fsspec.return_value = mock_fs
+        
+        config = {"protocol": "file", "path": "/test"}
+        location = Location(
+            name="get_test",
+            kinds=[LocationKind.DISK],
+            config=config
+        )
+        
+        # Test download
+        with patch('pathlib.Path.exists', return_value=False), \
+             patch('pathlib.Path.mkdir'), \
+             patch('tellus.location.location.get_progress_callback') as mock_progress:
+            
+            # Create a mock that supports the context manager protocol
+            mock_callback = MagicMock()
+            mock_callback.__enter__ = MagicMock(return_value=mock_callback)
+            mock_callback.__exit__ = MagicMock(return_value=None)
+            mock_progress.return_value = mock_callback
+            
+            result = location.get("remote/file.txt", "local/file.txt", show_progress=True)
+            
+            # Verify filesystem calls - path gets resolved relative to config["path"]
+            mock_fs.size.assert_called_once_with("/test/remote/file.txt")
+            mock_progress.assert_called_once()
+            mock_fs.get_file.assert_called_once()
+            
+            assert result == "local/file.txt"
+
 
 class TestLocationSerialization:
     """Test serialization and deserialization of Location objects."""
