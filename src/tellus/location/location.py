@@ -22,6 +22,7 @@ class LocationKind(Enum):
     TAPE = auto()
     COMPUTE = auto()
     DISK = auto()
+    FILESERVER = auto()
 
     @classmethod
     def from_str(cls, s):
@@ -187,7 +188,12 @@ class Location:
         Returns:
             Path to the downloaded file
         """
-        remote_path = str(remote_path)
+        # Resolve remote path relative to location's base path
+        base_path = self.config.get("path", "")
+        if base_path:
+            remote_path = str(Path(base_path) / remote_path)
+        else:
+            remote_path = str(remote_path)
         local_path = Path(local_path) if local_path else Path(Path(remote_path).name)
 
         if local_path.exists() and not overwrite:
@@ -247,7 +253,12 @@ class Location:
         Yields:
             Tuple of (file-like object, file size in bytes)
         """
-        remote_path = str(remote_path)
+        # Resolve remote path relative to location's base path
+        base_path = self.config.get("path", "")
+        if base_path:
+            remote_path = str(Path(base_path) / remote_path)
+        else:
+            remote_path = str(remote_path)
         file_obj = None
         try:
             # Use the callback if provided, otherwise use a no-op callback
@@ -281,14 +292,23 @@ class Location:
         Yields:
             Tuple of (file_path, file_info) for each matching file
         """
+        # Resolve base_path relative to location's base path
+        location_base_path = self.config.get("path", "")
+        if location_base_path:
+            if base_path:
+                resolved_base_path = str(Path(location_base_path) / base_path)
+            else:
+                resolved_base_path = location_base_path
+        else:
+            resolved_base_path = base_path
         if recursive:
-            for root, _, files in self.fs.walk(base_path):
+            for root, _, files in self.fs.walk(resolved_base_path):
                 for file in files:
                     file_path = os.path.join(root, file)
                     if fnmatch.fnmatch(file_path, pattern):
                         yield file_path, self.fs.info(file_path)
         else:
-            for file in self.fs.glob(os.path.join(base_path, pattern)):
+            for file in self.fs.glob(os.path.join(resolved_base_path, pattern)):
                 if self.fs.isfile(file):
                     yield file, self.fs.info(file)
 

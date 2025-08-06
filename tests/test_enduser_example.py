@@ -9,12 +9,20 @@ This test demonstrates how two peers can share simulation data using the Network
 
 import pytest
 import json
+import platform
 from typing import Any
 
 from tellus import Simulation
 import trio
 
-from animavox.network import Message, NetworkPeer
+# Handle architecture compatibility issues with fastecdsa
+try:
+    from animavox.network import Message, NetworkPeer
+    ANIMAVOX_AVAILABLE = True
+    ANIMAVOX_IMPORT_ERROR = None
+except ImportError as e:
+    ANIMAVOX_AVAILABLE = False
+    ANIMAVOX_IMPORT_ERROR = str(e)
 
 
 def create_experiment_update_message(
@@ -28,6 +36,10 @@ def create_experiment_update_message(
     }
 
 
+@pytest.mark.skipif(
+    not ANIMAVOX_AVAILABLE, 
+    reason=f"animavox not available due to import error: {ANIMAVOX_IMPORT_ERROR or 'unknown'}"
+)
 @pytest.mark.trio  # [NOTE] Used to be:  @pytest.mark.asyncio
 async def test_simulation_sharing_user_adds_new_location(
     sample_simulation_awi_locations_with_laptop,

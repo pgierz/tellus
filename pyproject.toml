@@ -8,6 +8,44 @@ version = "0.1.0"
 python_files = "test_*.py"
 testpaths = ["tests"]
 pythonpath = ["src"]
+minversion = "7.0"
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--tb=short",
+    "--durations=10",
+    "-m", "not performance"
+]   
+markers = [
+    "unit: Unit tests for individual components", 
+    "integration: Integration tests for component interactions",
+    "performance: Performance tests for large datasets (skipped by default - use -m performance to run)",
+    "property: Property-based tests for data integrity",
+    "earth_science: Tests specific to Earth science workflows",
+    "archive: Tests for archive system components",
+    "cache: Tests for caching functionality",
+    "location: Tests for multi-location functionality",
+    "slow: Tests that take more than 30 seconds",
+    "network: Tests that require network access",
+    "large_data: Tests that work with large datasets (>100MB)",
+    "hpc: Tests for HPC environment scenarios",
+    "timeout: Tests that should time out after a certain duration",
+    "xarray: Tests that require xarray",
+    "benchmark: Performance benchmark tests",
+    "trio: Tests that use trio async framework"
+]
+filterwarnings = [
+    "error",
+    "ignore::UserWarning",
+    "ignore::DeprecationWarning",
+    "ignore:numpy.ndarray size changed, may indicate binary incompatibility:RuntimeWarning"
+    # "ignore::fsspec.exceptions.FSTimeoutError"
+]
+
+# [tool.pytest.ini_options.timeout]
+# timeout = 300
+# timeout_method = "thread"
 
 [build-system]
 build-backend = "hatchling.build"
@@ -31,11 +69,30 @@ snakemake-storage-plugin-fsspec = { git = "git+https://github.com/pgierz/snakema
 tellus = "python -m tellus.core.cli"
 sandbox = { cmd = "python3 my_tellus_script.py", cwd = "sandbox" , description = "Run a dummy script using tellus"}
 
+[tool.pixi.feature.test.pypi-dependencies]
+factory-boy = "*"  # Move to Py-PI
+
 [tool.pixi.feature.test.dependencies]
 pytest = "*"
+pytest-cov = "*"
+pytest-timeout = "*"
+pytest-mock = "*"
+pytest-xdist = "*"
+pytest-benchmark = "*"
+hypothesis = "*"
+faker = "*"
+responses = "*"
+freezegun = "*"
+numpy = ">=1.24,<2.0"
+netcdf4 = ">=1.7.2"
+xarray = "*"
+zarr = "*"
+dask = "*"
 
 [tool.pixi.feature.test.tasks]
 test = "pytest"
+test-performance = { cmd = "pytest -m performance --timeout=600", description = "Run performance tests (may take 30+ minutes)" }
+test-all = { cmd = "pytest -m 'performance or not performance'", description = "Run all tests including performance tests" }
 
 [tool.pixi.feature.py311.dependencies]
 python = "3.11.*"
@@ -61,6 +118,7 @@ inquirerpy = ">=0.3.4,<0.4"
 snakemake = ">=9.8.0,<10"
 fastapi = ">=0.116.1,<0.117"
 uvicorn = ">=0.35.0,<0.36"
+hypothesis = ">=6.136.9,<7"
 
 [tool.pixi.feature.docs.dependencies]
 jupyter-book = "*"

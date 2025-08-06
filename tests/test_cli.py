@@ -10,8 +10,7 @@ from tellus.simulation import Simulation
 import sys
 from pathlib import Path
 
-sys.path.append(str(Path(__file__).parent.parent))
-from simulation_cli import cli
+from tellus.cli import cli
 
 
 class TestCLI:
@@ -19,10 +18,21 @@ class TestCLI:
     def setup(self):
         self.runner = CliRunner()
         # Patch the simulations dictionary to isolate tests
-        self.simulations_patch = patch("simulation_cli.simulations", {})
+        self.simulations_patch = patch("tellus.cli.simulations", {})
         self.mock_simulations = self.simulations_patch.start()
+        
+        # Also patch the Simulation class registry to isolate tests
+        self.class_simulations_patch = patch("tellus.simulation.Simulation._simulations", {})
+        self.mock_class_simulations = self.class_simulations_patch.start()
+        
+        # Also patch the Location class registry to isolate tests
+        self.locations_patch = patch("tellus.location.Location._locations", {})
+        self.mock_locations = self.locations_patch.start()
+        
         yield
         self.simulations_patch.stop()
+        self.class_simulations_patch.stop()
+        self.locations_patch.stop()
 
     def test_create_simulation(self):
         # Test creating a simulation with a custom ID

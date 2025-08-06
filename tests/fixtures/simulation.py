@@ -1,13 +1,14 @@
-from ..simulation import Simulation
+"""
+Fixtures for testing simulation components.
+"""
+
 import pytest
+from ..simulation import Simulation
 
 
 @pytest.fixture
 def sample_simulation_awi_locations_with_laptop():
-    # #########################################################################
-    # [FIXME] Find out how to mock the part from here:
-    # --------  8x  ---------
-    # -------- SNIP  --------
+    """Create a sample simulation with AWI locations including a laptop."""
     my_experiment = Simulation("my_experiment")
     # The experiment has a few linked locations:
     # * Tape storage (HSM)
@@ -42,7 +43,4 @@ def sample_simulation_awi_locations_with_laptop():
             "type": ["disk"],
         }
     )
-    # -------- SNIP  --------
-    # --------  x8  ---------
-    # [FIXME] ...to here.
     return my_experiment

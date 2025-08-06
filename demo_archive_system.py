@@ -6,15 +6,23 @@ import sys
 import tarfile
 import tempfile
 from pathlib import Path
+from rich_click import RichGroup
+import rich_click as click
 
 # Add the tellus package to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from tellus.simulation.simulation import (ArchiveManifest, ArchiveRegistry,
-                                          CacheConfig, CacheManager,
-                                          CLIProgressCallback,
-                                          CompressedArchive, PathMapper,
-                                          PathMapping, TagSystem)
+from tellus.simulation.simulation import (
+    ArchiveManifest,
+    ArchiveRegistry,
+    CacheConfig,
+    CacheManager,
+    CLIProgressCallback,
+    CompressedArchive,
+    PathMapper,
+    PathMapping,
+    TagSystem,
+)
 
 
 def create_demo_archive(archive_path: Path, simulation_data: dict) -> Path:
@@ -402,30 +410,58 @@ def demo_custom_tags():
             print(f"   - {file_path}")
 
 
-def main():
-    """Run all demo workflows"""
-    print("Archive System Demo Workflows")
-    print("=" * 60)
+class CLI(RichGroup):
+    def __init__(self):
+        super().__init__(help="Demo Archive System CLI")
 
+
+cli = CLI()
+
+
+@cli.command(name="create-archive")
+@click.argument("path", type=click.Path())
+def create_archive_command(path: str):
+    """Create a demo archive tar.gz file at the specified path"""
+    simulation_data = {
+        "simulation": "demo",
+        "date": "2025-08-04",
+        "description": "Demo archive created via CLI",
+    }
+    archive_path = Path(path)
+    create_demo_archive(archive_path, simulation_data)
+    print(f"Demo archive created at: {archive_path}")
+
+
+@cli.command(name="run-demo")
+@click.argument(
+    "demo_name", type=click.Choice(["basic", "registry", "pathmapping", "tags", "all"])
+)
+def run_demo_command(demo_name: str):
+    """Run a specific demo workflow or all"""
     try:
-        demo_basic_archive_operations()
-        demo_multi_archive_registry()
-        demo_path_mapping()
-        demo_custom_tags()
+        if demo_name == "basic":
+            demo_basic_archive_operations()
+        elif demo_name == "registry":
+            demo_multi_archive_registry()
+        elif demo_name == "pathmapping":
+            demo_path_mapping()
+        elif demo_name == "tags":
+            demo_custom_tags()
+        elif demo_name == "all":
+            demo_basic_archive_operations()
+            demo_multi_archive_registry()
+            demo_path_mapping()
+            demo_custom_tags()
 
         print("\n" + "=" * 60)
-        print("✓ All demos completed successfully!")
+        print("✓ Demo completed successfully!")
         print("=" * 60)
-
     except Exception as e:
         print(f"\n✗ Demo failed with error: {e}")
         import traceback
 
         traceback.print_exc()
-        return 1
-
-    return 0
 
 
 if __name__ == "__main__":
-    exit(main())
+    cli()  # Run the rich_click CLI

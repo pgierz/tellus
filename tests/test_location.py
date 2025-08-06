@@ -1,120 +1,293 @@
+"""
+Test suite for the Location class in tellus.location.location.
+
+This test suite is designed to be independent of any existing tests and provides
+comprehensive coverage of the Location class functionality.
+"""
+
+import json
+import os
+import shutil
+import tempfile
 import pytest
+from pathlib import Path
+from unittest.mock import MagicMock, patch, ANY
 
-from tellus.location import (
-    ALLOWED_LOCATIONS,
-    LOCATION_REGISTRY,
-    BaseLocationHandler,
-    FileServerHandler,
-    HPCHandler,
-    HSMHandler,
-    Location,
-    create_location_handler,
-)
+from tellus.location import Location, LocationKind, LocationExistsError
 
 
-def test_location_initialization():
-    """Test Location dataclass initialization with valid data"""
-    config = {"path": "/some/path", "permissions": "readonly"}
-    location = Location(name="test_loc", kind="HSM", config=config)
+class TestLocationBasics:
+    """Test basic Location class functionality and initialization."""
 
-    assert location.name == "test_loc"
-    assert location.kind == "HSM"
-    assert location.config == config
+    def setup_method(self):
+        """Clear any existing locations before each test."""
+        Location._locations = {}
 
+    def test_location_initialization(self):
+        """Test that a Location can be initialized with valid parameters."""
+        # Setup
+        config = {"protocol": "file", "path": "/test/path"}
 
-def test_location_invalid_kind():
-    """Test that Location raises ValueError for invalid location kinds"""
-    with pytest.raises(ValueError) as excinfo:
-        Location(name="test_loc", kind="INVALID", config={})
+        # Exercise
+        location = Location(
+            name="test_loc", kinds=[LocationKind.DISK], config=config, optional=True
+        )
 
-    assert "is not allowed" in str(excinfo.value)
-    for allowed in ALLOWED_LOCATIONS:
-        assert allowed in str(excinfo.value)
+        # Verify
+        assert location.name == "test_loc"
+        assert location.kinds == [LocationKind.DISK]
+        assert location.config == config
+        assert location.optional is True
 
+    def test_invalid_kind_raises_error(self):
+        """Test that invalid location kinds raise a ValueError."""
+        with pytest.raises(ValueError, match="is not a valid LocationKind"):
+            Location(name="invalid_kind", kinds=["INVALID"], config={})
 
-def test_base_location_handler_abstract_methods():
-    """Test that BaseLocationHandler raises NotImplementedError for abstract methods"""
-    handler = BaseLocationHandler()
+    def test_duplicate_name_raises_error(self):
+        """Test that duplicate location names raise LocationExistsError."""
+        # Setup - create first location
+        Location(name="dupe", kinds=[LocationKind.DISK], config={"protocol": "file"})
 
-    with pytest.raises(NotImplementedError):
-        handler.post("data")
-
-    with pytest.raises(NotImplementedError):
-        handler.get("id")
-
-    with pytest.raises(NotImplementedError):
-        handler.fetch("id")
-
-
-def test_hsm_handler_methods(capsys):
-    """Test HSMHandler methods"""
-    handler = HSMHandler()
-
-    handler.post("test_data")
-    captured = capsys.readouterr()
-    assert "Storing to HSM..." in captured.out
-
-    handler.get("test_id")
-    captured = capsys.readouterr()
-    assert "Getting from HSM..." in captured.out
-
-    handler.fetch("test_id")
-    captured = capsys.readouterr()
-    assert "Fetching from HSM..." in captured.out
+        # Exercise & Verify - try to create duplicate
+        with pytest.raises(LocationExistsError):
+            Location(
+                name="dupe", kinds=[LocationKind.TAPE], config={"protocol": "file"}
+            )
 
 
-def test_hpc_handler_methods(capsys):
-    """Test HPCHandler methods"""
-    handler = HPCHandler()
+class TestLocationSerialization:
+    """Test serialization and deserialization of Location objects."""
 
-    handler.post("test_data")
-    captured = capsys.readouterr()
-    assert "Storing to HPC..." in captured.out
+    def setup_method(self):
+        """Clear any existing locations before each test."""
+        Location._locations = {}
 
-    handler.get("test_id")
-    captured = capsys.readouterr()
-    assert "Getting from HPC..." in captured.out
+    def test_to_dict(self):
+        """Test converting a Location to a dictionary."""
+        # Setup
+        location = Location(
+            name="test_serialize",
+            kinds=[LocationKind.DISK, LocationKind.TAPE],
+            config={"protocol": "memory"},
+            optional=True,
+        )
 
-    handler.fetch("test_id")
-    captured = capsys.readouterr()
-    assert "Fetching from HPC..." in captured.out
+        # Exercise
+        result = location.to_dict()
 
+        # Verify
+        assert result == {
+            "name": "test_serialize",
+            "kinds": ["DISK", "TAPE"],
+            "config": {"protocol": "memory"},
+            "optional": True,
+        }
 
-def test_file_server_handler_methods(capsys):
-    """Test FileServerHandler methods"""
-    handler = FileServerHandler()
+    def test_from_dict(self):
+        """Test creating a Location from a dictionary."""
+        # Setup
+        data = {
+            "name": "from_dict_test",
+            "kinds": ["DISK", "COMPUTE"],
+            "config": {"protocol": "s3"},
+            "optional": False,
+        }
 
-    handler.post("test_data")
-    captured = capsys.readouterr()
-    assert "Storing to FileServer..." in captured.out
+        # Exercise
+        location = Location.from_dict(data)
 
-    handler.get("test_id")
-    captured = capsys.readouterr()
-    assert "Getting from FileServer..." in captured.out
-
-    handler.fetch("test_id")
-    captured = capsys.readouterr()
-    assert "Fetching from FileServer..." in captured.out
-
-
-def test_location_registry():
-    """Test that the location registry contains the expected handlers"""
-    assert set(LOCATION_REGISTRY.keys()) == {"hsm", "hpc", "fileserver"}
-    assert issubclass(LOCATION_REGISTRY["hsm"], BaseLocationHandler)
-    assert issubclass(LOCATION_REGISTRY["hpc"], BaseLocationHandler)
-    assert issubclass(LOCATION_REGISTRY["fileserver"], BaseLocationHandler)
-
-
-def test_create_location_handler():
-    """Test the create_location_handler factory function"""
-    # Test with valid location kinds
-    for kind in ALLOWED_LOCATIONS:
-        location = Location(name=f"test_{kind}", kind=kind, config={})
-        handler = create_location_handler(location)
-        assert isinstance(handler, LOCATION_REGISTRY[kind])
+        # Verify
+        assert location.name == "from_dict_test"
+        assert location.kinds == [LocationKind.DISK, LocationKind.COMPUTE]
+        assert location.config == {"protocol": "s3"}
+        assert location.optional is False
 
 
-def test_allowed_locations_constant():
-    """Test that ALLOWED_LOCATIONS contains the expected values"""
-    assert isinstance(ALLOWED_LOCATIONS, set)
-    assert ALLOWED_LOCATIONS == {"hsm", "hpc", "fileserver"}
+class TestLocationPersistence:
+    """Test persistence of Location objects to/from disk."""
+
+    def setup_method(self):
+        """Create a temporary directory for test files and clear existing locations."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.locations_file = Path(self.temp_dir) / "locations.json"
+        Location._locations_file = self.locations_file
+        Location._locations = {}
+
+    def teardown_method(self):
+        """Clean up temporary directory."""
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_save_and_load_locations(self):
+        """Test saving locations to disk and loading them back."""
+        # Setup - create some locations
+        loc1 = Location("loc1", [LocationKind.DISK], {"protocol": "file"})
+        loc2 = Location("loc2", [LocationKind.TAPE], {"protocol": "s3"}, optional=True)
+
+        # Save locations (happens automatically in __post_init__)
+        assert self.locations_file.exists()
+
+        # Clear in-memory locations
+        Location._locations = {}
+
+        # Exercise - load locations back
+        Location.load_locations()
+
+        # Verify
+        assert len(Location._locations) == 2
+        assert "loc1" in Location._locations
+        assert "loc2" in Location._locations
+        assert Location._locations["loc1"].kinds == [LocationKind.DISK]
+        assert Location._locations["loc2"].optional is True
+
+    def test_remove_location(self):
+        """Test removing a location."""
+        # Setup
+        Location("to_remove", [LocationKind.DISK], {"protocol": "file"})
+        assert "to_remove" in Location._locations
+
+        # Exercise
+        Location.remove_location("to_remove")
+
+        # Verify
+        assert "to_remove" not in Location._locations
+        assert (
+            not self.locations_file.exists()
+        )  # File should be removed when last location is removed
+
+
+class TestLocationFilesystemOperations:
+    """Test filesystem operations using the Location class."""
+
+    def setup_method(self):
+        """Set up test environment."""
+        # Create a temporary directory for this test
+        self.temp_dir = Path(tempfile.mkdtemp())
+        
+        # Create a location with a unique name for this test
+        test_id = str(id(self))
+        self.location = Location(
+            f"test_fs_{test_id}",  # Unique name for each test instance
+            [LocationKind.DISK],
+            {
+                "protocol": "file",
+                "storage_options": {
+                    "auto_mkdir": True
+                },
+                "path": str(self.temp_dir.absolute())
+            },
+        )
+        
+        # Ensure the location directory exists
+        self.temp_dir.mkdir(parents=True, exist_ok=True)
+
+    def teardown_method(self):
+        """Clean up test environment."""
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_get_file(self, tmp_path):
+        """Test downloading a file from the location."""
+        # Setup - create a test file in the location's directory structure
+        test_content = "test content"
+        test_file = self.temp_dir / "test_file.txt"
+        test_file.parent.mkdir(parents=True, exist_ok=True)
+        test_file.write_text(test_content)
+        
+        # Create a local path for the download
+        local_path = Path(tmp_path) / "downloaded.txt"
+        
+        # Exercise - download the file using the relative path from the location root
+        result = self.location.get("test_file.txt", str(local_path))
+        
+        # Verify the file was downloaded correctly
+        assert result == str(local_path), "Returned path doesn't match expected"
+        assert local_path.exists(), "Downloaded file was not created"
+        assert local_path.read_text() == test_content, "File content doesn't match"
+
+    @patch('fsspec.filesystem')
+    def test_get_file_with_progress(self, mock_fs):
+        """Test file download with progress tracking."""
+        # Setup - mock the filesystem and file object
+        mock_file = MagicMock()
+        
+        # Create a function that simulates fsspec callback behavior
+        def mock_read_with_callback(size=None):
+            # Get the next chunk from the side_effect
+            if hasattr(mock_read_with_callback, 'call_count'):
+                mock_read_with_callback.call_count += 1
+            else:
+                mock_read_with_callback.call_count = 1
+                mock_read_with_callback.chunks = [b"chunk1", b"chunk2", b""]
+            
+            if mock_read_with_callback.call_count <= len(mock_read_with_callback.chunks):
+                chunk = mock_read_with_callback.chunks[mock_read_with_callback.call_count - 1]
+                # Simulate fsspec calling the callback during read
+                if hasattr(mock_file, '_callback') and chunk:
+                    mock_file._callback.relative_update(len(chunk))
+                return chunk
+            return b""
+        
+        mock_file.read.side_effect = mock_read_with_callback
+        mock_file.close.return_value = None
+        
+        # Mock the filesystem's open method to store the callback
+        def mock_open(path, mode, callback=None, **kwargs):
+            mock_file._callback = callback  # Store callback on file object
+            return mock_file
+        
+        # Configure the mock filesystem
+        mock_fs.return_value.open.side_effect = mock_open
+        mock_fs.return_value.size.return_value = 100
+
+        # Create a test location with our mocked filesystem and unique name
+        location = Location(
+            f"mock_fs_{id(self)}",  # Unique name for this test
+            [LocationKind.DISK],
+            {"protocol": "mock"}
+        )
+
+        # Mock progress callback
+        mock_callback = MagicMock()
+        
+        # Exercise - read the file in chunks
+        with location.get_fileobj("test.txt", progress_callback=mock_callback) as (file_obj, size):
+            # Read the file in chunks
+            chunks = []
+            while True:
+                chunk = file_obj.read(1024)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            content = b''.join(chunks)
+
+        # Verify the content and callbacks
+        assert content == b"chunk1chunk2"
+        assert size == 100
+        mock_callback.set_size.assert_called_once_with(100)
+        # Should be called twice - once for each chunk
+        assert mock_callback.relative_update.call_count == 2
+
+    def test_find_files(self):
+        """Test finding files in the location."""
+        # Setup - create some test files in the location's directory
+        subdir = Path(self.temp_dir) / "subdir"
+        subdir.mkdir()
+        (Path(self.temp_dir) / "test1.txt").touch()
+        (Path(self.temp_dir) / "test2.log").touch()
+        (subdir / "test3.txt").touch()
+
+        # Exercise - find all .txt files (non-recursive)
+        result = list(self.location.find_files("*.txt"))
+        
+        # Verify - should only find files in the root directory
+        assert len(result) == 1  # Only test1.txt in root
+        assert any(r[0].endswith("test1.txt") for r in result)
+
+        # Test recursive search
+        result_recursive = list(self.location.find_files("*.txt", recursive=True))
+        # Should find both test1.txt and subdir/test3.txt
+        assert len(result_recursive) == 2
+        # Convert paths to strings for easier checking
+        paths = [r[0] for r in result_recursive]
+        assert any("test1.txt" in p for p in paths)
+        assert any("test3.txt" in p for p in paths)
