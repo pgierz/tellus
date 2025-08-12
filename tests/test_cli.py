@@ -167,30 +167,6 @@ class TestCLI:
         # Create a test location
         with patch("tellus.location.location.Location.load_locations"):
             with patch("tellus.location.location.Location.list_locations") as mock_list:
-                # Create a mock location that might cause errors
-                mock_loc = MagicMock()
-                mock_loc.name = "test-loc"
-                mock_loc.kinds = [LocationKind.FILESERVER]
-                mock_loc.config = {
-                    "protocol": "sftp",
-                    "storage_options": {"hostname": "test.example.com", "username": "testuser"}
-                }
-                mock_loc.fs.to_json.side_effect = Exception("SSH connection failed")
-                
-                mock_list.return_value = [mock_loc]
-                
-                # Test normal mode (should show error)
-                result = self.runner.invoke(cli, ["location", "list"])
-                assert result.exit_code == 0
-                assert "SSH connection failed" in result.output
-                
-    def test_location_list_fixed_flag(self):
-        """Test the location list command with --fixed flag."""
-        from tellus.location.location import Location, LocationKind
-        
-        # Create a test location
-        with patch("tellus.location.location.Location.load_locations"):
-            with patch("tellus.location.location.Location.list_locations") as mock_list:
                 # Create a mock location
                 mock_loc = MagicMock()
                 mock_loc.name = "test-loc"
@@ -202,7 +178,7 @@ class TestCLI:
                 
                 mock_list.return_value = [mock_loc]
                 
-                # Test fixed mode (should show improved representation)
-                result = self.runner.invoke(cli, ["location", "list", "--fixed"])
+                # Test the improved representation (now the default)
+                result = self.runner.invoke(cli, ["location", "list"])
                 assert result.exit_code == 0
                 assert "Local filesystem" in result.output

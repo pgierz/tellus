@@ -90,12 +90,7 @@ def location():
 
 
 @location.command(name="list")
-@click.option(
-    "--fixed",
-    is_flag=True,
-    help="Use improved filesystem representation that avoids common errors"
-)
-def list_locations(fixed):
+def list_locations():
     """List all locations."""
     # Load locations from disk
     Location.load_locations()
@@ -120,15 +115,8 @@ def list_locations(fixed):
         storage_opts = loc.config.get("storage_options", {})
         path = storage_opts.get("path", "-")
         
-        if fixed:
-            # Use improved representation that avoids common errors
-            fs = _get_improved_fs_representation(loc)
-        else:
-            # Original logic that may show errors
-            try:
-                fs = loc.fs.to_json()
-            except Exception as e:
-                fs = str(e)
+        # Use improved representation that avoids common errors
+        fs = _get_improved_fs_representation(loc)
         table.add_row(loc.name, types, protocol, path, fs)
 
     console.print(Panel.fit(table))

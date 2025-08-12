@@ -20,8 +20,8 @@ The existing `tellus location list` command in `src/tellus/location/cli.py` had 
 ## Implementation
 
 ### Files Modified:
-- `src/tellus/location/cli.py` - Enhanced existing location list command with `--fixed` flag
-- `tests/test_cli.py` - Added tests for the enhanced functionality
+- `src/tellus/location/cli.py` - Enhanced existing location list command with improved filesystem representations
+- `tests/test_cli.py` - Updated tests for the enhanced functionality
 
 ### Dependencies Added (to pixi):
 - `click>=8.0.0` - CLI framework (already used)
@@ -31,8 +31,8 @@ The existing `tellus location list` command in `src/tellus/location/cli.py` had 
 
 ## Fixes Applied
 
-### 1. Added `--fixed` Flag
-Enhanced the existing `tellus location list` command with an optional `--fixed` flag that provides improved filesystem representations.
+### 1. Improved Default Behavior
+Enhanced the existing `tellus location list` command to always provide improved filesystem representations instead of raw JSON or error messages.
 
 ### 2. Improved SSH Authentication
 **Problem**: SSH connections lacked proper authentication handling
@@ -60,8 +60,7 @@ except Exception as e:
     fs = str(e)  # Raw exception message
 
 # FIXED: User-friendly messages
-if fixed:
-    fs = _get_improved_fs_representation(loc)  # Friendly descriptions
+fs = _get_improved_fs_representation(loc)  # Always use friendly descriptions
 ```
 
 ### 4. SFTP Protocol Usage
@@ -74,14 +73,9 @@ current_path = sftp.getcwd()  # Instead of exec_command('pwd')
 
 ## Usage
 
-### See Current Behavior (may show errors):
+### List Locations (now with improved filesystem representations):
 ```bash
 tellus location list
-```
-
-### See Improved Behavior:
-```bash
-tellus location list --fixed
 ```
 
 ### Run Tests:
@@ -91,8 +85,8 @@ pixi run test tests/test_cli.py
 
 ## Benefits
 
-1. **Backward Compatibility**: Original command behavior preserved
-2. **Progressive Enhancement**: `--fixed` flag provides better experience
-3. **Proper Integration**: Works with existing location management system
-4. **Better Security**: Proper SSH authentication handling
-5. **User-Friendly**: Clear error messages and descriptions instead of raw JSON/exceptions
+1. **Clean Design**: No confusing flags - the command just works correctly now
+2. **Proper Integration**: Works with existing location management system
+3. **Better Security**: Proper SSH authentication handling
+4. **User-Friendly**: Clear error messages and descriptions instead of raw JSON/exceptions
+5. **Simplified Experience**: Users don't need to remember which flag gives good output
