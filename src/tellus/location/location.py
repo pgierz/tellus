@@ -3,7 +3,7 @@ import fnmatch
 import json
 import os
 import shutil
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from enum import Enum, auto
 from pathlib import Path
 from typing import (ClassVar, Dict, Generator, List, Optional, Tuple, Type,
@@ -13,8 +13,8 @@ import fsspec
 from rich.console import Console
 
 from ..progress import get_default_progress, get_progress_callback
-
 from ..progress import FSSpecProgressCallback
+from .sandboxed_filesystem import PathSandboxedFileSystem
 
 
 # Allowed location names
@@ -49,6 +49,7 @@ class Location:
     kinds: list[LocationKind]
     config: dict
     optional: Optional[bool] = False
+    _skip_registry: bool = field(default=False, repr=False)
 
     def __post_init__(self):
         # Validate location kinds
@@ -59,16 +60,20 @@ class Location:
                     f"Allowed values: {', '.join(e.name for e in LocationKind)}"
                 )
 
-        # Add to class registry
-        if self.name in self._locations:
-            raise LocationExistsError(
-                f"Location with name '{self.name}' already exists"
-            )
-        self._locations[self.name] = self
-        self._save_locations()
+        # Add to class registry (skip if loading from disk to avoid conflicts)
+        if not self._skip_registry:
+            if self.name in self._locations:
+                raise LocationExistsError(
+                    f"Location with name '{self.name}' already exists"
+                )
+            self._locations[self.name] = self
+            self._save_locations()
+        else:
+            # When loading from disk, just add to registry without validation
+            self._locations[self.name] = self
 
     @classmethod
-    def from_dict(cls, data):
+    def from_dict(cls, data, _skip_registry=False):
         # Create a new dictionary with the expected structure
         location_data = {
             "name": data.get("name", ""),  # This should be provided by the caller
@@ -76,7 +81,7 @@ class Location:
             "config": data.get("config", {}),
             "optional": data.get("optional", False),
         }
-        return cls(**location_data)
+        return cls(**location_data, _skip_registry=_skip_registry)
 
     @classmethod
     def load_locations(cls) -> None:
@@ -93,9 +98,8 @@ class Location:
                     # Ensure the name is included in the data
                     if "name" not in data:
                         data["name"] = name
-                    # Create the location and add it to the dictionary
-                    location = Location.from_dict(data)
-                    cls._locations[name] = location
+                    # Create the location with registry skip to avoid conflicts
+                    location = Location.from_dict(data, _skip_registry=True)
         except json.JSONDecodeError:
             # If the file is corrupted, reset to empty
             cls._locations = {}
@@ -156,16 +160,37 @@ class Location:
         }
 
     @property
-    def fs(self) -> fsspec.AbstractFileSystem:
+    def fs(self) -> PathSandboxedFileSystem:
+        """
+        Get a sandboxed filesystem for this location.
+        
+        Returns a PathSandboxedFileSystem that constrains all operations
+        to the location's configured path. This prevents operations from
+        accidentally occurring in the current working directory.
+        
+        Returns:
+            PathSandboxedFileSystem: Sandboxed filesystem instance
+        """
         storage_options = self.config.get("storage_options", {})
         if "host" not in storage_options:
             storage_options["host"] = self.name
-        fs = fsspec.filesystem(
+            
+        # Create the underlying filesystem
+        base_fs = fsspec.filesystem(
             self.config.get("protocol", "file"),
             **storage_options,
-        )  # [NOTE] Local filesystem
-
-        return fs
+        )
+        
+        # Get the base path for sandboxing
+        # Try multiple locations where path might be stored
+        base_path = (
+            self.config.get("path", "") or  # Direct path in config
+            self.config.get("storage_options", {}).get("path", "") or  # Path in storage_options
+            ""  # Default to empty if not found
+        )
+        
+        # Return sandboxed filesystem
+        return PathSandboxedFileSystem(base_fs, base_path)
 
     def get(
         self,
@@ -188,12 +213,8 @@ class Location:
         Returns:
             Path to the downloaded file
         """
-        # Resolve remote path relative to location's base path
-        base_path = self.config.get("path", "")
-        if base_path:
-            remote_path = str(Path(base_path) / remote_path)
-        else:
-            remote_path = str(remote_path)
+        # Path resolution is now handled by the sandboxed filesystem
+        # Just use the path as-is - it will be resolved relative to location's base path
         local_path = Path(local_path) if local_path else Path(Path(remote_path).name)
 
         if local_path.exists() and not overwrite:
@@ -253,12 +274,8 @@ class Location:
         Yields:
             Tuple of (file-like object, file size in bytes)
         """
-        # Resolve remote path relative to location's base path
-        base_path = self.config.get("path", "")
-        if base_path:
-            remote_path = str(Path(base_path) / remote_path)
-        else:
-            remote_path = str(remote_path)
+        # Path resolution is now handled by the sandboxed filesystem
+        # Just use the path as-is - it will be resolved relative to location's base path
         file_obj = None
         try:
             # Use the callback if provided, otherwise use a no-op callback
@@ -292,15 +309,9 @@ class Location:
         Yields:
             Tuple of (file_path, file_info) for each matching file
         """
-        # Resolve base_path relative to location's base path
-        location_base_path = self.config.get("path", "")
-        if location_base_path:
-            if base_path:
-                resolved_base_path = str(Path(location_base_path) / base_path)
-            else:
-                resolved_base_path = location_base_path
-        else:
-            resolved_base_path = base_path
+        # Path resolution is now handled by the sandboxed filesystem
+        # Use base_path as-is - it will be resolved relative to location's base path
+        resolved_base_path = base_path
         if recursive:
             for root, _, files in self.fs.walk(resolved_base_path):
                 for file in files:
@@ -308,7 +319,13 @@ class Location:
                     if fnmatch.fnmatch(file_path, pattern):
                         yield file_path, self.fs.info(file_path)
         else:
-            for file in self.fs.glob(os.path.join(resolved_base_path, pattern)):
+            # With sandboxed filesystem, we can just use the pattern directly 
+            # since path resolution is handled by the filesystem wrapper
+            if resolved_base_path:
+                glob_pattern = os.path.join(resolved_base_path, pattern)
+            else:
+                glob_pattern = pattern
+            for file in self.fs.glob(glob_pattern):
                 if self.fs.isfile(file):
                     yield file, self.fs.info(file)
 

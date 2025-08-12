@@ -993,8 +993,8 @@ class Simulation:
                 if not isinstance(location_data, dict):
                     continue
 
-                # Create location and handlers
-                location = Location.from_dict(location_data)
+                # Create location and handlers (skip registry to avoid conflicts during loading)
+                location = Location.from_dict(location_data, _skip_registry=True)
 
                 # Create location entry
                 entry = {
@@ -1026,6 +1026,8 @@ class Simulation:
         """
         if simulation_id in cls._simulations:
             del cls._simulations[simulation_id]
+            # Save the updated simulations to disk
+            cls.save_simulations()
             return True
         return False
 
@@ -1179,7 +1181,12 @@ class Simulation:
             raise ValueError(f"Location '{name}' not in simulation")
 
         loc_data = self.locations[name]
-        base_path = loc_data["location"].config.get("path", "/")  # Default to root...
+        # Get base path from location config (check both path and storage_options.path)
+        location_config = loc_data["location"].config
+        base_path = (
+            location_config.get("path") or 
+            location_config.get("storage_options", {}).get("path", "/")
+        )
         context = loc_data.get("context", LocationContext())
 
         # Start with the base path

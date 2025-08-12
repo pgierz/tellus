@@ -185,3 +185,7 @@ sandbox
 .snakemake/
 demo-experiment/
 trash/
+workflow_runs.json
+workflows.json
+workflow_templates.json
+.direnv/

@@ -232,5 +232,96 @@ def get_progress_callback(
     return FSSpecProgressCallback(description=description, size=size, **kwargs)
 
 
+class ProgressTracker:
+    """Progress tracking system for workflow execution and other long-running operations."""
+    
+    def __init__(self, max_log_entries: int = 1000):
+        """Initialize the progress tracker.
+        
+        Args:
+            max_log_entries: Maximum number of log entries to keep in memory
+        """
+        self._log_entries: Dict[str, List[Dict[str, Any]]] = {}
+        self._max_log_entries = max_log_entries
+    
+    def log_progress(
+        self, 
+        identifier: str, 
+        progress: float, 
+        message: str, 
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """Log a progress update.
+        
+        Args:
+            identifier: Unique identifier for the operation (e.g., run_id)
+            progress: Progress value (0.0 to 1.0)
+            message: Human-readable progress message
+            metadata: Optional additional metadata
+        """
+        if identifier not in self._log_entries:
+            self._log_entries[identifier] = []
+        
+        entry = {
+            "timestamp": time.monotonic(),
+            "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "progress": progress,
+            "message": message,
+            "metadata": metadata or {}
+        }
+        
+        self._log_entries[identifier].append(entry)
+        
+        # Trim old entries if we exceed the limit
+        if len(self._log_entries[identifier]) > self._max_log_entries:
+            self._log_entries[identifier] = self._log_entries[identifier][-self._max_log_entries:]
+    
+    def get_recent_log_entries(
+        self, 
+        identifier: str, 
+        limit: int = 10
+    ) -> List[str]:
+        """Get recent log entries for an operation.
+        
+        Args:
+            identifier: Unique identifier for the operation
+            limit: Maximum number of entries to return
+            
+        Returns:
+            List of formatted log messages
+        """
+        if identifier not in self._log_entries:
+            return []
+        
+        entries = self._log_entries[identifier][-limit:]
+        return [
+            f"[{entry['datetime']}] {entry['message']} ({entry['progress']:.1%})"
+            for entry in entries
+        ]
+    
+    def get_current_progress(self, identifier: str) -> Optional[float]:
+        """Get the current progress for an operation.
+        
+        Args:
+            identifier: Unique identifier for the operation
+            
+        Returns:
+            Current progress value (0.0 to 1.0) or None if not found
+        """
+        if identifier not in self._log_entries or not self._log_entries[identifier]:
+            return None
+        
+        return self._log_entries[identifier][-1]["progress"]
+    
+    def clear_progress(self, identifier: str) -> None:
+        """Clear all progress entries for an operation.
+        
+        Args:
+            identifier: Unique identifier for the operation
+        """
+        if identifier in self._log_entries:
+            del self._log_entries[identifier]
+
+
 # For backward compatibility
 ProgressCallback = FSSpecProgressCallback

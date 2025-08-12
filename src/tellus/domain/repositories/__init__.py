@@ -1,0 +1,1 @@
+"""Repository interfaces - Abstractions for data access."""

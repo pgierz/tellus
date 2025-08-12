@@ -311,4 +311,4 @@ class ScoutFSFileSystem(fsspec.implementations.sftp.SFTPFileSystem):
 
 
 # Register the implementation with fsspec
-register_implementation("scoutfs", ScoutFSFileSystem)
+register_implementation("scoutfs", ScoutFSFileSystem, clobber=True)

@@ -99,7 +99,9 @@ class TestLocationFilesystemIntegration:
         # Verify fsspec.filesystem was called correctly
         expected_options = {"username": "test", "port": 22, "host": "fs_test"}
         mock_fsspec.assert_called_once_with("sftp", **expected_options)
-        assert fs == mock_fs
+        # fs is now a PathSandboxedFileSystem wrapping mock_fs
+        assert fs._fs == mock_fs
+        assert hasattr(fs, 'base_path')
 
     @patch('fsspec.filesystem')
     def test_location_get_method(self, mock_fsspec):

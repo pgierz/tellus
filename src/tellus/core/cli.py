@@ -20,10 +20,12 @@ def main():
     # Import subcommands here to avoid circular imports
     from tellus.simulation.cli import simulation
     from tellus.location.cli import location
+    from tellus.workflow.cli import workflow_cli
 
     # Add subcommands
     cli.add_command(simulation)
     cli.add_command(location)
+    cli.add_command(workflow_cli)
 
     # Run the CLI
     cli()

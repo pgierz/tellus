@@ -26,6 +26,7 @@ markers = [
     "archive: Tests for archive system components",
     "cache: Tests for caching functionality",
     "location: Tests for multi-location functionality",
+    "security: Security tests for defensive measures and vulnerability prevention",
     "slow: Tests that take more than 30 seconds",
     "network: Tests that require network access",
     "large_data: Tests that work with large datasets (>100MB)",
@@ -84,10 +85,18 @@ faker = "*"
 responses = "*"
 freezegun = "*"
 numpy = ">=1.24,<2.0"
-netcdf4 = ">=1.7.2"
+netcdf4 = ">=1.7.2,<2"
 xarray = "*"
 zarr = "*"
 dask = "*"
+jupyter = ">=1.1.1,<2"
+ipykernel = ">=6.30.1,<7"
+matplotlib = ">=3.10.5,<4"
+cartopy = ">=0.25.0,<0.26"
+h5netcdf = ">=1.6.4,<2"
+nc-time-axis = ">=1.4.1,<2"
+scipy = ">=1.16.0,<2"
+seaborn = ">=0.13.2,<0.14"
 
 [tool.pixi.feature.test.tasks]
 test = "pytest"
@@ -119,6 +128,9 @@ snakemake = ">=9.8.0,<10"
 fastapi = ">=0.116.1,<0.117"
 uvicorn = ">=0.35.0,<0.36"
 hypothesis = ">=6.136.9,<7"
+nc-time-axis = ">=1.4.1,<2"
+nbconvert = ">=7.16.6,<8"
+papermill = ">=2.6.0,<3"
 
 [tool.pixi.feature.docs.dependencies]
 jupyter-book = "*"

@@ -14,22 +14,48 @@ from rich import print as rprint
 
 from .simulation import Simulation, SimulationExistsError
 from ..core.cli import cli, console
+from ..core.feature_flags import feature_flags, FeatureFlag
+from ..core.service_container import get_service_container
+from ..core.legacy_bridge import SimulationBridge
+from ..application.exceptions import (
+    EntityNotFoundError, EntityAlreadyExistsError, 
+    ValidationError, ApplicationError
+)
 
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Load simulations at module import
+# Load simulations at module import (legacy path)
 Simulation.load_simulations()
 
 
-def get_simulation_or_exit(sim_id: str) -> Simulation:
+def _get_simulation_bridge() -> Optional[SimulationBridge]:
+    """Get simulation bridge if new architecture is enabled."""
+    if feature_flags.is_enabled(FeatureFlag.USE_NEW_SIMULATION_SERVICE):
+        service_container = get_service_container()
+        return SimulationBridge(service_container.service_factory)
+    return None
+
+
+def get_simulation_or_exit(sim_id: str) -> Union[Simulation, Dict[str, Any]]:
     """Helper to get a simulation or exit with error"""
-    sim = Simulation.get_simulation(sim_id)
-    if not sim:
-        console.print(f"[red]Error:[/red] Simulation with ID '{sim_id}' not found")
-        raise click.Abort(1)
-    return sim
+    bridge = _get_simulation_bridge()
+    
+    if bridge:
+        # Use new architecture
+        sim_data = bridge.get_simulation_legacy_format(sim_id)
+        if not sim_data:
+            console.print(f"[red]Error:[/red] Simulation with ID '{sim_id}' not found")
+            raise click.Abort(1)
+        return sim_data
+    else:
+        # Use legacy architecture
+        sim = Simulation.get_simulation(sim_id)
+        if not sim:
+            console.print(f"[red]Error:[/red] Simulation with ID '{sim_id}' not found")
+            raise click.Abort(1)
+        return sim
 
 
 @cli.group()
@@ -41,10 +67,36 @@ def simulation():
 @simulation.command(name="list")
 def list_simulations():
     """List all simulations."""
-    simulations = Simulation.list_simulations()
-    if not simulations:
-        console.print("No simulations found.")
-        return
+    bridge = _get_simulation_bridge()
+    
+    if bridge:
+        # Use new architecture
+        try:
+            simulations = bridge.list_simulations_legacy_format()
+            if not simulations:
+                console.print("No simulations found.")
+                if feature_flags.is_enabled(FeatureFlag.USE_NEW_SIMULATION_SERVICE):
+                    console.print("[dim]Using new simulation service[/dim]")
+                return
+        except ApplicationError as e:
+            console.print(f"[red]Error:[/red] {str(e)}")
+            return
+    else:
+        # Use legacy architecture
+        simulations = Simulation.list_simulations()
+        if not simulations:
+            console.print("No simulations found.")
+            return
+        # Convert legacy objects to dict format for consistent processing
+        simulations = [
+            {
+                'simulation_id': sim.simulation_id,
+                'path': str(sim.path) if sim.path else None,
+                'attrs': sim.attrs or {},
+                'locations': sim.locations or {}
+            }
+            for sim in simulations
+        ]
 
     table = Table(
         title="Available Simulations", show_header=True, header_style="bold magenta"
@@ -54,13 +106,17 @@ def list_simulations():
     table.add_column("# Locations", style="blue")
     table.add_column("Attributes", style="yellow")
 
-    for sim in sorted(simulations, key=lambda s: s.simulation_id):
-        path = str(sim.path) if sim.path else "-"
-        num_locations = len(sim.locations)
-        attrs = ", ".join(sim.attrs.keys()) if sim.attrs else "-"
-        table.add_row(sim.simulation_id, path, str(num_locations), attrs)
+    for sim in sorted(simulations, key=lambda s: s['simulation_id']):
+        path = sim['path'] if sim['path'] else "-"
+        num_locations = len(sim.get('locations', {}))
+        attrs = ", ".join(sim.get('attrs', {}).keys()) if sim.get('attrs') else "-"
+        table.add_row(sim['simulation_id'], path, str(num_locations), attrs)
 
     console.print(Panel.fit(table))
+    
+    # Show which architecture is being used
+    if feature_flags.is_enabled(FeatureFlag.USE_NEW_SIMULATION_SERVICE):
+        console.print("[dim]✨ Using new simulation service[/dim]")
 
 
 @simulation.command()
@@ -2052,17 +2108,77 @@ def template(template_name: Optional[str] = None):
 
 
 @simulation.command()
-@click.argument("sim_id")
+@click.argument("sim_id", required=False)
 @click.option(
     "--force",
     is_flag=True,
     help="Force removal without confirmation",
 )
-def delete(sim_id: str, force: bool):
+def delete(sim_id: Optional[str] = None, force: bool = False):
     """Delete a simulation.
+
+    If no SIM_ID is provided, an interactive wizard will guide you through the selection process.
 
     SIM_ID: ID of the simulation to delete
     """
+    # Interactive wizard when no sim_id is provided
+    if sim_id is None:
+        console.print("\n[bold blue]🗑️  Simulation Deletion Wizard[/bold blue]")
+        console.print(
+            "Select a simulation to delete. Press Ctrl+C to cancel at any time.\n"
+        )
+
+        # List available simulations
+        bridge = _get_simulation_bridge()
+        
+        if bridge:
+            # Use new architecture
+            try:
+                simulations = bridge.list_simulations_legacy_format()
+                if not simulations:
+                    console.print("No simulations found.")
+                    return
+            except ApplicationError as e:
+                console.print(f"[red]Error:[/red] {str(e)}")
+                return
+        else:
+            # Use legacy architecture
+            simulations = Simulation.list_simulations()
+            if not simulations:
+                console.print("No simulations found.")
+                return
+            # Convert legacy objects to dict format for consistent processing
+            simulations = [
+                {
+                    'simulation_id': sim.simulation_id,
+                    'path': str(sim.path) if sim.path else None,
+                    'attrs': sim.attrs or {},
+                    'locations': sim.locations or {}
+                }
+                for sim in simulations
+            ]
+
+        # Create choices for questionary
+        import questionary
+
+        choices = [
+            {
+                "name": f"{sim['simulation_id']} - {sim['path'] or 'No path'} ({len(sim.get('locations', {}))} locations)",
+                "value": sim['simulation_id'],
+            }
+            for sim in sorted(simulations, key=lambda s: s['simulation_id'])
+        ]
+
+        # Let user select simulation to delete
+        sim_id = questionary.select(
+            "Select a simulation to delete:",
+            choices=choices,
+        ).ask()
+
+        if not sim_id:  # User cancelled
+            console.print("\nOperation cancelled.")
+            return
+
     # This will raise an error if the simulation doesn't exist
     get_simulation_or_exit(sim_id)
 
@@ -2072,10 +2188,16 @@ def delete(sim_id: str, force: bool):
         show.callback(sim_id)
         console.print("\n")
 
-        click.confirm(
-            f"[red]Are you sure you want to delete simulation '{sim_id}'?[/red]",
-            abort=True,
-        )
+        # Use questionary for all confirmation prompts
+        import questionary
+        confirmed = questionary.confirm(
+            f"Are you sure you want to delete simulation '{sim_id}'?",
+            default=False,
+        ).ask()
+        
+        if not confirmed:
+            console.print("Operation cancelled.")
+            return
 
     try:
         # Delete the simulation

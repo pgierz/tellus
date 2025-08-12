@@ -120,7 +120,6 @@ def create(name, protocol, kind, is_optional, **storage_options):
         protocol = questionary.select(
             "Select storage protocol:",
             choices=protocol_choices,
-            default="file"
         ).ask()
 
         if not protocol:
@@ -136,7 +135,6 @@ def create(name, protocol, kind, is_optional, **storage_options):
         kind = questionary.select(
             "Select location type:",
             choices=kind_choices,
-            default="disk"
         ).ask()
 
         if not kind:
