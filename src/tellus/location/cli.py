@@ -13,7 +13,7 @@ def location():
     pass
 
 
-@location.command(name="ls")
+@location.command(name="list")
 def list_locations():
     """List all locations."""
     # Load locations from disk
