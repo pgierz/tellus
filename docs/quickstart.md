@@ -78,7 +78,7 @@ tellus location create local-data --protocol file --path /home/user/data
 tellus location create remote-hpc --protocol sftp --host cluster.edu --username myuser --path /scratch/data
 
 # View all locations
-tellus location ls
+tellus location list
 ```
 
 ### Connecting Locations to Simulations

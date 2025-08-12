@@ -15,7 +15,7 @@ pixi run tellus simulation create           # Interactive simulation wizard
 pixi run tellus simulation show <sim_id>    # Show simulation details
 
 # Location management  
-pixi run tellus location ls                  # List all locations
+pixi run tellus location list               # List all locations
 pixi run tellus location create             # Interactive location wizard
 pixi run tellus location show <name>        # Show location details
 
@@ -38,7 +38,7 @@ pixi run tellus simulation location browse  # Interactive file browser
 ```bash
 # Check system status
 pixi run tellus simulation list
-pixi run tellus location ls
+pixi run tellus location list
 
 # Test location connectivity
 pixi run tellus simulation location ls <sim_id> <location>
