@@ -111,6 +111,7 @@ def create(name, protocol, kind, is_optional, **storage_options):
         protocol_choices = [
             {"name": "file - Local filesystem", "value": "file"},
             {"name": "sftp - SSH File Transfer Protocol", "value": "sftp"},
+            {"name": "scoutfs - ScoutFS with tape staging", "value": "scoutfs"},
             {"name": "s3 - Amazon S3", "value": "s3"},
             {"name": "gs - Google Cloud Storage", "value": "gs"},
             {"name": "azure - Azure Blob Storage", "value": "azure"},
@@ -167,13 +168,13 @@ def create(name, protocol, kind, is_optional, **storage_options):
             if path:
                 storage_opts["path"] = path
 
-        elif protocol in ["sftp", "ftp"]:
+        elif protocol in ["sftp", "scoutfs", "ftp"]:
             host = questionary.text("Enter hostname:").ask()
             if host:
                 storage_opts["host"] = host
             
             port_str = questionary.text(
-                f"Enter port (default: {22 if protocol == 'sftp' else 21}):",
+                f"Enter port (default: {22 if protocol in ['sftp', 'scoutfs'] else 21}):",
                 default=""
             ).ask()
             if port_str:
