@@ -1,0 +1,105 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Development Commands
+
+This project uses **Pixi** as the package and environment manager. All development commands should use `pixi run`.
+
+### Testing
+- `pixi run test` - Run the full test suite
+- `pixi run -e test pytest tests/test_specific.py` - Run specific test file
+- `pixi run -e test pytest -m unit` - Run tests with specific markers
+- `pixi run -e test pytest -k "test_name"` - Run tests matching pattern
+
+Available test markers: unit, integration, performance, property, earth_science, archive, cache, location, slow, network, large_data, hpc, timeout, xarray, benchmark, trio
+
+### Documentation
+- `pixi run docs-build` - Build documentation with Jupyter Book
+- `pixi run docs-clean` - Clean documentation build
+- `pixi run docs-serve` - Serve docs locally on port 8000
+
+### CLI
+- `pixi run tellus` - Run the main CLI
+- `pixi run sandbox` - Run sandbox scripts in sandbox/ directory
+
+### Adding Dependencies
+- `pixi add <package>` - Add to main dependencies
+- `pixi add --feature test <package>` - Add to test environment
+- See HACKING.md for specialized environments
+
+## Architecture Overview
+
+Tellus is a distributed data management system for Earth System Model simulations with a modular architecture:
+
+### Core Components
+
+**CLI Layer (`tellus.core.cli`)**
+- Rich-click based CLI with subcommands organized by domain
+- Interactive wizards using questionary for complex operations
+- Main entry point: `src/tellus/core/cli.py`
+
+**Simulation Management (`tellus.simulation`)**
+- Central `Simulation` class representing computational experiments
+- JSON-based persistence in `simulations.json` at project root
+- Context system for path templating using simulation attributes
+- Archive system with tar-based storage and extraction
+
+**Location Management (`tellus.location`)**
+- `Location` class abstracting storage backends (local, SSH/SFTP, cloud)
+- LocationKind enum: TAPE, COMPUTE, DISK, FILESERVER
+- fsspec-based unified storage interface
+- JSON-based persistence in `locations.json`
+
+### Key Design Patterns
+
+**Template-based Path Resolution**
+- Location contexts use `path_prefix` templates like `"{model}/{experiment}"`
+- Templates resolved using simulation attributes
+- Supports nested directory structures for data organization
+
+**Storage Abstraction**
+- Unified interface over local filesystem, SSH, and cloud storage
+- fsspec backend provides consistent API across storage types
+- Progress tracking for file operations
+
+**Cache Management** 
+- Two-level caching: archive-level (50GB default) and file-level (10GB default)
+- Configurable cleanup policies: LRU, manual, size-only
+- Cache directory: `~/.cache/tellus`
+
+## Testing Strategy
+
+The project uses pytest with comprehensive test organization:
+
+- `tests/` - Main test directory
+- `tests/architecture/` - Architectural patterns and utilities  
+- `tests/fixtures/` - Shared test fixtures
+- `tests/integration/` - Integration and system tests
+- `conftest.py` - Global pytest configuration and fixtures
+
+Test configuration in `pyproject.toml` includes extensive markers for categorizing tests by type (unit, integration), domain (earth_science, archive), and requirements (network, large_data).
+
+## Important Files
+
+- `simulations.json` - Simulation metadata persistence
+- `locations.json` - Storage location definitions  
+- `config/` - Configuration files and templates
+- `workflow/` - Snakemake workflow definitions
+- `sandbox/` - Development and testing scripts
+
+## Package Structure
+
+```
+src/tellus/
+├── __init__.py           # Main exports
+├── cli/                  # New CLI structure  
+├── core/                 # Core CLI functionality
+├── simulation/           # Simulation management
+├── location/             # Storage location management
+├── testing/              # Test utilities and fixtures
+├── progress.py           # Progress tracking
+└── scoutfs.py           # ScoutFS filesystem support
+```
+
+The codebase is transitioning from `tellus.core.cli` to `tellus.cli` for CLI organization.

@@ -1,0 +1,12 @@
+experiments:
+  MIS11.3-B:
+    snakemakes:
+      # TODO: Put this via GitHub
+      hsm_index: "workflow/rules/hsm_index.smk"
+    locations:
+      - hostname: hsm.dmawi.de 
+        kind: hsm
+        path: /hs/D-P/projects/paleodyn/simulations_pgierz/cosmos-aso-wiso/MIS11.3-B
+        protocol: scoutfs
+        storage_options:
+          username: pgierz

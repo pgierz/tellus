@@ -1,0 +1,7 @@
+# [FIXME] Shouldn't these be relative up one level?
+configfile: "config/config.yaml"
+configfile: "config/tellus.yaml"
+
+include: "rules/hsm_index.smk"
+include "rules/examples.smk"
+# include: github("pgierz/tellus", path="workflow/rules/examples.smk")
