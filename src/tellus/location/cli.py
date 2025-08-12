@@ -3,8 +3,84 @@ from ..core.cli import cli, console
 import rich_click as click
 from rich.panel import Panel
 from rich.table import Table
+import paramiko
+import fsspec
 
 from .location import Location, LocationKind, LocationExistsError
+
+
+def _get_improved_fs_representation(loc: Location) -> str:
+    """Get improved filesystem representation that avoids common SSH/JSON errors."""
+    protocol = loc.config.get("protocol", "file")
+    
+    try:
+        if protocol == "sftp":
+            return _get_sftp_representation_fixed(loc)
+        elif protocol == "file":
+            return _get_file_representation_fixed(loc)
+        else:
+            return f"Protocol: {protocol} (untested)"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
+def _get_sftp_representation_fixed(loc: Location) -> str:
+    """Get improved SFTP filesystem representation with proper error handling."""
+    try:
+        storage_opts = loc.config.get("storage_options", {})
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        
+        # Support password or key-based authentication
+        connect_kwargs = {
+            "hostname": storage_opts.get("host", storage_opts.get("hostname", loc.name)),
+            "username": storage_opts.get("username", ""),
+            "timeout": 5,
+        }
+        
+        password = storage_opts.get("password")
+        key_filename = storage_opts.get("key_filename")
+        if password:
+            connect_kwargs["password"] = password
+        elif key_filename:
+            connect_kwargs["key_filename"] = key_filename
+        else:
+            # Try passwordless connection (common in HPC environments)
+            pass
+            
+        client.connect(**connect_kwargs)
+        
+        # Test the connection using SFTP protocol
+        sftp = client.open_sftp()
+        current_path = sftp.getcwd()
+        sftp.close()
+        client.close()
+        
+        return f"SFTP connection successful. Current path: {current_path}"
+        
+    except paramiko.AuthenticationException:
+        return "Authentication failed. Check credentials or SSH keys."
+    except paramiko.SSHException as e:
+        return f"SSH connection error: {str(e)}"
+    except Exception as e:
+        return f"Connection error: {str(e)}"
+
+
+def _get_file_representation_fixed(loc: Location) -> str:
+    """Get improved file filesystem representation."""
+    try:
+        storage_opts = loc.config.get("storage_options", {})
+        host = storage_opts.get("host", "localhost")
+        path = storage_opts.get("path", loc.config.get("path", ""))
+        
+        # Return a user-friendly representation instead of raw JSON
+        if path:
+            return f"Local filesystem: {host}:{path}"
+        else:
+            return f"Local filesystem: {host} (no path specified)"
+            
+    except Exception as e:
+        return f"Error creating filesystem: {str(e)}"
 
 
 @cli.group()
@@ -14,7 +90,12 @@ def location():
 
 
 @location.command(name="list")
-def list_locations():
+@click.option(
+    "--fixed",
+    is_flag=True,
+    help="Use improved filesystem representation that avoids common errors"
+)
+def list_locations(fixed):
     """List all locations."""
     # Load locations from disk
     Location.load_locations()
@@ -38,10 +119,16 @@ def list_locations():
         protocol = loc.config.get("protocol", "file")
         storage_opts = loc.config.get("storage_options", {})
         path = storage_opts.get("path", "-")
-        try:
-            fs = loc.fs.to_json()
-        except Exception as e:
-            fs = str(e)
+        
+        if fixed:
+            # Use improved representation that avoids common errors
+            fs = _get_improved_fs_representation(loc)
+        else:
+            # Original logic that may show errors
+            try:
+                fs = loc.fs.to_json()
+            except Exception as e:
+                fs = str(e)
         table.add_row(loc.name, types, protocol, path, fs)
 
     console.print(Panel.fit(table))
