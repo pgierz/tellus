@@ -10,7 +10,8 @@ from tellus.simulation import Simulation
 import sys
 from pathlib import Path
 
-from tellus.cli import cli
+from tellus.location.cli import location
+from tellus.core.cli import cli
 
 
 class TestCLI:
@@ -158,3 +159,26 @@ class TestCLI:
         # Verify the location was removed
         result = self.runner.invoke(cli, ["location", "list", "test-sim"])
         assert "No locations found" in result.output
+
+    def test_location_list_command(self):
+        """Test the standalone location list command."""
+        from tellus.location.location import Location, LocationKind
+        
+        # Create a test location
+        with patch("tellus.location.location.Location.load_locations"):
+            with patch("tellus.location.location.Location.list_locations") as mock_list:
+                # Create a mock location
+                mock_loc = MagicMock()
+                mock_loc.name = "test-loc"
+                mock_loc.kinds = [LocationKind.FILESERVER]
+                mock_loc.config = {
+                    "protocol": "file",
+                    "storage_options": {"path": "/tmp/test"}
+                }
+                
+                mock_list.return_value = [mock_loc]
+                
+                # Test the improved representation (now the default)
+                result = self.runner.invoke(cli, ["location", "list"])
+                assert result.exit_code == 0
+                assert "Local filesystem" in result.output
