@@ -45,6 +45,7 @@ class CreateSimulationDto:
     """DTO for creating a new simulation."""
     simulation_id: str
     model_id: Optional[str] = None
+    experiment_id: Optional[str] = None
     path: Optional[str] = None
     attrs: Dict[str, Any] = field(default_factory=dict)
     namelists: Dict[str, Any] = field(default_factory=dict)
@@ -55,6 +56,7 @@ class CreateSimulationDto:
 class UpdateSimulationDto:
     """DTO for updating an existing simulation."""
     model_id: Optional[str] = None
+    experiment_id: Optional[str] = None
     path: Optional[str] = None
     attrs: Optional[Dict[str, Any]] = None
     namelists: Optional[Dict[str, Any]] = None
@@ -67,6 +69,7 @@ class SimulationDto:
     simulation_id: str
     uid: str
     model_id: Optional[str] = None
+    experiment_id: Optional[str] = None
     path: Optional[str] = None
     attrs: Dict[str, Any] = field(default_factory=dict)
     namelists: Dict[str, Any] = field(default_factory=dict)

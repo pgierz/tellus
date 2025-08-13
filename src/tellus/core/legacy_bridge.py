@@ -40,9 +40,8 @@ class SimulationBridge:
             simulation_id=simulation_id,
             model_id=model_id,
             experiment_id=experiment_id,
-            base_path=base_path,
-            attributes=attributes or {},
-            description=f"Created via legacy bridge interface"
+            path=base_path,
+            attrs=attributes or {}
         )
         
         logger.debug(f"Creating simulation via bridge: {simulation_id}")
@@ -61,15 +60,15 @@ class SimulationBridge:
                 'simulation_id': sim_dto.simulation_id,
                 'model_id': sim_dto.model_id,
                 'experiment_id': sim_dto.experiment_id,
-                'path': sim_dto.base_path,
-                'attrs': sim_dto.attributes or {},
+                'path': sim_dto.path,
+                'attrs': sim_dto.attrs or {},
                 'locations': self._convert_locations_to_legacy_format(
                     sim_dto.associated_locations or []
                 ),
-                # Additional legacy fields
-                'created_at': sim_dto.created_at.isoformat() if sim_dto.created_at else None,
-                'updated_at': sim_dto.updated_at.isoformat() if sim_dto.updated_at else None,
-                'description': sim_dto.description
+                # Additional legacy fields - these don't exist in current SimulationDto
+                'created_at': None,
+                'updated_at': None,
+                'description': None
             }
             
             return legacy_format
@@ -104,11 +103,10 @@ class SimulationBridge:
         """Update simulation attributes using new service."""
         try:
             update_dto = UpdateSimulationDto(
-                simulation_id=simulation_id,
-                attributes=attributes
+                attrs=attributes
             )
             
-            updated_sim = self._simulation_service.update_simulation(update_dto)
+            updated_sim = self._simulation_service.update_simulation(simulation_id, update_dto)
             logger.debug(f"Updated simulation attributes via bridge: {simulation_id}")
             return True
             
