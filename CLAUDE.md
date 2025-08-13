@@ -39,6 +39,14 @@ Tellus is a distributed data management system for Earth System Model simulation
 - Interactive wizards using questionary for complex operations
 - Main entry point: `src/tellus/core/cli.py`
 
+**CLI Styling Standards**
+- ALWAYS use `import rich_click as click` (not plain `click`)
+- ALWAYS import `console` from `..core.cli` for output
+- ALWAYS use `console.print()` instead of `click.echo()`
+- Use rich markup: `[red]Error:[/red]`, `[green]Success:[/green]`, `[dim]...[/dim]`
+- Use `Table` for tabular data, `Panel` for detailed info
+- Show "✨ Using new [service] service" indicators when feature flags are enabled
+
 **Simulation Management (`tellus.simulation`)**
 - Central `Simulation` class representing computational experiments
 - JSON-based persistence in `simulations.json` at project root
