@@ -1,5 +1,7 @@
 from ..core.cli import cli, console
 
+import asyncio
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import rich_click as click
 from rich.panel import Panel
 from rich.table import Table
@@ -90,7 +92,13 @@ def location():
 
 
 @location.command(name="list")
-def list_locations():
+@click.option(
+    "--no-fs",
+    is_flag=True,
+    default=False,
+    help="Don't show the filesystem representation column"
+)
+def list_locations(no_fs: bool):
     """List all locations."""
     # Load locations from disk
     Location.load_locations()
@@ -100,6 +108,12 @@ def list_locations():
         console.print("No locations configured.")
         return
 
+    # Run async function in event loop
+    asyncio.run(_list_locations_async(locations, no_fs))
+
+
+async def _list_locations_async(locations: list, no_fs: bool):
+    """Async implementation of location listing."""
     table = Table(
         title="Configured Locations", show_header=True, header_style="bold magenta"
     )
@@ -107,22 +121,69 @@ def list_locations():
     table.add_column("Types", style="green")
     table.add_column("Protocol", style="blue")
     table.add_column("Path", style="yellow")
-    table.add_column("Python FS Representation", justify="center")
+    
+    # Only add FS column if not disabled
+    if not no_fs:
+        table.add_column("Python FS Representation", justify="center")
 
+    # Prepare location data for async processing
+    location_data = []
     for loc in sorted(locations, key=lambda x: x.name):
         types = ", ".join(kind.name for kind in loc.kinds)
         protocol = loc.config.get("protocol", "file")
         storage_opts = loc.config.get("storage_options", {})
         path = storage_opts.get("path", "-")
-        
-        # Use improved representation that avoids common errors
-        fs = _get_improved_fs_representation(loc)
-        table.add_row(loc.name, types, protocol, path, fs)
+        location_data.append((loc.name, types, protocol, path, loc))
+
+    # Generate filesystem representations asynchronously if needed
+    fs_representations = {}
+    if not no_fs:
+        fs_representations = await _get_fs_representations_async(location_data)
+
+    # Build table rows
+    for name, types, protocol, path, loc in location_data:
+        row_data = [name, types, protocol, path]
+        if not no_fs:
+            fs_repr = fs_representations.get(name, "Error: Failed to get representation")
+            row_data.append(fs_repr)
+        table.add_row(*row_data)
 
     console.print(Panel.fit(table))
 
 
-@location.command()
+async def _get_fs_representations_async(location_data: list) -> dict:
+    """Generate filesystem representations asynchronously."""
+    fs_representations = {}
+    
+    # Use ThreadPoolExecutor to run sync fs.to_json() calls in parallel
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        # Submit all tasks
+        future_to_name = {}
+        for name, types, protocol, path, loc in location_data:
+            future = executor.submit(_get_fs_representation, loc)
+            future_to_name[future] = name
+        
+        # Collect results as they complete
+        for future in as_completed(future_to_name):
+            name = future_to_name[future]
+            try:
+                fs_repr = future.result()
+                fs_representations[name] = fs_repr
+            except Exception as e:
+                fs_representations[name] = str(e)
+    
+    return fs_representations
+
+
+def _get_fs_representation(location: Location) -> str:
+    """Get filesystem representation for a single location."""
+    try:
+        return location.fs.to_json()
+    except Exception as e:
+        return str(e)
+
+
+@location.command(name="create")
 @click.argument("name", required=False)
 @click.option(
     "-p", "--protocol", default=None, help="Storage protocol (e.g., file, s3, gs)"
