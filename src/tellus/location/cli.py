@@ -2,6 +2,7 @@ from ..core.cli import cli, console
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Optional, Dict, Any, List
 import rich_click as click
 from rich.panel import Panel
 from rich.table import Table
@@ -9,6 +10,24 @@ import paramiko
 import fsspec
 
 from .location import Location, LocationKind, LocationExistsError
+from ..core.feature_flags import feature_flags, FeatureFlag
+from ..core.service_container import get_service_container
+from ..core.legacy_bridge import LocationBridge
+from ..application.exceptions import (
+    EntityNotFoundError, EntityAlreadyExistsError, 
+    ValidationError, ApplicationError
+)
+
+# Load legacy locations at module level like simulation CLI
+Location.load_locations()
+
+
+def _get_location_bridge() -> Optional[LocationBridge]:
+    """Get location bridge if new architecture is enabled."""
+    if feature_flags.is_enabled(FeatureFlag.USE_NEW_LOCATION_SERVICE):
+        service_container = get_service_container()
+        return LocationBridge(service_container.service_factory)
+    return None
 
 
 def _get_improved_fs_representation(loc: Location) -> str:
@@ -100,16 +119,63 @@ def location():
 )
 def list_locations(no_fs: bool):
     """List all locations."""
-    # Load locations from disk
-    Location.load_locations()
-    locations = Location.list_locations()
+    bridge = _get_location_bridge()
+    
+    if bridge:
+        # Use new architecture
+        try:
+            locations_data = bridge.list_locations_legacy_format()
+            if not locations_data:
+                console.print("No locations configured.")
+                if feature_flags.is_enabled(FeatureFlag.USE_NEW_LOCATION_SERVICE):
+                    console.print("[dim]Using new location service[/dim]")
+                return
+            
+            # Convert to legacy Location objects for display compatibility
+            locations = []
+            for name, loc_data in locations_data.items():
+                # Convert kinds back to LocationKind enum
+                kinds = []
+                for kind_str in loc_data['kinds']:
+                    try:
+                        kinds.append(LocationKind[kind_str])
+                    except KeyError:
+                        continue
+                
+                # Create legacy Location object
+                config = loc_data['config'].copy()
+                config['protocol'] = loc_data['protocol']
+                
+                legacy_loc = Location(
+                    name=name,
+                    kinds=kinds,
+                    config=config,
+                    optional=loc_data.get('optional', False),
+                    _skip_registry=True
+                )
+                locations.append(legacy_loc)
+            
+            # Run async function in event loop
+            asyncio.run(_list_locations_async(locations, no_fs))
+            
+            # Show which architecture is being used
+            if feature_flags.is_enabled(FeatureFlag.USE_NEW_LOCATION_SERVICE):
+                console.print("[dim]✨ Using new location service[/dim]")
+            
+        except ApplicationError as e:
+            console.print(f"[red]Error:[/red] {str(e)}")
+            return
+    else:
+        # Use legacy architecture
+        Location.load_locations()
+        locations = Location.list_locations()
 
-    if not locations:
-        console.print("No locations configured.")
-        return
+        if not locations:
+            console.print("No locations configured.")
+            return
 
-    # Run async function in event loop
-    asyncio.run(_list_locations_async(locations, no_fs))
+        # Run async function in event loop
+        asyncio.run(_list_locations_async(locations, no_fs))
 
 
 async def _list_locations_async(locations: list, no_fs: bool):
@@ -406,25 +472,83 @@ def create(name, protocol, kind, is_optional, **storage_options):
 
     config = {"protocol": protocol, "storage_options": storage_opts}
 
-    try:
-        Location(name=name, kinds=kinds, config=config, optional=is_optional)
-        console.print(f"✅ Created location: {name}")
-    except LocationExistsError as e:
-        raise click.UsageError(str(e))
-    except Exception as e:
-        raise click.ClickException(f"Failed to create location: {e}")
+    bridge = _get_location_bridge()
+    
+    if bridge:
+        # Use new architecture
+        try:
+            kind_names = [k.name for k in kinds] if isinstance(kinds[0], LocationKind) else kinds
+            result = bridge.create_location_from_legacy_data(
+                name=name,
+                protocol=protocol,
+                kinds=kind_names,
+                config=config,
+                optional=is_optional
+            )
+            
+            if result:
+                console.print(f"✅ Created location: {name}")
+                if feature_flags.is_enabled(FeatureFlag.USE_NEW_LOCATION_SERVICE):
+                    console.print("[dim]✨ Using new location service[/dim]")
+            else:
+                raise click.UsageError(f"Location '{name}' already exists or creation failed.")
+                
+        except ApplicationError as e:
+            console.print(f"[red]Error:[/red] {str(e)}")
+            return
+    else:
+        # Use legacy architecture
+        try:
+            Location(name=name, kinds=kinds, config=config, optional=is_optional)
+            console.print(f"✅ Created location: {name}")
+        except LocationExistsError as e:
+            raise click.UsageError(str(e))
+        except Exception as e:
+            raise click.ClickException(f"Failed to create location: {e}")
 
 
 @location.command(name="show")
 @click.argument("name")
 def show_location(name):
     """Show details for a specific location."""
-    # Load locations from disk
-    Location.load_locations()
-    loc = Location.get_location(name)
+    bridge = _get_location_bridge()
+    
+    if bridge:
+        # Use new architecture
+        try:
+            loc_data = bridge.get_location_legacy_format(name)
+            if not loc_data:
+                raise click.UsageError(f"Location '{name}' not found.")
+            
+            # Convert to legacy Location object for display compatibility
+            kinds = []
+            for kind_str in loc_data['kinds']:
+                try:
+                    kinds.append(LocationKind[kind_str])
+                except KeyError:
+                    continue
+            
+            config = loc_data['config'].copy()
+            config['protocol'] = loc_data['protocol']
+            
+            loc = Location(
+                name=loc_data['name'],
+                kinds=kinds,
+                config=config,
+                optional=loc_data.get('optional', False),
+                _skip_registry=True
+            )
+            
+        except ApplicationError as e:
+            console.print(f"[red]Error:[/red] {str(e)}")
+            return
+    else:
+        # Use legacy architecture
+        Location.load_locations()
+        loc = Location.get_location(name)
 
-    if not loc:
-        raise click.UsageError(f"Location '{name}' not found.")
+        if not loc:
+            raise click.UsageError(f"Location '{name}' not found.")
 
     # Create a rich panel with location details
     info = [
@@ -470,51 +594,109 @@ def show_location(name):
 @click.option("--remove-option", multiple=True, help="Remove a configuration option")
 def update_location(name, **updates):
     """Update an existing location."""
-    # Load existing locations first
-    Location.load_locations()
-    loc = Location.get_location(name)
-
-    if not loc:
-        raise click.UsageError(f"Location '{name}' not found.")
-
-    # Handle removal of options
-    remove_options = updates.pop("remove_option", [])
-    for opt in remove_options:
-        if opt in loc.config:
-            del loc.config[opt]
-        elif "storage_options" in loc.config and opt in loc.config["storage_options"]:
-            del loc.config["storage_options"][opt]
-
-    # Update protocol if provided
-    if "protocol" in updates and updates["protocol"] is not None:
-        loc.config["protocol"] = updates["protocol"]
-
-    # Update storage options
-    storage_opts = loc.config.get("storage_options", {})
-    for key in ["host", "port", "path", "username", "password"]:
-        if key in updates and updates[key] is not None:
-            storage_opts[key] = updates[key]
-
-    if storage_opts:  # Only update if there are storage options
-        loc.config["storage_options"] = storage_opts
-
-    # Update kind if provided
-    if "kind" in updates and updates["kind"] is not None:
+    bridge = _get_location_bridge()
+    
+    if bridge:
+        # Use new architecture
         try:
-            loc.kinds = [LocationKind.from_str(updates["kind"])]
-        except ValueError as e:
-            raise click.UsageError(str(e))
+            # Check if location exists
+            loc_data = bridge.get_location_legacy_format(name)
+            if not loc_data:
+                raise click.UsageError(f"Location '{name}' not found.")
 
-    # Update optional flag if provided
-    if updates.get("is_optional") is not None:
-        loc.optional = updates["is_optional"]
+            # Build update parameters for new service
+            update_params = {}
+            
+            # Update protocol if provided
+            if "protocol" in updates and updates["protocol"] is not None:
+                update_params["protocol"] = updates["protocol"]
+            
+            # Update kinds if provided
+            if "kind" in updates and updates["kind"] is not None:
+                try:
+                    kind_obj = LocationKind.from_str(updates["kind"])
+                    update_params["kinds"] = [kind_obj.name]
+                except ValueError as e:
+                    raise click.UsageError(str(e))
+            
+            # Update optional flag if provided
+            if updates.get("is_optional") is not None:
+                update_params["optional"] = updates["is_optional"]
+            
+            # Build updated config
+            if any(key in updates for key in ["host", "port", "path", "username", "password"]):
+                # Get current config and update storage options
+                current_config = loc_data['config'].copy()
+                storage_opts = current_config.get("storage_options", {})
+                
+                for key in ["host", "port", "path", "username", "password"]:
+                    if key in updates and updates[key] is not None:
+                        storage_opts[key] = updates[key]
+                
+                current_config["storage_options"] = storage_opts
+                update_params["config"] = current_config
 
-    # Save the changes
-    try:
-        loc._save_locations()
-        console.print(f"✅ Updated location: {name}")
-    except Exception as e:
-        raise click.ClickException(f"Failed to update location: {e}")
+            # Perform update if we have any changes
+            if update_params:
+                success = bridge.update_location_from_legacy_data(name, **update_params)
+                if success:
+                    console.print(f"✅ Updated location: {name}")
+                    if feature_flags.is_enabled(FeatureFlag.USE_NEW_LOCATION_SERVICE):
+                        console.print("[dim]✨ Using new location service[/dim]")
+                else:
+                    raise click.ClickException(f"Failed to update location: {name}")
+            else:
+                console.print("No changes specified.")
+                
+        except ApplicationError as e:
+            console.print(f"[red]Error:[/red] {str(e)}")
+            return
+    else:
+        # Use legacy architecture
+        Location.load_locations()
+        loc = Location.get_location(name)
+
+        if not loc:
+            raise click.UsageError(f"Location '{name}' not found.")
+
+        # Handle removal of options
+        remove_options = updates.pop("remove_option", [])
+        for opt in remove_options:
+            if opt in loc.config:
+                del loc.config[opt]
+            elif "storage_options" in loc.config and opt in loc.config["storage_options"]:
+                del loc.config["storage_options"][opt]
+
+        # Update protocol if provided
+        if "protocol" in updates and updates["protocol"] is not None:
+            loc.config["protocol"] = updates["protocol"]
+
+        # Update storage options
+        storage_opts = loc.config.get("storage_options", {})
+        for key in ["host", "port", "path", "username", "password"]:
+            if key in updates and updates[key] is not None:
+                storage_opts[key] = updates[key]
+
+        if storage_opts:  # Only update if there are storage options
+            loc.config["storage_options"] = storage_opts
+
+        # Update kind if provided
+        if "kind" in updates and updates["kind"] is not None:
+            try:
+                loc.kinds = [LocationKind.from_str(updates["kind"])]
+            except ValueError as e:
+                raise click.UsageError(str(e))
+
+        # Update optional flag if provided
+        if updates.get("is_optional") is not None:
+            loc.optional = updates["is_optional"]
+
+        # Save the changes
+        try:
+            loc._save_locations()
+            console.print(f"✅ Updated location: {name}")
+        except Exception as e:
+            raise click.ClickException(f"Failed to update location: {e}")
 
 
 @location.command(name="delete")
@@ -522,20 +704,48 @@ def update_location(name, **updates):
 @click.option("--force", is_flag=True, help="Force deletion without confirmation")
 def delete_location(name, force):
     """Delete a location."""
-    # Load existing locations first
-    Location.load_locations()
+    bridge = _get_location_bridge()
+    
+    if bridge:
+        # Use new architecture
+        try:
+            # Check if location exists
+            loc_data = bridge.get_location_legacy_format(name)
+            if not loc_data:
+                raise click.UsageError(f"Location '{name}' not found.")
 
-    if not Location.get_location(name):
-        raise click.UsageError(f"Location '{name}' not found.")
+            if not force and not click.confirm(
+                f"Are you sure you want to delete location '{name}'?"
+            ):
+                console.print("Operation cancelled.")
+                return
 
-    if not force and not click.confirm(
-        f"Are you sure you want to delete location '{name}'?"
-    ):
-        console.print("Operation cancelled.")
-        return
+            success = bridge.delete_location(name)
+            if success:
+                console.print(f"✅ Deleted location: {name}")
+                if feature_flags.is_enabled(FeatureFlag.USE_NEW_LOCATION_SERVICE):
+                    console.print("[dim]✨ Using new location service[/dim]")
+            else:
+                raise click.ClickException(f"Failed to delete location: {name}")
+                
+        except ApplicationError as e:
+            console.print(f"[red]Error:[/red] {str(e)}")
+            return
+    else:
+        # Use legacy architecture
+        Location.load_locations()
 
-    try:
-        Location.remove_location(name)
-        console.print(f"✅ Deleted location: {name}")
-    except Exception as e:
-        raise click.ClickException(f"Failed to delete location: {e}")
+        if not Location.get_location(name):
+            raise click.UsageError(f"Location '{name}' not found.")
+
+        if not force and not click.confirm(
+            f"Are you sure you want to delete location '{name}'?"
+        ):
+            console.print("Operation cancelled.")
+            return
+
+        try:
+            Location.remove_location(name)
+            console.print(f"✅ Deleted location: {name}")
+        except Exception as e:
+            raise click.ClickException(f"Failed to delete location: {e}")

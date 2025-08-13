@@ -10,9 +10,24 @@ from .simulation import (
     Simulation, CacheManager, CacheConfig, ArchiveRegistry, 
     CompressedArchive, CLIProgressCallback, PathMapping
 )
+from ..core.feature_flags import feature_flags, FeatureFlag
+from ..core.service_container import get_service_container
+from ..core.legacy_bridge import ArchiveBridge
+from ..application.exceptions import (
+    EntityNotFoundError, EntityAlreadyExistsError, 
+    ValidationError, ApplicationError
+)
 
 
 # Helper functions
+def _get_archive_bridge() -> Optional[ArchiveBridge]:
+    """Get archive bridge if new architecture is enabled."""
+    if feature_flags.is_enabled(FeatureFlag.USE_NEW_ARCHIVE_SERVICE):
+        service_container = get_service_container()
+        return ArchiveBridge(service_container.service_factory)
+    return None
+
+
 def get_simulation(sim_id: str) -> Simulation:
     """Get simulation by ID, exit if not found"""
     sim = Simulation.get_simulation(sim_id)
@@ -99,50 +114,91 @@ def add(sim_id: str, archive_path: str, name: Optional[str],
     # Set up progress callback
     progress = CLIProgressCallback(verbose=True)
     
-    try:
-        # Create archive instance
-        if not archive_id:
-            archive_path_stem = Path(archive_path).stem
-            archive_id = f"{sim_id}_{archive_path_stem}"
-        
-        archive = CompressedArchive(
-            archive_id=archive_id,
-            archive_location=archive_path,
-            location=location_obj
-        )
-        archive.add_progress_callback(progress)
-        
-        # Get or create archive registry for simulation
-        if not hasattr(sim, '_archive_registry'):
-            sim._archive_registry = ArchiveRegistry(sim_id)
-        
-        archive_name = name or Path(archive_path).stem
-        sim._archive_registry.add_archive(archive, archive_name)
-        
-        # Show results
-        status = archive.status()
-        file_count = status.get('file_count', 0)
-        total_size = status.get('total_size', 0)
-        tags_info = status.get('tags', {})
-        
-        click.echo(f"✓ Archive located: {archive_path} ({format_size(status.get('size', 0))})")
-        if location:
-            protocol = status.get('storage_protocol', 'unknown')
-            click.echo(f"  Storage: {protocol} protocol via location '{location}'")
-        click.echo(f"✓ Found {file_count} files")
-        
-        if tags_info:
-            tag_summary = ", ".join([f"{tag} ({count})" for tag, count in tags_info.items()])
-            click.echo(f"✓ Tagged files: {tag_summary}")
-        
-        click.echo(f"✓ Archive '{archive_name}' added to simulation {sim_id}")
-        
-        # Save simulation
-        sim.save_simulations()
-        
-    except Exception as e:
-        click.echo(f"Error adding archive: {e}", err=True)
-        sys.exit(1)
+    bridge = _get_archive_bridge()
+    
+    if bridge:
+        # Use new architecture
+        try:
+            # Create archive instance
+            if not archive_id:
+                archive_path_stem = Path(archive_path).stem
+                archive_id = f"{sim_id}_{archive_path_stem}"
+            
+            # Parse tags if provided
+            tag_list = []
+            if tags:
+                tag_list = [tag.strip() for tag in tags.split(',')]
+            
+            result = bridge.create_archive_from_legacy_data(
+                archive_id=archive_id,
+                simulation_id=sim_id,
+                archive_path=archive_path,
+                location_name=location,
+                name=name,
+                tags=tag_list
+            )
+            
+            if result:
+                click.echo(f"✓ Archive located: {archive_path} ({format_size(result.get('size', 0))})")
+                if location:
+                    click.echo(f"  Storage: {result.get('archive_type', 'unknown')} via location '{location}'")
+                
+                click.echo(f"✓ Archive '{name or archive_id}' added to simulation {sim_id}")
+                if feature_flags.is_enabled(FeatureFlag.USE_NEW_ARCHIVE_SERVICE):
+                    click.echo("✨ Using new archive service")
+            else:
+                click.echo(f"Error: Archive '{archive_id}' already exists or creation failed", err=True)
+                sys.exit(1)
+                
+        except ApplicationError as e:
+            click.echo(f"Error: {str(e)}", err=True)
+            sys.exit(1)
+    else:
+        # Use legacy architecture
+        try:
+            # Create archive instance
+            if not archive_id:
+                archive_path_stem = Path(archive_path).stem
+                archive_id = f"{sim_id}_{archive_path_stem}"
+            
+            archive = CompressedArchive(
+                archive_id=archive_id,
+                archive_location=archive_path,
+                location=location_obj
+            )
+            archive.add_progress_callback(progress)
+            
+            # Get or create archive registry for simulation
+            if not hasattr(sim, '_archive_registry'):
+                sim._archive_registry = ArchiveRegistry(sim_id)
+            
+            archive_name = name or Path(archive_path).stem
+            sim._archive_registry.add_archive(archive, archive_name)
+            
+            # Show results
+            status = archive.status()
+            file_count = status.get('file_count', 0)
+            total_size = status.get('total_size', 0)
+            tags_info = status.get('tags', {})
+            
+            click.echo(f"✓ Archive located: {archive_path} ({format_size(status.get('size', 0))})")
+            if location:
+                protocol = status.get('storage_protocol', 'unknown')
+                click.echo(f"  Storage: {protocol} protocol via location '{location}'")
+            click.echo(f"✓ Found {file_count} files")
+            
+            if tags_info:
+                tag_summary = ", ".join([f"{tag} ({count})" for tag, count in tags_info.items()])
+                click.echo(f"✓ Tagged files: {tag_summary}")
+            
+            click.echo(f"✓ Archive '{archive_name}' added to simulation {sim_id}")
+            
+            # Save simulation
+            sim.save_simulations()
+            
+        except Exception as e:
+            click.echo(f"Error adding archive: {e}", err=True)
+            sys.exit(1)
 
 
 @archive.command()
@@ -152,14 +208,43 @@ def add(sim_id: str, archive_path: str, name: Optional[str],
 def list(sim_id: str, verbose: bool, cached_only: bool):
     """List archives for a simulation"""
     
-    sim = get_simulation(sim_id)
+    bridge = _get_archive_bridge()
     
-    if not hasattr(sim, '_archive_registry') or not sim._archive_registry.archives:
-        click.echo(f"No archives found for simulation {sim_id}")
-        return
-    
-    registry = sim._archive_registry
-    archives = registry.archives
+    if bridge:
+        # Use new architecture
+        try:
+            archives_data = bridge.list_archives_for_simulation_legacy_format(sim_id, cached_only)
+            
+            if not archives_data:
+                if cached_only:
+                    click.echo(f"No cached archives found for simulation {sim_id}")
+                else:
+                    click.echo(f"No archives found for simulation {sim_id}")
+                if feature_flags.is_enabled(FeatureFlag.USE_NEW_ARCHIVE_SERVICE):
+                    click.echo("✨ Using new archive service")
+                return
+            
+            # Convert to legacy format for display
+            archives = {}
+            for archive_data in archives_data:
+                archives[archive_data['archive_id']] = {
+                    'archive_id': archive_data['archive_id'],
+                    'status': lambda: archive_data  # Mock status method
+                }
+                
+        except ApplicationError as e:
+            click.echo(f"Error: {str(e)}", err=True)
+            return
+    else:
+        # Use legacy architecture
+        sim = get_simulation(sim_id)
+        
+        if not hasattr(sim, '_archive_registry') or not sim._archive_registry.archives:
+            click.echo(f"No archives found for simulation {sim_id}")
+            return
+        
+        registry = sim._archive_registry
+        archives = registry.archives
     
     if cached_only:
         archives = {name: archive for name, archive in archives.items() 

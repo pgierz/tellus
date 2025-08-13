@@ -1,4 +1,8 @@
-"""Command-line interface for Tellus workflow management."""
+"""Command-line interface for Tellus workflow management.
+
+Note: Workflow CLI only uses the new architecture. There is no legacy workflow system
+to fall back to, so USE_NEW_WORKFLOW_SERVICE feature flag is not checked here.
+"""
 
 # import asyncio - not needed as services are not async
 import json
