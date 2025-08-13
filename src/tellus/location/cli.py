@@ -175,7 +175,7 @@ async def _get_fs_representations_async(location_data: list) -> dict:
     return fs_representations
 
 
-def _get_fs_representation(location) -> str:
+def _get_fs_representation(location: Location) -> str:
     """Get filesystem representation for a single location."""
     try:
         return location.fs.to_json()
