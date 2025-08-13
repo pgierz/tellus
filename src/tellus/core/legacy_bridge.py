@@ -144,13 +144,13 @@ class SimulationBridge:
                 locations[name] = {
                     'location': {
                         'name': loc_dto.name,
-                        'kinds': [kind.name for kind in loc_dto.kinds],
+                        'kinds': loc_dto.kinds,  # Already strings in DTO
                         'protocol': loc_dto.protocol,
-                        'config': loc_dto.configuration,
+                        'config': loc_dto.additional_config,
                         'optional': loc_dto.optional
                     },
                     'context': {
-                        'path_prefix': loc_dto.path_prefix or '',
+                        'path_prefix': loc_dto.path or '',
                         'overrides': {},
                         'metadata': {}
                     }
@@ -177,12 +177,12 @@ class LocationBridge:
             for loc in location_list.locations:
                 legacy_format[loc.name] = {
                     'name': loc.name,
-                    'kinds': [kind.name for kind in loc.kinds],
+                    'kinds': loc.kinds,  # Already strings in DTO
                     'protocol': loc.protocol,
-                    'config': loc.configuration,
-                    'path_prefix': loc.path_prefix,
+                    'config': loc.additional_config,
+                    'path_prefix': loc.path,
                     'optional': loc.optional,
-                    'description': loc.description
+                    'description': None  # Not available in LocationDto
                 }
             
             return legacy_format
@@ -197,12 +197,12 @@ class LocationBridge:
             loc_dto = self._location_service.get_location(location_name)
             return {
                 'name': loc_dto.name,
-                'kinds': [kind.name for kind in loc_dto.kinds],
+                'kinds': loc_dto.kinds,  # Already strings in DTO
                 'protocol': loc_dto.protocol,
-                'config': loc_dto.configuration,
-                'path_prefix': loc_dto.path_prefix,
+                'config': loc_dto.additional_config,
+                'path_prefix': loc_dto.path,
                 'optional': loc_dto.optional,
-                'description': loc_dto.description
+                'description': None  # Not available in LocationDto
             }
         except EntityNotFoundError:
             return None

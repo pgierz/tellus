@@ -50,6 +50,15 @@ class CreateSimulationDto:
     attrs: Dict[str, Any] = field(default_factory=dict)
     namelists: Dict[str, Any] = field(default_factory=dict)
     snakemakes: Dict[str, Any] = field(default_factory=dict)
+    
+    def __post_init__(self):
+        """Validate DTO fields after initialization."""
+        if self.simulation_id is not None and not self.simulation_id.strip():
+            raise ValueError("simulation_id cannot be empty string")
+        if self.model_id is not None and not self.model_id.strip():
+            raise ValueError("model_id cannot be empty string")
+        if self.experiment_id is not None and not self.experiment_id.strip():
+            raise ValueError("experiment_id cannot be empty string")
 
 
 @dataclass
@@ -61,6 +70,13 @@ class UpdateSimulationDto:
     attrs: Optional[Dict[str, Any]] = None
     namelists: Optional[Dict[str, Any]] = None
     snakemakes: Optional[Dict[str, Any]] = None
+    
+    def __post_init__(self):
+        """Validate DTO fields after initialization."""
+        if self.model_id is not None and not self.model_id.strip():
+            raise ValueError("model_id cannot be empty string")
+        if self.experiment_id is not None and not self.experiment_id.strip():
+            raise ValueError("experiment_id cannot be empty string")
 
 
 @dataclass
@@ -76,6 +92,17 @@ class SimulationDto:
     snakemakes: Dict[str, Any] = field(default_factory=dict)
     associated_locations: List[str] = field(default_factory=list)
     context_variables: Dict[str, str] = field(default_factory=dict)
+    
+    def __post_init__(self):
+        """Validate DTO fields after initialization."""
+        if self.simulation_id is not None and not self.simulation_id.strip():
+            raise ValueError("simulation_id cannot be empty string")
+        if self.uid is not None and not self.uid.strip():
+            raise ValueError("uid cannot be empty string")
+        if self.model_id is not None and not self.model_id.strip():
+            raise ValueError("model_id cannot be empty string")
+        if self.experiment_id is not None and not self.experiment_id.strip():
+            raise ValueError("experiment_id cannot be empty string")
 
 
 @dataclass
