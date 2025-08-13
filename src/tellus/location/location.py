@@ -171,23 +171,24 @@ class Location:
         Returns:
             PathSandboxedFileSystem: Sandboxed filesystem instance
         """
-        storage_options = self.config.get("storage_options", {})
-        if "host" not in storage_options:
+        storage_options = self.config.get("storage_options", {}).copy()
+        protocol = self.config.get("protocol", "file")
+        
+        # Add host if not present for SSH-like protocols
+        if "host" not in storage_options and protocol in ("sftp", "ssh", "scoutfs"):
             storage_options["host"] = self.name
+        
+        # Separate filesystem path from connection parameters
+        # 'path' should not be passed to SSH connection, it's used for base path only
+        fs_storage_options = storage_options.copy()
+        base_path = fs_storage_options.pop("path", "")
+        
+        # Also check for path in the main config (fallback)
+        if not base_path:
+            base_path = self.config.get("path", "")
             
         # Create the underlying filesystem
-        base_fs = fsspec.filesystem(
-            self.config.get("protocol", "file"),
-            **storage_options,
-        )
-        
-        # Get the base path for sandboxing
-        # Try multiple locations where path might be stored
-        base_path = (
-            self.config.get("path", "") or  # Direct path in config
-            self.config.get("storage_options", {}).get("path", "") or  # Path in storage_options
-            ""  # Default to empty if not found
-        )
+        base_fs = fsspec.filesystem(protocol, **fs_storage_options)
         
         # Return sandboxed filesystem
         return PathSandboxedFileSystem(base_fs, base_path)
