@@ -511,16 +511,30 @@ def add_location(
             location_name = location_choice
 
         # Get path prefix (optional) with tab completion
+        # Use location-aware completion for better UX
         from prompt_toolkit import prompt
-        from prompt_toolkit.completion import PathCompleter
+        from ..core.completion import SmartPathCompleter
+        
+        # Get the selected location for smart completion
+        try:
+            location_obj = LocationModel.get_location(location_name) if location_name != "__new__" else None
+        except:
+            location_obj = None
 
-        path_completer = PathCompleter(
+        path_completer = SmartPathCompleter(
+            location=location_obj,
             expanduser=True,
             only_directories=True,
         )
+        
+        prompt_text = "\nEnter path prefix (press Tab to complete, Enter to skip): "
+        if location_obj and location_obj.config.get('protocol') != "file":
+            protocol = location_obj.config.get('protocol', 'unknown')
+            prompt_text = f"\nEnter path prefix for {protocol}://{location_obj.name} (press Tab to complete, Enter to skip): "
+            
         path_prefix = (
             prompt(
-                "\nEnter path prefix (press Tab to complete, Enter to skip): ",
+                prompt_text,
                 completer=path_completer,
                 complete_while_typing=True,
             )
