@@ -5,7 +5,10 @@ Archive-related domain entities and value objects.
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .simulation_file import FileInventory
 
 
 class ArchiveType(Enum):
@@ -117,6 +120,7 @@ class ArchiveMetadata:
     archive_id: ArchiveId
     location: str
     archive_type: ArchiveType
+    simulation_id: Optional[str] = None  # Which simulation this archive contains parts of
     checksum: Optional[Checksum] = None
     size: Optional[int] = None
     created_time: float = field(default_factory=time.time)
@@ -124,6 +128,12 @@ class ArchiveMetadata:
     version: Optional[str] = None
     description: Optional[str] = None
     tags: Set[str] = field(default_factory=set)
+    
+    # File inventory for tracking archive contents
+    file_inventory: Optional['FileInventory'] = None
+    
+    # Fragment information for multi-archive simulations
+    fragment_info: Optional[Dict[str, Any]] = None  # Which parts of simulation this contains
     
     def __post_init__(self):
         if not isinstance(self.archive_id, ArchiveId):
@@ -146,6 +156,15 @@ class ArchiveMetadata:
         
         if not isinstance(self.tags, set):
             raise ValueError("Tags must be a set")
+        
+        if self.file_inventory is not None:
+            # Import here to avoid circular imports
+            from .simulation_file import FileInventory
+            if not isinstance(self.file_inventory, FileInventory):
+                raise ValueError("File inventory must be a FileInventory instance")
+        
+        if self.fragment_info is not None and not isinstance(self.fragment_info, dict):
+            raise ValueError("Fragment info must be a dictionary")
     
     def add_tag(self, tag: str) -> None:
         """Add a tag to the archive."""
@@ -156,6 +175,83 @@ class ArchiveMetadata:
     def remove_tag(self, tag: str) -> bool:
         """Remove a tag from the archive. Returns True if tag was present."""
         return tag in self.tags and (self.tags.discard(tag), True)[1]
+    
+    def has_file_inventory(self) -> bool:
+        """Check if archive has a file inventory."""
+        return self.file_inventory is not None
+    
+    def get_file_count(self) -> int:
+        """Get the number of files in this archive."""
+        if self.file_inventory:
+            return self.file_inventory.file_count
+        return 0
+    
+    def get_content_summary(self) -> Dict[str, int]:
+        """Get summary of files by content type."""
+        if self.file_inventory:
+            return self.file_inventory.get_content_type_summary()
+        return {}
+    
+    def get_archivable_files_count(self) -> int:
+        """Get count of files that should be archived."""
+        if self.file_inventory:
+            return len(self.file_inventory.get_archivable_files())
+        return 0
+    
+    def is_fragment(self) -> bool:
+        """Check if this archive represents a fragment of a larger simulation."""
+        return self.fragment_info is not None
+    
+    def get_fragment_description(self) -> str:
+        """Get description of what simulation parts this fragment contains."""
+        if not self.fragment_info:
+            return "Complete archive"
+        
+        parts = []
+        if 'date_range' in self.fragment_info:
+            parts.append(f"dates: {self.fragment_info['date_range']}")
+        if 'content_types' in self.fragment_info:
+            parts.append(f"content: {', '.join(self.fragment_info['content_types'])}")
+        if 'directories' in self.fragment_info:
+            parts.append(f"dirs: {', '.join(self.fragment_info['directories'])}")
+        
+        return f"Fragment ({'; '.join(parts)})" if parts else "Fragment"
+    
+    def set_fragment_info(
+        self, 
+        date_range: Optional[str] = None,
+        content_types: Optional[List[str]] = None,
+        directories: Optional[List[str]] = None,
+        description: Optional[str] = None
+    ) -> None:
+        """Set fragment information for this archive."""
+        self.fragment_info = {}
+        
+        if date_range:
+            self.fragment_info['date_range'] = date_range
+        if content_types:
+            self.fragment_info['content_types'] = content_types
+        if directories:
+            self.fragment_info['directories'] = directories
+        if description:
+            self.fragment_info['description'] = description
+    
+    def estimate_extraction_complexity(self) -> str:
+        """Estimate complexity of extracting this archive."""
+        if not self.file_inventory:
+            return "unknown"
+        
+        file_count = self.file_inventory.file_count
+        total_size = self.file_inventory.total_size
+        
+        if file_count < 10 and total_size < 10 * 1024**2:  # < 10 files, < 10MB
+            return "simple"
+        elif file_count < 100 and total_size < 100 * 1024**2:  # < 100 files, < 100MB
+            return "moderate"
+        elif file_count < 1000 and total_size < 1024**3:  # < 1000 files, < 1GB
+            return "complex"
+        else:
+            return "very_complex"
 
 
 @dataclass

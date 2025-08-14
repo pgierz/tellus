@@ -158,6 +158,7 @@ class CreateArchiveDto:
     archive_id: str
     location_name: str
     archive_type: str  # Will be converted to ArchiveType enum
+    simulation_id: Optional[str] = None  # Which simulation this archive contains parts of
     simulation_date: Optional[str] = None
     version: Optional[str] = None
     description: Optional[str] = None
@@ -179,6 +180,7 @@ class ArchiveDto:
     archive_id: str
     location: str
     archive_type: str
+    simulation_id: Optional[str] = None  # Which simulation this archive contains parts of
     checksum: Optional[str] = None
     checksum_algorithm: Optional[str] = None
     size: Optional[int] = None

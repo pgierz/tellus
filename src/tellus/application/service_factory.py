@@ -18,6 +18,7 @@ from .services.workflow_execution_service import IWorkflowRunRepository, IWorkfl
 from .dtos import CacheConfigurationDto
 from ..domain.repositories.simulation_repository import ISimulationRepository
 from ..domain.repositories.location_repository import ILocationRepository
+from ..domain.repositories.archive_repository import IArchiveRepository
 from ..domain.entities.workflow import WorkflowEngine
 from ..progress import ProgressTracker
 
@@ -36,6 +37,7 @@ class ApplicationServiceFactory:
         self,
         simulation_repository: ISimulationRepository,
         location_repository: ILocationRepository,
+        archive_repository: IArchiveRepository,
         workflow_repository: Optional[IWorkflowRepository] = None,
         workflow_run_repository: Optional[IWorkflowRunRepository] = None,
         workflow_template_repository: Optional[IWorkflowTemplateRepository] = None,
@@ -50,6 +52,7 @@ class ApplicationServiceFactory:
         Args:
             simulation_repository: Repository for simulation persistence
             location_repository: Repository for location persistence
+            archive_repository: Repository for archive metadata persistence
             workflow_repository: Repository for workflow persistence
             workflow_run_repository: Repository for workflow run persistence
             workflow_template_repository: Repository for workflow template persistence
@@ -60,6 +63,7 @@ class ApplicationServiceFactory:
         """
         self._simulation_repo = simulation_repository
         self._location_repo = location_repository
+        self._archive_repo = archive_repository
         self._workflow_repo = workflow_repository
         self._workflow_run_repo = workflow_run_repository
         self._workflow_template_repo = workflow_template_repository
@@ -104,6 +108,7 @@ class ApplicationServiceFactory:
             self._logger.debug("Creating ArchiveApplicationService")
             self._archive_service = ArchiveApplicationService(
                 location_repository=self._location_repo,
+                archive_repository=self._archive_repo,
                 cache_config=self._cache_config
             )
         return self._archive_service

@@ -13,6 +13,7 @@ from pathlib import Path
 from ..application.service_factory import ApplicationServiceFactory
 from ..infrastructure.repositories.json_simulation_repository import JsonSimulationRepository
 from ..infrastructure.repositories.json_location_repository import JsonLocationRepository
+from ..infrastructure.repositories.json_archive_repository import JsonArchiveRepository
 from ..application.dtos import CacheConfigurationDto
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,9 @@ class ServiceContainer:
             location_repo = JsonLocationRepository(
                 file_path=self._config_path / "locations.json"
             )
+            archive_repo = JsonArchiveRepository(
+                file_path=self._config_path / "archives.json"
+            )
             
             # Configure cache settings
             cache_config = CacheConfigurationDto(
@@ -49,6 +53,7 @@ class ServiceContainer:
             self._service_factory = ApplicationServiceFactory(
                 simulation_repository=simulation_repo,
                 location_repository=location_repo,
+                archive_repository=archive_repo,
                 cache_config=cache_config
             )
             

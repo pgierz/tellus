@@ -338,7 +338,8 @@ class ArchiveBridge:
             create_dto = CreateArchiveDto(
                 archive_id=archive_id,
                 location_name=location_name or "localhost",
-                archive_type="COMPRESSED",  # Default archive type
+                archive_type="compressed",  # Use enum value, not key
+                simulation_id=simulation_id,  # Now properly supported
                 description=f"Created via legacy bridge interface: {name or archive_id}",
                 tags=set(tags or [])
             )
@@ -351,8 +352,13 @@ class ArchiveBridge:
                 'archive_id': archive_dto.archive_id,
                 'location': archive_dto.location,
                 'archive_type': archive_dto.archive_type,
+                'simulation_id': archive_dto.simulation_id,
                 'size': archive_dto.size,
                 'created': archive_dto.created_time,
+                'checksum': archive_dto.checksum,
+                'checksum_algorithm': archive_dto.checksum_algorithm,
+                'simulation_date': archive_dto.simulation_date,
+                'version': archive_dto.version,
                 'tags': list(archive_dto.tags or []),
                 'description': archive_dto.description,
                 'is_cached': archive_dto.is_cached,
@@ -374,8 +380,13 @@ class ArchiveBridge:
                 'archive_id': archive_dto.archive_id,
                 'location': archive_dto.location,
                 'archive_type': archive_dto.archive_type,
+                'simulation_id': archive_dto.simulation_id,
                 'size': archive_dto.size,
                 'created': archive_dto.created_time,
+                'checksum': archive_dto.checksum,
+                'checksum_algorithm': archive_dto.checksum_algorithm,
+                'simulation_date': archive_dto.simulation_date,
+                'version': archive_dto.version,
                 'tags': list(archive_dto.tags or []),
                 'description': archive_dto.description,
                 'is_cached': archive_dto.is_cached,
@@ -399,7 +410,11 @@ class ArchiveBridge:
             
             legacy_archives = []
             for archive in archive_list.archives:
-                # For now, include all archives - simulation filtering may need service enhancement
+                # Filter by simulation if specified
+                if simulation_id and archive.simulation_id != simulation_id:
+                    continue
+                    
+                # Filter by cache status if specified
                 if cached_only and not archive.is_cached:
                     continue
                     
@@ -407,8 +422,13 @@ class ArchiveBridge:
                     'archive_id': archive.archive_id,
                     'location': archive.location,
                     'archive_type': archive.archive_type,
+                    'simulation_id': archive.simulation_id,
                     'size': archive.size,
                     'created': archive.created_time,
+                    'checksum': archive.checksum,
+                    'checksum_algorithm': archive.checksum_algorithm,
+                    'simulation_date': archive.simulation_date,
+                    'version': archive.version,
                     'tags': list(archive.tags or []),
                     'description': archive.description,
                     'is_cached': archive.is_cached,
