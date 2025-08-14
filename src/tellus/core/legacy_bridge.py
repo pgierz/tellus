@@ -61,16 +61,17 @@ class SimulationBridge:
             legacy_format = {
                 'simulation_id': sim_dto.simulation_id,
                 'model_id': sim_dto.model_id,
-                'experiment_id': sim_dto.experiment_id,
-                'path': sim_dto.base_path,
-                'attrs': sim_dto.attributes or {},
+                'experiment_id': sim_dto.simulation_id,  # Use simulation_id for experiment_id in legacy format
+                'path': getattr(sim_dto, 'base_path', sim_dto.path),  # Handle both base_path and path attributes
+                'attrs': getattr(sim_dto, 'attributes', sim_dto.attrs) or {},
                 'locations': self._convert_locations_to_legacy_format(
                     sim_dto.associated_locations or []
                 ),
-                # Additional legacy fields
-                'created_at': sim_dto.created_at.isoformat() if sim_dto.created_at else None,
-                'updated_at': sim_dto.updated_at.isoformat() if sim_dto.updated_at else None,
-                'description': sim_dto.description
+                # Additional legacy fields - use defaults for missing fields
+                'created_at': None,  # Not available in current DTO
+                'updated_at': None,  # Not available in current DTO  
+                'description': f"Simulation {sim_dto.simulation_id}",  # Generate default description
+                'context_variables': getattr(sim_dto, 'context_variables', {})
             }
             
             return legacy_format
