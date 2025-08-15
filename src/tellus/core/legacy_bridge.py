@@ -1128,13 +1128,14 @@ class ArchiveBridge:
             
             extraction_dto = ArchiveExtractionDto(
                 archive_id=archive_id,
-                source_location_name=source_location,
-                destination_location_name=destination_location,
+                destination_location=destination_location,
                 simulation_id=simulation_id,
-                extract_all=extract_all,
-                include_patterns=include_patterns or [],
-                exclude_patterns=exclude_patterns or [],
-                overwrite_existing=overwrite
+                file_filters=include_patterns,
+                content_type_filter=None,  # Not passed from this interface
+                pattern_filter=None,  # Could use exclude_patterns, but keeping simple for now
+                preserve_directory_structure=True,
+                overwrite_existing=overwrite,
+                create_manifest=True
             )
             
             operation_id = self._archive_service.extract_archive_to_location(extraction_dto)

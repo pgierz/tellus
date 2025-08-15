@@ -978,9 +978,9 @@ def extract(archive_id: str, source_location: str, destination_location: str,
             source_location=source_location,
             destination_location=destination_location,
             simulation_id=simulation,
-            extract_all=not include and not content_type,  # Extract all if no specific filters
-            include_patterns=list(include),
-            exclude_patterns=list(exclude),
+            extract_all=not include and not content_type,
+            include_patterns=list(include) if include else None,
+            exclude_patterns=list(exclude) if exclude else None,
             overwrite=overwrite
         )
         

@@ -2201,7 +2201,7 @@ class ArchiveApplicationService:
         elif any(pattern in filename_lower for pattern in ["log", ".log", "debug"]):
             return FileContentType.LOG
         elif any(pattern in filename_lower for pattern in ["restart", ".rst", "_r_"]):
-            return FileContentType.RESTART
+            return FileContentType.INTERMEDIATE  # RESTART doesn't exist, use INTERMEDIATE
         elif any(
             pattern in filename_lower
             for pattern in [".nc", ".netcdf", "output", "results"]
@@ -2210,9 +2210,9 @@ class ArchiveApplicationService:
         elif any(
             pattern in filename_lower for pattern in ["script", ".sh", ".py", ".pl"]
         ):
-            return FileContentType.SCRIPT
+            return FileContentType.METADATA  # SCRIPT doesn't exist, use METADATA
         else:
-            return FileContentType.OTHER
+            return FileContentType.METADATA  # OTHER doesn't exist, use METADATA as fallback
 
     def _classify_file_importance(
         self, filename: str, content_type: FileContentType
@@ -2220,12 +2220,12 @@ class ArchiveApplicationService:
         """Classify file importance based on filename and content type."""
         if content_type == FileContentType.OUTPUT:
             return FileImportance.CRITICAL
-        elif content_type in [FileContentType.CONFIG, FileContentType.RESTART]:
+        elif content_type in [FileContentType.CONFIG, FileContentType.INTERMEDIATE]:
             return FileImportance.IMPORTANT
         elif content_type == FileContentType.LOG:
             return FileImportance.OPTIONAL
         else:
-            return FileImportance.NORMAL
+            return FileImportance.IMPORTANT
 
     def _classify_file_role(self, filename: str) -> str:
         """Classify file role based on filename patterns."""
