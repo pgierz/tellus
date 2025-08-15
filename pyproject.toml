@@ -4,9 +4,12 @@ name = "tellus"
 requires-python = ">= 3.11"
 version = "0.1.0"
 
+[project.optional-dependencies]
+# Removed chat dependencies
 
 [project.scripts]
 tellus = "tellus.core.cli:main"
+tellus-chat = "tellus_chat.cli:main"
 
 [tool.pytest.ini_options]
 python_files = "test_*.py"
@@ -65,6 +68,7 @@ platforms = ["osx-arm64", "linux-64"]
 
 [tool.pixi.pypi-dependencies]
 tellus = { path = ".", editable = true }
+tellus-chat = { path = "./src/tellus_chat", editable = true }
 animavox = { path = "./vendor/animavox", editable = true }
 # snakemake-storage-plugin-fsspec = { git = "git+https://github.com/pgierz/snakemake-storage-plugin-fsspec.git" }
 snakemake-storage-plugin-fsspec = { git = "git+https://github.com/pgierz/snakemake-storage-plugin-fsspec.git" }
@@ -128,7 +132,6 @@ fsspec = ">=2025.7.0,<2026"
 paramiko = ">=3.5.1,<4"
 rich-click = ">=1.8.9,<2"
 questionary = ">=2.1.0,<3"
-
 requests = ">=2.32.4,<3"
 loguru = ">=0.7.3,<0.8"
 inquirerpy = ">=0.3.4,<0.4"
@@ -139,6 +142,7 @@ hypothesis = ">=6.136.9,<7"
 nc-time-axis = ">=1.4.1,<2"
 nbconvert = ">=7.16.6,<8"
 papermill = ">=2.6.0,<3"
+textual = ">=5.3.0,<6"
 
 [tool.pixi.feature.docs.dependencies]
 jupyter-book = "*"

@@ -438,6 +438,391 @@ def delete(archive_id: str, force: bool):
         sys.exit(1)
 
 
+@archive.command(name='files')
+@click.argument('archive_id')
+@click.option('--content-type', help='Filter by content type (input, output, config, log, etc.)')
+@click.option('--pattern', help='Filter files by name pattern (glob syntax)')
+@click.option('--limit', type=int, default=50, help='Maximum number of files to show')
+def list_files(archive_id: str, content_type: Optional[str], pattern: Optional[str], limit: int):
+    """List files in an archive"""
+    
+    bridge = _get_archive_bridge()
+    
+    if bridge:
+        console.print(f"📋 Files in archive: [bold]{archive_id}[/bold]")
+        if feature_flags.is_enabled(FeatureFlag.USE_NEW_ARCHIVE_SERVICE):
+            console.print("✨ Using new archive service")
+        
+        try:
+            # Get file list from archive
+            files = bridge.list_archive_files(
+                archive_id, 
+                content_type=content_type,
+                pattern=pattern,
+                limit=limit
+            )
+            
+            if not files:
+                console.print(f"No files found in archive '{archive_id}'")
+                return
+            
+            # Create rich table for files
+            table = Table(title=f"Files in Archive: {archive_id}")
+            table.add_column("Path", style="cyan", no_wrap=False)
+            table.add_column("Type", style="yellow")
+            table.add_column("Size", justify="right", style="green") 
+            table.add_column("Role", style="blue")
+            
+            for file_info in files:
+                size_str = format_size(file_info.get('size', 0))
+                content_type_display = file_info.get('content_type', 'unknown')
+                file_role = file_info.get('file_role', '')
+                
+                table.add_row(
+                    file_info['relative_path'],
+                    content_type_display,
+                    size_str,
+                    file_role or ''
+                )
+            
+            console.print(table)
+            console.print(f"[dim]Total files: {len(files)}[/dim]")
+            
+        except Exception as e:
+            console.print(f"[red]Error:[/red] {e}")
+            
+    else:
+        # Legacy archive file listing
+        console.print(f"📋 Files in archive: [bold]{archive_id}[/bold]")
+        
+        # This would need to be implemented in legacy system
+        console.print("[yellow]Info:[/yellow] Legacy archive file listing not implemented")
+
+
+@archive.command(name='associate-files')
+@click.argument('archive_id')
+@click.argument('simulation_id')
+@click.option('--content-type', help='Only associate files of this content type')
+@click.option('--pattern', help='Only associate files matching this pattern')
+@click.option('--dry-run', is_flag=True, help='Show what would be associated without doing it')
+def associate_files(archive_id: str, simulation_id: str, content_type: Optional[str], 
+                   pattern: Optional[str], dry_run: bool):
+    """Associate archive files with a simulation"""
+    
+    bridge = _get_archive_bridge()
+    
+    if bridge:
+        if feature_flags.is_enabled(FeatureFlag.USE_NEW_ARCHIVE_SERVICE):
+            console.print("✨ Using new archive service")
+        
+        console.print(f"🔗 Associating files from archive [bold]{archive_id}[/bold] with simulation [bold]{simulation_id}[/bold]")
+        
+        if dry_run:
+            console.print("[yellow]DRY RUN:[/yellow] No changes will be made")
+            
+        try:
+            # Associate files using the bridge
+            result = bridge.associate_files_with_simulation(
+                archive_id=archive_id,
+                simulation_id=simulation_id,
+                content_type_filter=content_type,
+                pattern_filter=pattern,
+                dry_run=dry_run
+            )
+            
+            if result.get('success', False):
+                files_associated = result.get('files_associated', [])
+                files_skipped = result.get('files_skipped', [])
+                
+                if files_associated:
+                    console.print(f"[green]✓[/green] Associated {len(files_associated)} files with simulation")
+                    if not dry_run:
+                        for file_path in files_associated[:5]:  # Show first 5
+                            console.print(f"  - {file_path}")
+                        if len(files_associated) > 5:
+                            console.print(f"  ... and {len(files_associated) - 5} more")
+                
+                if files_skipped:
+                    console.print(f"[yellow]![/yellow] Skipped {len(files_skipped)} files")
+                    
+            else:
+                error_msg = result.get('error_message', 'Unknown error')
+                console.print(f"[red]Error:[/red] {error_msg}")
+            
+        except Exception as e:
+            console.print(f"[red]Error:[/red] {e}")
+            
+    else:
+        # Legacy file association
+        console.print(f"🔗 Associating files from archive [bold]{archive_id}[/bold] with simulation [bold]{simulation_id}[/bold]")
+        
+        if dry_run:
+            console.print("[yellow]DRY RUN:[/yellow] No changes will be made")
+            
+        console.print("[yellow]Info:[/yellow] Legacy file association not implemented")
+
+
+@archive.command(name='copy')
+@click.argument('archive_id')
+@click.argument('source_location')
+@click.argument('destination_location')
+@click.option('--simulation', help='Simulation ID for context resolution')
+@click.option('--verify-integrity', is_flag=True, default=True, help='Verify file integrity after copy')
+@click.option('--overwrite', is_flag=True, help='Overwrite existing files at destination')
+def copy_archive(archive_id: str, source_location: str, destination_location: str,
+                simulation: Optional[str], verify_integrity: bool, overwrite: bool):
+    """Copy archive to a different location with path resolution"""
+    
+    bridge = _get_archive_bridge()
+    
+    if bridge:
+        console.print(f"🔄 Copying archive [bold]{archive_id}[/bold]")
+        console.print(f"From: {source_location} → To: {destination_location}")
+        
+        if feature_flags.is_enabled(FeatureFlag.USE_NEW_ARCHIVE_SERVICE):
+            console.print("✨ Using new archive service")
+        
+        if simulation:
+            console.print(f"Using simulation context: {simulation}")
+            
+        try:
+            result = bridge.copy_archive(
+                archive_id=archive_id,
+                source_location=source_location,
+                destination_location=destination_location,
+                simulation_id=simulation,
+                verify_integrity=verify_integrity,
+                overwrite_existing=overwrite
+            )
+            
+            if result.get('success', False):
+                destination_path = result.get('destination_path', 'Unknown path')
+                bytes_processed = format_size(result.get('bytes_processed', 0))
+                duration = result.get('duration_seconds', 0)
+                
+                console.print(f"[green]✓[/green] Archive copied successfully")
+                console.print(f"  Destination: {destination_path}")
+                console.print(f"  Size: {bytes_processed}")
+                console.print(f"  Duration: {duration:.1f}s")
+                
+                if result.get('checksum_verified', False):
+                    console.print(f"  [green]✓[/green] Integrity verified")
+                    
+                warnings = result.get('warnings', [])
+                if warnings:
+                    for warning in warnings:
+                        console.print(f"  [yellow]![/yellow] {warning}")
+                        
+            else:
+                error_msg = result.get('error_message', 'Unknown error')
+                console.print(f"[red]Error:[/red] {error_msg}")
+                
+        except Exception as e:
+            console.print(f"[red]Error:[/red] {e}")
+    else:
+        console.print("[red]Error:[/red] Archive copy requires new archive service")
+        console.print("Please enable the feature flag: TELLUS_USE_NEW_ARCHIVE_SERVICE=true")
+
+
+@archive.command(name='move')
+@click.argument('archive_id')
+@click.argument('source_location')
+@click.argument('destination_location')
+@click.option('--simulation', help='Simulation ID for context resolution')
+@click.option('--no-cleanup', is_flag=True, help='Do not cleanup source after move')
+@click.option('--verify-integrity', is_flag=True, default=True, help='Verify file integrity')
+def move_archive(archive_id: str, source_location: str, destination_location: str,
+                simulation: Optional[str], no_cleanup: bool, verify_integrity: bool):
+    """Move archive to a different location with path resolution"""
+    
+    bridge = _get_archive_bridge()
+    
+    if bridge:
+        console.print(f"📦 Moving archive [bold]{archive_id}[/bold]")
+        console.print(f"From: {source_location} → To: {destination_location}")
+        
+        if feature_flags.is_enabled(FeatureFlag.USE_NEW_ARCHIVE_SERVICE):
+            console.print("✨ Using new archive service")
+        
+        if simulation:
+            console.print(f"Using simulation context: {simulation}")
+            
+        if no_cleanup:
+            console.print("[yellow]Warning:[/yellow] Source will not be cleaned up after move")
+            
+        try:
+            result = bridge.move_archive(
+                archive_id=archive_id,
+                source_location=source_location,
+                destination_location=destination_location,
+                simulation_id=simulation,
+                cleanup_source=not no_cleanup,
+                verify_integrity=verify_integrity
+            )
+            
+            if result.get('success', False):
+                destination_path = result.get('destination_path', 'Unknown path')
+                bytes_processed = format_size(result.get('bytes_processed', 0))
+                duration = result.get('duration_seconds', 0)
+                
+                console.print(f"[green]✓[/green] Archive moved successfully")
+                console.print(f"  Destination: {destination_path}")
+                console.print(f"  Size: {bytes_processed}")
+                console.print(f"  Duration: {duration:.1f}s")
+                
+                if result.get('checksum_verified', False):
+                    console.print(f"  [green]✓[/green] Integrity verified")
+                    
+                warnings = result.get('warnings', [])
+                if warnings:
+                    for warning in warnings:
+                        console.print(f"  [green]✓[/green] {warning}")
+                        
+            else:
+                error_msg = result.get('error_message', 'Unknown error')
+                console.print(f"[red]Error:[/red] {error_msg}")
+                
+        except Exception as e:
+            console.print(f"[red]Error:[/red] {e}")
+    else:
+        console.print("[red]Error:[/red] Archive move requires new archive service")
+        console.print("Please enable the feature flag: TELLUS_USE_NEW_ARCHIVE_SERVICE=true")
+
+
+@archive.command(name='extract')
+@click.argument('archive_id')
+@click.argument('destination_location')
+@click.option('--simulation', help='Simulation ID for context resolution')
+@click.option('--content-type', help='Only extract files of this content type')
+@click.option('--pattern', help='Only extract files matching this pattern')
+@click.option('--files', help='Comma-separated list of specific files to extract')
+@click.option('--no-manifest', is_flag=True, help='Do not create extraction manifest')
+@click.option('--overwrite', is_flag=True, help='Overwrite existing files')
+@click.option('--flat', is_flag=True, help='Extract files to flat structure (ignore directories)')
+def extract_archive(archive_id: str, destination_location: str, simulation: Optional[str],
+                   content_type: Optional[str], pattern: Optional[str], files: Optional[str],
+                   no_manifest: bool, overwrite: bool, flat: bool):
+    """Extract archive contents to a location with path resolution"""
+    
+    bridge = _get_archive_bridge()
+    
+    if bridge:
+        console.print(f"📂 Extracting archive [bold]{archive_id}[/bold]")
+        console.print(f"To: {destination_location}")
+        
+        if feature_flags.is_enabled(FeatureFlag.USE_NEW_ARCHIVE_SERVICE):
+            console.print("✨ Using new archive service")
+        
+        if simulation:
+            console.print(f"Using simulation context: {simulation}")
+            
+        # Parse file filters
+        file_filters = None
+        if files:
+            file_filters = [f.strip() for f in files.split(',')]
+            console.print(f"Extracting specific files: {len(file_filters)} files")
+            
+        if content_type:
+            console.print(f"Filtering by content type: {content_type}")
+            
+        if pattern:
+            console.print(f"Filtering by pattern: {pattern}")
+            
+        try:
+            result = bridge.extract_archive_to_location(
+                archive_id=archive_id,
+                destination_location=destination_location,
+                simulation_id=simulation,
+                file_filters=file_filters,
+                content_type_filter=content_type,
+                pattern_filter=pattern,
+                preserve_directory_structure=not flat,
+                overwrite_existing=overwrite,
+                create_manifest=not no_manifest
+            )
+            
+            if result.get('success', False):
+                destination_path = result.get('destination_path', 'Unknown path')
+                files_processed = result.get('files_processed', 0)
+                bytes_processed = format_size(result.get('bytes_processed', 0))
+                duration = result.get('duration_seconds', 0)
+                
+                console.print(f"[green]✓[/green] Archive extracted successfully")
+                console.print(f"  Destination: {destination_path}")
+                console.print(f"  Files: {files_processed}")
+                console.print(f"  Size: {bytes_processed}")
+                console.print(f"  Duration: {duration:.1f}s")
+                
+                if result.get('manifest_created', False):
+                    console.print(f"  [green]✓[/green] Extraction manifest created")
+                    
+                warnings = result.get('warnings', [])
+                if warnings:
+                    for warning in warnings:
+                        console.print(f"  [yellow]![/yellow] {warning}")
+                        
+            else:
+                error_msg = result.get('error_message', 'Unknown error')
+                console.print(f"[red]Error:[/red] {error_msg}")
+                
+        except Exception as e:
+            console.print(f"[red]Error:[/red] {e}")
+    else:
+        console.print("[red]Error:[/red] Archive extraction requires new archive service")
+        console.print("Please enable the feature flag: TELLUS_USE_NEW_ARCHIVE_SERVICE=true")
+
+
+@archive.command(name='resolve-path')
+@click.argument('location_name')
+@click.argument('simulation_id')
+@click.option('--template', help='Custom path template to resolve')
+def resolve_location_path(location_name: str, simulation_id: str, template: Optional[str]):
+    """Resolve location path template with simulation context"""
+    
+    bridge = _get_archive_bridge()
+    
+    if bridge:
+        console.print(f"🔍 Resolving path for location [bold]{location_name}[/bold]")
+        console.print(f"Simulation: {simulation_id}")
+        
+        if template:
+            console.print(f"Template: {template}")
+        
+        if feature_flags.is_enabled(FeatureFlag.USE_NEW_ARCHIVE_SERVICE):
+            console.print("✨ Using new archive service")
+        
+        try:
+            result = bridge.resolve_location_path(
+                location_name=location_name,
+                simulation_id=simulation_id,
+                path_template=template
+            )
+            
+            if result.get('success', False):
+                resolved_path = result.get('resolved_path', 'Failed to resolve')
+                context_vars = result.get('context_variables', {})
+                
+                console.print(f"[green]✓[/green] Path resolved successfully")
+                console.print(f"  Resolved path: [cyan]{resolved_path}[/cyan]")
+                
+                if context_vars:
+                    console.print("  Context variables:")
+                    for key, value in context_vars.items():
+                        console.print(f"    {key}: {value}")
+                        
+            else:
+                errors = result.get('resolution_errors', ['Unknown error'])
+                console.print(f"[red]Error:[/red] Path resolution failed")
+                for error in errors:
+                    console.print(f"  - {error}")
+                    
+        except Exception as e:
+            console.print(f"[red]Error:[/red] {e}")
+    else:
+        console.print("[red]Error:[/red] Path resolution requires new archive service")
+        console.print("Please enable the feature flag: TELLUS_USE_NEW_ARCHIVE_SERVICE=true")
+
+
 # Cache management commands  
 @archive.group()
 def cache():
@@ -480,3 +865,517 @@ def cache_status(detailed: bool):
                 
         except Exception as e:
             console.print(f"[red]Error getting cache status:[/red] {e}")
+
+
+# Archive transfer and extraction commands
+
+@archive.command()
+@click.argument('archive_id')
+@click.argument('source_location')
+@click.argument('destination_location')
+@click.option('--operation', type=click.Choice(['copy', 'move']), default='copy', help='Copy or move the archive')
+@click.option('--simulation', help='Simulation ID for path template resolution')
+@click.option('--overwrite', is_flag=True, help='Overwrite existing files at destination')
+@click.option('--no-verify', is_flag=True, help='Skip integrity verification')
+@click.option('--watch', is_flag=True, help='Watch transfer progress in real-time')
+def transfer(archive_id: str, source_location: str, destination_location: str, 
+             operation: str, simulation: Optional[str], overwrite: bool, no_verify: bool, watch: bool):
+    """Transfer an archive between locations"""
+    
+    bridge = _get_archive_bridge()
+    
+    if not bridge:
+        console.print("[red]Error:[/red] Archive transfer requires new architecture")
+        console.print("Enable with: export TELLUS_USE_NEW_ARCHIVE_SERVICE=true")
+        sys.exit(1)
+    
+    console.print(f"🚛 {operation.title()}ing archive [bold]{archive_id}[/bold]")
+    console.print(f"  From: [blue]{source_location}[/blue]")
+    console.print(f"  To: [green]{destination_location}[/green]")
+    
+    if simulation:
+        console.print(f"  Simulation context: {simulation}")
+    
+    if feature_flags.is_enabled(FeatureFlag.USE_NEW_ARCHIVE_SERVICE):
+        console.print("✨ Using new archive service")
+    
+    try:
+        # Start the transfer
+        result = bridge.transfer_archive(
+            archive_id=archive_id,
+            source_location=source_location,
+            destination_location=destination_location,
+            operation_type=operation,
+            simulation_id=simulation,
+            overwrite=overwrite,
+            verify_integrity=not no_verify
+        )
+        
+        if not result.get('success', False):
+            console.print(f"[red]Error:[/red] {result.get('error_message', 'Unknown error')}")
+            sys.exit(1)
+        
+        operation_id = result['operation_id']
+        console.print(f"Transfer started with ID: [cyan]{operation_id}[/cyan]")
+        
+        # Watch progress if requested
+        if watch:
+            console.print("\nWatching transfer progress (press Ctrl+C to stop watching):")
+            _watch_operation_progress(bridge, operation_id)
+        else:
+            console.print(f"Use '[cyan]tellus archive status {operation_id}[/cyan]' to check progress")
+            
+    except ApplicationError as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+        sys.exit(1)
+
+
+@archive.command()
+@click.argument('archive_id')
+@click.argument('source_location')
+@click.argument('destination_location')
+@click.option('--simulation', help='Simulation ID for path template resolution')
+@click.option('--include', multiple=True, help='Include files matching pattern (can be used multiple times)')
+@click.option('--exclude', multiple=True, help='Exclude files matching pattern (can be used multiple times)')
+@click.option('--content-type', help='Only extract files of this content type')
+@click.option('--overwrite', is_flag=True, help='Overwrite existing files at destination')
+@click.option('--watch', is_flag=True, help='Watch extraction progress in real-time')
+def extract(archive_id: str, source_location: str, destination_location: str,
+            simulation: Optional[str], include: tuple, exclude: tuple, 
+            content_type: Optional[str], overwrite: bool, watch: bool):
+    """Extract an archive to a specific location"""
+    
+    bridge = _get_archive_bridge()
+    
+    if not bridge:
+        console.print("[red]Error:[/red] Archive extraction requires new architecture")
+        console.print("Enable with: export TELLUS_USE_NEW_ARCHIVE_SERVICE=true")
+        sys.exit(1)
+    
+    console.print(f"📦 Extracting archive [bold]{archive_id}[/bold]")
+    console.print(f"  From: [blue]{source_location}[/blue]")
+    console.print(f"  To: [green]{destination_location}[/green]")
+    
+    if simulation:
+        console.print(f"  Simulation context: {simulation}")
+        
+    if include:
+        console.print(f"  Include patterns: {', '.join(include)}")
+        
+    if exclude:
+        console.print(f"  Exclude patterns: {', '.join(exclude)}")
+        
+    if content_type:
+        console.print(f"  Content type filter: {content_type}")
+    
+    if feature_flags.is_enabled(FeatureFlag.USE_NEW_ARCHIVE_SERVICE):
+        console.print("✨ Using new archive service")
+    
+    try:
+        # Start the extraction
+        result = bridge.extract_archive_to_location(
+            archive_id=archive_id,
+            source_location=source_location,
+            destination_location=destination_location,
+            simulation_id=simulation,
+            extract_all=not include and not content_type,  # Extract all if no specific filters
+            include_patterns=list(include),
+            exclude_patterns=list(exclude),
+            overwrite=overwrite
+        )
+        
+        if not result.get('success', False):
+            console.print(f"[red]Error:[/red] {result.get('error_message', 'Unknown error')}")
+            sys.exit(1)
+        
+        operation_id = result['operation_id']
+        console.print(f"Extraction started with ID: [cyan]{operation_id}[/cyan]")
+        
+        # Watch progress if requested
+        if watch:
+            console.print("\nWatching extraction progress (press Ctrl+C to stop watching):")
+            _watch_operation_progress(bridge, operation_id)
+        else:
+            console.print(f"Use '[cyan]tellus archive status {operation_id}[/cyan]' to check progress")
+            
+    except ApplicationError as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+        sys.exit(1)
+
+
+@archive.command()
+@click.argument('operation_id')
+@click.option('--watch', is_flag=True, help='Watch operation progress in real-time')
+def status(operation_id: str, watch: bool):
+    """Check the status of an archive operation"""
+    
+    bridge = _get_archive_bridge()
+    
+    if not bridge:
+        console.print("[red]Error:[/red] Operation status requires new architecture")
+        console.print("Enable with: export TELLUS_USE_NEW_ARCHIVE_SERVICE=true")
+        sys.exit(1)
+    
+    if watch:
+        console.print(f"Watching operation [cyan]{operation_id}[/cyan] (press Ctrl+C to stop):")
+        _watch_operation_progress(bridge, operation_id)
+    else:
+        _show_operation_status(bridge, operation_id)
+
+
+@archive.command(name='bulk-copy')
+@click.argument('destination_location')
+@click.option('--source-location', help='Source location (if different for all archives)')
+@click.option('--archives', help='Comma-separated list of archive IDs')
+@click.option('--simulation', help='Simulation ID to copy archives for (alternative to --archives)')
+@click.option('--simulation-context', help='Simulation ID for path template resolution')
+@click.option('--parallel', type=int, default=3, help='Number of parallel operations')
+@click.option('--continue-on-error', is_flag=True, help='Continue processing other archives on individual failures')
+@click.option('--watch', is_flag=True, help='Watch bulk operation progress')
+def bulk_copy(destination_location: str, source_location: Optional[str], 
+              archives: Optional[str], simulation: Optional[str], 
+              simulation_context: Optional[str], parallel: int, 
+              continue_on_error: bool, watch: bool):
+    """Copy multiple archives to a destination location"""
+    
+    _run_bulk_operation(
+        operation_type="bulk_copy",
+        destination_location=destination_location,
+        source_location=source_location,
+        archives=archives,
+        simulation=simulation,
+        simulation_context=simulation_context,
+        parallel=parallel,
+        continue_on_error=continue_on_error,
+        watch=watch
+    )
+
+
+@archive.command(name='bulk-move')
+@click.argument('destination_location')
+@click.option('--source-location', help='Source location (if different for all archives)')
+@click.option('--archives', help='Comma-separated list of archive IDs')
+@click.option('--simulation', help='Simulation ID to move archives for (alternative to --archives)')
+@click.option('--simulation-context', help='Simulation ID for path template resolution')
+@click.option('--parallel', type=int, default=3, help='Number of parallel operations')
+@click.option('--continue-on-error', is_flag=True, help='Continue processing other archives on individual failures')
+@click.option('--watch', is_flag=True, help='Watch bulk operation progress')
+def bulk_move(destination_location: str, source_location: Optional[str], 
+              archives: Optional[str], simulation: Optional[str], 
+              simulation_context: Optional[str], parallel: int, 
+              continue_on_error: bool, watch: bool):
+    """Move multiple archives to a destination location"""
+    
+    _run_bulk_operation(
+        operation_type="bulk_move",
+        destination_location=destination_location,
+        source_location=source_location,
+        archives=archives,
+        simulation=simulation,
+        simulation_context=simulation_context,
+        parallel=parallel,
+        continue_on_error=continue_on_error,
+        watch=watch
+    )
+
+
+@archive.command(name='bulk-extract')
+@click.argument('destination_location')
+@click.option('--source-location', help='Source location (if different for all archives)')
+@click.option('--archives', help='Comma-separated list of archive IDs')
+@click.option('--simulation', help='Simulation ID to extract archives for (alternative to --archives)')
+@click.option('--simulation-context', help='Simulation ID for path template resolution')
+@click.option('--parallel', type=int, default=3, help='Number of parallel operations')
+@click.option('--continue-on-error', is_flag=True, help='Continue processing other archives on individual failures')
+@click.option('--watch', is_flag=True, help='Watch bulk operation progress')
+def bulk_extract(destination_location: str, source_location: Optional[str], 
+                 archives: Optional[str], simulation: Optional[str], 
+                 simulation_context: Optional[str], parallel: int, 
+                 continue_on_error: bool, watch: bool):
+    """Extract multiple archives to a destination location"""
+    
+    _run_bulk_operation(
+        operation_type="bulk_extract",
+        destination_location=destination_location,
+        source_location=source_location,
+        archives=archives,
+        simulation=simulation,
+        simulation_context=simulation_context,
+        parallel=parallel,
+        continue_on_error=continue_on_error,
+        watch=watch
+    )
+
+
+@archive.command(name='resolve-path')
+@click.argument('location_name')
+@click.argument('simulation_id')
+@click.option('--template', help='Override location path template')
+def resolve_path(location_name: str, simulation_id: str, template: Optional[str]):
+    """Resolve location path template using simulation context"""
+    
+    bridge = _get_archive_bridge()
+    
+    if not bridge:
+        console.print("[red]Error:[/red] Path resolution requires new architecture")
+        console.print("Enable with: export TELLUS_USE_NEW_ARCHIVE_SERVICE=true")
+        sys.exit(1)
+    
+    console.print(f"🔍 Resolving path for location [bold]{location_name}[/bold] with simulation [bold]{simulation_id}[/bold]")
+    
+    if template:
+        console.print(f"Using template override: {template}")
+    
+    if feature_flags.is_enabled(FeatureFlag.USE_NEW_ARCHIVE_SERVICE):
+        console.print("✨ Using new archive service")
+    
+    try:
+        result = bridge.resolve_location_path(
+            location_name=location_name,
+            simulation_id=simulation_id,
+            path_template=template
+        )
+        
+        if not result.get('success', False):
+            console.print(f"[red]Error:[/red] {result.get('error_message', 'Unknown error')}")
+            sys.exit(1)
+        
+        # Create rich panel for resolution results
+        content = f"""[cyan]Original Template:[/cyan] {result['original_template']}
+[cyan]Resolved Path:[/cyan] [green]{result['resolved_path']}[/green]
+[cyan]Simulation Context:[/cyan] {result['simulation_context']}"""
+        
+        if result.get('overrides_applied'):
+            content += f"\n[cyan]Overrides Applied:[/cyan] {result['overrides_applied']}"
+        
+        panel = Panel(content, title=f"Path Resolution: [yellow]{location_name}[/yellow]", border_style="blue")
+        console.print(panel)
+        
+    except ApplicationError as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+        sys.exit(1)
+
+
+# Helper functions for new commands
+
+def _run_bulk_operation(operation_type: str, destination_location: str, 
+                       source_location: Optional[str], archives: Optional[str], 
+                       simulation: Optional[str], simulation_context: Optional[str],
+                       parallel: int, continue_on_error: bool, watch: bool):
+    """Helper function to run bulk operations"""
+    
+    bridge = _get_archive_bridge()
+    
+    if not bridge:
+        console.print(f"[red]Error:[/red] {operation_type.replace('_', ' ').title()} requires new architecture")
+        console.print("Enable with: export TELLUS_USE_NEW_ARCHIVE_SERVICE=true")
+        sys.exit(1)
+    
+    # Determine archive IDs to process
+    archive_ids = []
+    
+    if archives:
+        # Use provided archive list
+        archive_ids = [aid.strip() for aid in archives.split(',')]
+    elif simulation:
+        # Get archives for simulation
+        try:
+            archives_data = bridge.list_archives_for_simulation_legacy_format(simulation, cached_only=False)
+            archive_ids = [arch['archive_id'] for arch in archives_data]
+        except Exception as e:
+            console.print(f"[red]Error getting archives for simulation {simulation}:[/red] {e}")
+            sys.exit(1)
+    else:
+        console.print("[red]Error:[/red] Must specify either --archives or --simulation")
+        sys.exit(1)
+    
+    if not archive_ids:
+        console.print("No archives found to process")
+        return
+    
+    operation_display = operation_type.replace('bulk_', '').replace('_', ' ')
+    console.print(f"🚀 Starting bulk {operation_display} of {len(archive_ids)} archives")
+    console.print(f"  Destination: [green]{destination_location}[/green]")
+    
+    if source_location:
+        console.print(f"  Source: [blue]{source_location}[/blue]")
+    
+    if simulation_context:
+        console.print(f"  Simulation context: {simulation_context}")
+    
+    console.print(f"  Parallel operations: {parallel}")
+    console.print(f"  Continue on error: {continue_on_error}")
+    
+    if feature_flags.is_enabled(FeatureFlag.USE_NEW_ARCHIVE_SERVICE):
+        console.print("✨ Using new archive service")
+    
+    # Show archive list preview
+    console.print(f"\nArchives to process:")
+    for i, aid in enumerate(archive_ids[:5]):  # Show first 5
+        console.print(f"  - {aid}")
+    if len(archive_ids) > 5:
+        console.print(f"  ... and {len(archive_ids) - 5} more")
+    
+    try:
+        # Start the bulk operation
+        result = bridge.start_bulk_operation(
+            operation_type=operation_type,
+            archive_ids=archive_ids,
+            destination_location=destination_location,
+            source_location=source_location,
+            simulation_context=simulation_context,
+            parallel_operations=parallel,
+            continue_on_error=continue_on_error
+        )
+        
+        if not result.get('success', False):
+            console.print(f"[red]Error:[/red] {result.get('error_message', 'Unknown error')}")
+            sys.exit(1)
+        
+        operation_id = result['operation_id']
+        console.print(f"\nBulk operation started with ID: [cyan]{operation_id}[/cyan]")
+        
+        # Watch progress if requested
+        if watch:
+            console.print(f"\nWatching bulk {operation_display} progress (press Ctrl+C to stop watching):")
+            _watch_operation_progress(bridge, operation_id)
+        else:
+            console.print(f"Use '[cyan]tellus archive status {operation_id}[/cyan]' to check progress")
+            
+    except ApplicationError as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+        sys.exit(1)
+
+
+def _show_operation_status(bridge: ArchiveBridge, operation_id: str):
+    """Show current status of an operation"""
+    
+    try:
+        result = bridge.get_operation_progress(operation_id)
+        
+        if not result.get('success', False):
+            console.print(f"[red]Error:[/red] {result.get('error_message', 'Unknown error')}")
+            return
+        
+        # Create rich table for status
+        table = Table(title=f"Operation Status: {operation_id}")
+        table.add_column("Property", style="cyan", no_wrap=True)
+        table.add_column("Value", style="white")
+        
+        # Basic status information
+        status = result.get('status', 'unknown')
+        status_color = {
+            'pending': 'yellow',
+            'running': 'blue', 
+            'completed': 'green',
+            'failed': 'red',
+            'cancelled': 'dim'
+        }.get(status, 'white')
+        
+        table.add_row("Status", f"[{status_color}]{status.title()}[/{status_color}]")
+        table.add_row("Archive ID", result.get('archive_id', 'N/A'))
+        table.add_row("Operation Type", result.get('operation_type', 'N/A'))
+        
+        # Progress information
+        progress = result.get('progress_percentage', 0)
+        table.add_row("Progress", f"{progress:.1f}%")
+        table.add_row("Current Step", result.get('current_step', 'N/A'))
+        table.add_row("Steps", f"{result.get('completed_steps', 0)}/{result.get('total_steps', 0)}")
+        
+        # Timing information
+        if result.get('start_time'):
+            table.add_row("Started", result['start_time'])
+        if result.get('last_update'):
+            table.add_row("Last Update", result['last_update'])
+        
+        # Performance information
+        if result.get('files_processed'):
+            table.add_row("Files Processed", str(result['files_processed']))
+        if result.get('bytes_processed'):
+            table.add_row("Data Processed", format_size(result['bytes_processed']))
+        if result.get('processing_rate_mbps'):
+            table.add_row("Rate", f"{result['processing_rate_mbps']:.1f} MB/s")
+        
+        # Error information
+        if result.get('errors_encountered'):
+            table.add_row("Errors", f"[red]{result['errors_encountered']}[/red]")
+        if result.get('last_error'):
+            table.add_row("Last Error", f"[red]{result['last_error']}[/red]")
+        
+        console.print(table)
+        
+        # Show estimation
+        if result.get('estimated_completion'):
+            console.print(f"\n[dim]Estimated completion: {result['estimated_completion']}[/dim]")
+        
+    except Exception as e:
+        console.print(f"[red]Error getting operation status:[/red] {e}")
+
+
+def _watch_operation_progress(bridge: ArchiveBridge, operation_id: str):
+    """Watch operation progress in real-time"""
+    import time
+    from rich.live import Live
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+    
+    try:
+        with Live(refresh_per_second=2) as live:
+            while True:
+                try:
+                    result = bridge.get_operation_progress(operation_id)
+                    
+                    if not result.get('success', False):
+                        live.update(f"[red]Error:[/red] {result.get('error_message', 'Unknown error')}")
+                        break
+                    
+                    status = result.get('status', 'unknown')
+                    progress_pct = result.get('progress_percentage', 0)
+                    current_step = result.get('current_step', 'Working...')
+                    
+                    # Create progress display
+                    progress = Progress(
+                        SpinnerColumn(),
+                        TextColumn("[progress.description]{task.description}"),
+                        BarColumn(),
+                        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                        TimeElapsedColumn(),
+                    )
+                    
+                    task = progress.add_task(current_step, total=100, completed=progress_pct)
+                    
+                    # Add status information
+                    status_colors = {'pending': 'yellow', 'running': 'blue', 'completed': 'green', 'failed': 'red'}
+                    status_color = status_colors.get(status, 'white')
+                    status_text = f"Status: [{status_color}]{status.title()}[/]"
+                    
+                    if result.get('current_file'):
+                        status_text += f"\nCurrent file: {result['current_file']}"
+                    
+                    if result.get('processing_rate_mbps'):
+                        status_text += f"\nRate: {result['processing_rate_mbps']:.1f} MB/s"
+                    
+                    # Update display
+                    live.update(Panel(progress, title=status_text, border_style="blue"))
+                    
+                    # Check if operation is complete
+                    if status in ('completed', 'failed', 'cancelled'):
+                        if status == 'completed':
+                            live.update(f"[green]✓[/green] Operation completed successfully!")
+                        elif status == 'failed':
+                            error_msg = result.get('last_error', 'Unknown error')
+                            live.update(f"[red]✗[/red] Operation failed: {error_msg}")
+                        else:
+                            live.update(f"[yellow]![/yellow] Operation was cancelled")
+                        break
+                    
+                    time.sleep(2)
+                    
+                except KeyboardInterrupt:
+                    live.update("Stopped watching (operation continues in background)")
+                    break
+                except Exception as e:
+                    live.update(f"[red]Error watching progress:[/red] {e}")
+                    break
+                    
+    except Exception as e:
+        console.print(f"[red]Error setting up progress watch:[/red] {e}")
