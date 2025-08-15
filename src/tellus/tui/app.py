@@ -67,6 +67,7 @@ class TellusTUIApp(App):
         Binding("d", "delete_item", "Delete"),
         Binding("y", "yank_item", "Yank"),
         Binding("p", "paste_item", "Paste"),
+        Binding("t", "test_location", "Test Location"),
         
         # View modes
         Binding("1", "show_simulations", "Simulations"),
@@ -154,7 +155,7 @@ class TellusTUIApp(App):
                     yield Static("Files", classes="panel-header")
                     yield DataTable(id="file-browser", cursor_type="row")
                     with Horizontal(classes="panel-actions"):
-                        yield Static("Enter:Select Space:Preview c:Copy m:Move x:Extract", classes="panel-help")
+                        yield Static("Enter:Select Space:Preview c:Copy m:Move x:Extract t:Test", classes="panel-help")
                 
                 # Right Panel: Preview/Details
                 with Vertical(id="right-panel", classes="panel"):
@@ -504,6 +505,56 @@ class TellusTUIApp(App):
         """Create new location."""
         self.push_screen(LocationManagerScreen())
     
+    def action_test_location(self) -> None:
+        """Test connection to selected location."""
+        if self.selected_location:
+            self._test_location_connection(self.selected_location)
+        else:
+            self._update_status("No location selected for testing", error=True)
+    
+    def _test_location_connection(self, location_name: str) -> None:
+        """Test connection to a specific location."""
+        try:
+            self._update_status(f"Testing connection to {location_name}...")
+            
+            from ..location.location import Location
+            
+            # Get location object
+            location = None
+            locations = Location.list_locations()
+            for loc in locations:
+                if loc.name == location_name:
+                    location = loc
+                    break
+            
+            if not location:
+                self._update_status(f"Location '{location_name}' not found", error=True)
+                return
+            
+            # Test filesystem access
+            try:
+                fs = location.fs
+                if fs:
+                    # Try to list the base directory
+                    base_path = getattr(location, 'path', '/')
+                    if hasattr(fs, 'ls'):
+                        fs.ls(base_path, detail=False)
+                        self._update_status(f"✓ Connection to {location_name} successful")
+                    elif hasattr(fs, 'exists'):
+                        if fs.exists(base_path):
+                            self._update_status(f"✓ Connection to {location_name} successful")
+                        else:
+                            self._update_status(f"⚠ Connected to {location_name} but path {base_path} not accessible")
+                    else:
+                        self._update_status(f"✓ Filesystem created for {location_name}")
+                else:
+                    self._update_status(f"✗ Cannot create filesystem for {location_name}", error=True)
+            except Exception as e:
+                self._update_status(f"✗ Connection test failed: {str(e)}", error=True)
+                
+        except Exception as e:
+            self._update_status(f"Error testing location: {str(e)}", error=True)
+    
     # Helper methods for vim-like navigation
     def _update_panel_focus(self) -> None:
         """Update visual focus indicators for panels."""
@@ -637,6 +688,28 @@ class TellusTUIApp(App):
         file_browser = self.query_one("#file-browser", DataTable)
         # Get selected row and update details
         self._update_details_view()
+        
+        # Optional: perform file-specific actions
+        try:
+            if file_browser.cursor_row is not None and hasattr(file_browser, 'get_row'):
+                row_data = file_browser.get_row(file_browser.cursor_row)
+                if row_data and len(row_data) > 0:
+                    file_path = row_data[0]
+                    self._update_status(f"Selected file: {file_path}")
+        except Exception:
+            pass  # Ignore errors in optional status update
+    
+    @on(DataTable.RowHighlighted, "#file-browser")
+    def on_file_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        """Handle file browser row highlighting (cursor movement)."""
+        # Update details view when cursor moves
+        self._update_details_view()
+    
+    @on(Tree.NodeHighlighted, "#nav-tree")  
+    def on_nav_highlighted(self, event: Tree.NodeHighlighted) -> None:
+        """Handle navigation tree highlighting (cursor movement)."""
+        # Update details view when nav cursor moves
+        self._update_details_view()
     
     def _load_simulation_files(self, simulation_id: str) -> None:
         """Load files for a simulation."""
@@ -647,19 +720,84 @@ class TellusTUIApp(App):
         file_browser.clear(columns=True)
         file_browser.add_columns("Path", "Size", "Type", "Archive", "Location")
         
-        # Load simulation files (placeholder data for now)
-        if simulation_id in self.simulation_files_data:
-            files = self.simulation_files_data[simulation_id]
-            for file_info in files:
-                file_browser.add_row(
-                    file_info.get('path', ''),
-                    file_info.get('size', ''),
-                    file_info.get('type', ''),
-                    file_info.get('archive', ''),
-                    file_info.get('location', '')
-                )
-        else:
-            file_browser.add_row("No files found", "", "", "", "")
+        try:
+            # Load real simulation file data
+            from ..simulation.simulation import Simulation
+            
+            # Get simulation object
+            simulation = Simulation.get_simulation(simulation_id)
+            if not simulation:
+                file_browser.add_row(f"Simulation '{simulation_id}' not found", "", "", "", "")
+                return
+            
+            files_added = 0
+            
+            # Load files from simulation's file registry if available
+            if hasattr(simulation, '_file_registry') and simulation._file_registry:
+                for file_path, file_obj in simulation._file_registry.files.items():
+                    # Get file information
+                    size_str = self._format_size(getattr(file_obj, 'size', 0)) if hasattr(file_obj, 'size') else "Unknown"
+                    file_type = getattr(file_obj, 'content_type', 'Unknown') if hasattr(file_obj, 'content_type') else "Unknown"
+                    archive_name = getattr(file_obj, 'archive_id', 'None') if hasattr(file_obj, 'archive_id') else "None"
+                    location_name = getattr(file_obj, 'location', 'Unknown') if hasattr(file_obj, 'location') else "Unknown"
+                    
+                    file_browser.add_row(
+                        file_path,
+                        size_str,
+                        str(file_type),
+                        archive_name,
+                        location_name
+                    )
+                    files_added += 1
+            
+            # Load files from archives associated with this simulation
+            if hasattr(simulation, '_archive_registry') and simulation._archive_registry.archives:
+                for archive_name, archive in simulation._archive_registry.archives.items():
+                    try:
+                        # Try to get archive files via bridge if available
+                        if self.archive_bridge:
+                            files_result = self.archive_bridge.list_archive_files(archive.archive_id)
+                            if files_result.get('success', False):
+                                archive_files = files_result.get('files', [])
+                                for file_info in archive_files:
+                                    file_browser.add_row(
+                                        file_info.get('relative_path', ''),
+                                        self._format_size(file_info.get('size', 0)),
+                                        file_info.get('content_type', 'Unknown'),
+                                        archive_name,
+                                        archive.location if hasattr(archive, 'location') else 'Unknown'
+                                    )
+                                    files_added += 1
+                        else:
+                            # Fallback: add archive entry
+                            archive_status = archive.status() if hasattr(archive, 'status') else {}
+                            file_browser.add_row(
+                                f"{archive_name} (archive)",
+                                self._format_size(archive_status.get('size', 0)),
+                                "Archive",
+                                archive_name,
+                                archive_status.get('location', 'Unknown')
+                            )
+                            files_added += 1
+                    except Exception as e:
+                        # Add error row for this archive
+                        file_browser.add_row(
+                            f"{archive_name} (error loading)",
+                            "",
+                            "Error",
+                            archive_name,
+                            str(e)[:30] + "..." if len(str(e)) > 30 else str(e)
+                        )
+                        files_added += 1
+            
+            if files_added == 0:
+                file_browser.add_row("No files found", "", "", "", "")
+            else:
+                self._update_status(f"Loaded {files_added} files for simulation {simulation_id}")
+                
+        except Exception as e:
+            file_browser.add_row(f"Error loading simulation: {str(e)}", "", "", "", "")
+            self._update_status(f"Error loading simulation files: {str(e)}", error=True)
     
     def _load_archive_files(self, archive_id: str) -> None:
         """Load files for an archive."""
@@ -696,22 +834,83 @@ class TellusTUIApp(App):
         
         # Clear and set up columns for location info
         file_browser.clear(columns=True)
-        file_browser.add_columns("Property", "Value")
+        file_browser.add_columns("Property", "Value", "Details")
         
-        # Find location data
-        location_data = None
-        for loc in self.locations_data:
-            if loc.get('name') == location_name:
-                location_data = loc
-                break
-        
-        if location_data:
-            file_browser.add_row("Protocol", location_data.get('protocol', 'Unknown'))
-            file_browser.add_row("Path", location_data.get('path', 'Unknown'))
-            file_browser.add_row("Kinds", ', '.join(location_data.get('kinds', [])))
-            file_browser.add_row("Optional", str(location_data.get('optional', False)))
-        else:
-            file_browser.add_row("Error", "Location not found")
+        try:
+            # Load real location data
+            from ..location.location import Location
+            
+            # Get location object
+            try:
+                location = Location.from_name(location_name)
+            except:
+                # Fallback: find from location list
+                location = None
+                locations = Location.list_locations()
+                for loc in locations:
+                    if loc.name == location_name:
+                        location = loc
+                        break
+            
+            if location:
+                # Add basic information
+                file_browser.add_row("Name", location.name, "Location identifier")
+                file_browser.add_row("Protocol", getattr(location, 'protocol', 'file'), "Access protocol")
+                
+                # Add configuration details
+                if hasattr(location, 'config') and location.config:
+                    file_browser.add_row("Host", location.config.get('host', 'localhost'), "Server hostname")
+                    file_browser.add_row("Path", location.config.get('path', '/'), "Base path")
+                    file_browser.add_row("Port", str(location.config.get('port', 'default')), "Connection port")
+                    
+                    # Add authentication info (safely)
+                    if location.config.get('username'):
+                        file_browser.add_row("Username", location.config.get('username'), "Authentication user")
+                    
+                    # Add other config options
+                    for key, value in location.config.items():
+                        if key not in ['host', 'path', 'port', 'username', 'password', 'key']:
+                            file_browser.add_row(f"Config: {key}", str(value), "Configuration option")
+                
+                # Add location kinds
+                if hasattr(location, 'kinds') and location.kinds:
+                    kinds_str = ', '.join([k.name if hasattr(k, 'name') else str(k) for k in location.kinds])
+                    file_browser.add_row("Kinds", kinds_str, "Storage types")
+                
+                # Add path prefix if available
+                if hasattr(location, 'path_prefix') and location.path_prefix:
+                    file_browser.add_row("Path Template", location.path_prefix, "Path template for simulations")
+                
+                # Add connection status
+                try:
+                    # Try to check if filesystem is accessible
+                    fs = location.fs
+                    if fs:
+                        file_browser.add_row("Filesystem", "Available", "Filesystem access ready")
+                        
+                        # Try to check if base path exists
+                        base_path = getattr(location, 'path', '/')
+                        if hasattr(fs, 'exists') and fs.exists(base_path):
+                            file_browser.add_row("Base Path Status", "Exists", f"Path {base_path} is accessible")
+                        else:
+                            file_browser.add_row("Base Path Status", "Not accessible", f"Cannot access {base_path}")
+                    else:
+                        file_browser.add_row("Filesystem", "Not available", "Cannot create filesystem connection")
+                except Exception as e:
+                    file_browser.add_row("Connection Error", str(e)[:50], "Filesystem connection failed")
+                
+                # Add usage stats if available
+                file_browser.add_row("Optional", str(getattr(location, 'optional', False)), "Required for operations")
+                
+                self._update_status(f"Loaded location info for {location_name}")
+                
+            else:
+                file_browser.add_row("Error", "Location not found", f"No location named '{location_name}'")
+                file_browser.add_row("Available", f"{len(self.locations_data)} locations", "Use 'l' key to navigate")
+                
+        except Exception as e:
+            file_browser.add_row("Error", f"Failed to load location: {str(e)}", "Exception occurred")
+            self._update_status(f"Error loading location info: {str(e)}", error=True)
     
     def _update_details_view(self) -> None:
         """Update the details panel with current selection."""
@@ -719,10 +918,98 @@ class TellusTUIApp(App):
         
         if self.current_panel == "left":
             # Show details about selected nav item
-            details_placeholder.update("Navigation item details would appear here")
+            nav_tree = self.query_one("#nav-tree", Tree)
+            if nav_tree.cursor_node:
+                node_label = str(nav_tree.cursor_node.label)
+                if "📊" in node_label:  # Simulation
+                    sim_id = node_label.replace("📊 ", "")
+                    details_placeholder.update(f"""[bold]Simulation Details[/bold]
+
+ID: {sim_id}
+Type: Earth System Model Simulation
+Status: Active
+
+Files: Check center panel for file listing
+Archives: Available in simulation registry
+Locations: Various storage locations
+
+Press [cyan]Enter[/cyan] to load files in center panel""")
+                elif "📦" in node_label:  # Archive
+                    archive_id = node_label.replace("📦 ", "")
+                    details_placeholder.update(f"""[bold]Archive Details[/bold]
+
+ID: {archive_id}
+Type: Compressed Archive
+Format: TAR/GZ
+
+Contains simulation data files
+Press [cyan]Enter[/cyan] to browse files""")
+                elif "🌐" in node_label:  # Location
+                    location_name = node_label.replace("🌐 ", "")
+                    details_placeholder.update(f"""[bold]Location Details[/bold]
+
+Name: {location_name}
+Type: Storage Location
+
+Configuration and properties shown in center panel
+Press [cyan]Enter[/cyan] to view details""")
+                else:
+                    details_placeholder.update("Navigation item details")
+            else:
+                details_placeholder.update("Select a navigation item")
         elif self.current_panel == "center":
             # Show details about selected file
-            details_placeholder.update("File details would appear here")
+            file_browser = self.query_one("#file-browser", DataTable)
+            try:
+                if file_browser.cursor_row is not None:
+                    # Get the current row data
+                    row_key = file_browser.cursor_row
+                    if hasattr(file_browser, 'get_row'):
+                        row_data = file_browser.get_row(row_key)
+                        if len(row_data) >= 5:  # Simulation file format
+                            path, size, file_type, archive, location = row_data[:5]
+                            details_placeholder.update(f"""[bold]File Details[/bold]
+
+Path: {path}
+Size: {size}
+Type: {file_type}
+Archive: {archive}
+Location: {location}
+
+[dim]This file belongs to simulation:[/dim] {self.current_simulation}
+
+Operations available:
+• [cyan]c[/cyan] - Copy file
+• [cyan]x[/cyan] - Extract from archive
+• [cyan]d[/cyan] - Download to local""")
+                        elif len(row_data) >= 4:  # Archive file format
+                            path, size, file_type, role = row_data[:4]
+                            details_placeholder.update(f"""[bold]Archive File Details[/bold]
+
+Path: {path}
+Size: {size}
+Type: {file_type}
+Role: {role}
+
+[dim]From archive:[/dim] {self.selected_archive}
+
+Operations available:
+• [cyan]x[/cyan] - Extract this file
+• [cyan]d[/cyan] - Download to local
+• [cyan]Space[/cyan] - Preview content""")
+                        else:
+                            details_placeholder.update(f"""[bold]Selected Item[/bold]
+
+{row_data[0] if row_data else 'Unknown'}
+
+Use arrow keys to navigate
+Press [cyan]Enter[/cyan] to select""")
+                    else:
+                        details_placeholder.update("File selected - details unavailable")
+                else:
+                    details_placeholder.update("Select a file to view details")
+            except Exception as e:
+                details_placeholder.update(f"Error loading file details: {str(e)}")
         else:
             details_placeholder.update("Select an item to view details")
     
