@@ -521,6 +521,46 @@ class LocationApplicationService:
         else:
             raise ConfigurationError(protocol, f"Unsupported protocol for filesystem access: {protocol}")
     
+    def _create_unsandboxed_filesystem(self, location: LocationEntity):
+        """Create unsandboxed filesystem access for tab completion (allows browsing entire remote filesystem)."""
+        protocol = location.get_protocol()
+        storage_options = location.get_storage_options()
+        
+        if protocol in ("file", "local"):
+            # Local filesystem - no sandboxing needed for tab completion
+            import fsspec
+            return fsspec.filesystem('file')
+            
+        elif protocol in ('ssh', 'sftp'):
+            # SSH filesystem without sandboxing
+            import fsspec
+            
+            host = storage_options.get("host", "localhost")
+            ssh_config = {
+                'host': host,
+                'timeout': 30  # Default timeout
+            }
+            
+            # Add optional SSH configuration
+            for key in ['username', 'password', 'key_filename', 'port']:
+                if key in storage_options:
+                    ssh_config[key] = storage_options[key]
+            
+            return fsspec.filesystem('ssh', **ssh_config)
+            
+        elif protocol == 'scoutfs':
+            # ScoutFS filesystem without sandboxing
+            from ...infrastructure.adapters.scoutfs_filesystem import ScoutFSFileSystem
+            
+            host = storage_options.get("host", "localhost")
+            scoutfs_config = {k: v for k, v in storage_options.items() if k != 'host'}
+            scoutfs_config['timeout'] = 30  # Default timeout
+            
+            return ScoutFSFileSystem(host=host, **scoutfs_config)
+            
+        else:
+            raise ConfigurationError(protocol, f"Unsupported protocol for filesystem access: {protocol}")
+    
     def _entity_to_dto(self, location: LocationEntity) -> LocationDto:
         """Convert domain entity to DTO."""
         return LocationDto(

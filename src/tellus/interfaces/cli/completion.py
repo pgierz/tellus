@@ -154,10 +154,10 @@ class LocationPathCompleter(Completer):
     def _get_filesystem(self):
         """Get or create filesystem for the location."""
         if self._fs is None:
-            # Create filesystem through application service (clean architecture)
+            # Create unsandboxed filesystem for tab completion (allows browsing entire remote filesystem)
             service_container = get_service_container()
             location_service = service_container.service_factory.location_service
-            self._fs = location_service._create_location_filesystem(self.location)
+            self._fs = location_service._create_unsandboxed_filesystem(self.location)
         return self._fs
 
 
