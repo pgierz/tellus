@@ -63,25 +63,59 @@ def list_archives():
 
 @archive.command(name="create")
 @click.argument("archive_id")
-@click.argument("source_path", type=click.Path(exists=True))
-@click.option("--location", required=True, help="Storage location name")
+@click.argument("source_path")
+@click.option("--location", help="Storage location name (for local files)")
 @click.option("--simulation", help="Associated simulation ID")
 @click.option("--type", "archive_type", default="compressed", help="Archive type (compressed, uncompressed)")
-def create_archive(archive_id: str, source_path: str, location: str, simulation: str = None, archive_type: str = "compressed"):
-    """Create a new archive."""
+def create_archive(archive_id: str, source_path: str, location: str = None, simulation: str = None, archive_type: str = "compressed"):
+    """Create a new archive.
+    
+    Examples:
+        tellus archive create my_archive.tgz /local/path --location remote_location
+        tellus archive create my_archive.tgz location_name:/remote/path
+    """
     import asyncio
+    import os
+    
+    # Parse source_path to detect location:path format (scp/rsync style)
+    if ':' in source_path and not os.path.exists(source_path):
+        # Assume it's location:path format
+        parsed_location, parsed_path = source_path.split(':', 1)
+        remote_mode = True
+        actual_location = parsed_location
+        actual_source_path = parsed_path
+        
+        if location:
+            console.print("[yellow]Warning:[/yellow] --location option ignored when using location:path format")
+            
+    else:
+        # Local file mode
+        remote_mode = False
+        actual_location = location
+        actual_source_path = source_path
+        
+        if not location:
+            console.print("[red]Error:[/red] --location is required when source_path is a local file")
+            return
+            
+        if not os.path.exists(source_path):
+            console.print(f"[red]Error:[/red] Local source path '{source_path}' does not exist")
+            return
     
     async def _create_archive():
         try:
             service = _get_archive_service()
             
-            console.print(f"🗜️  Creating archive [cyan]{archive_id}[/cyan] from [blue]{source_path}[/blue]...")
+            if remote_mode:
+                console.print(f"🗜️  Registering archive [cyan]{archive_id}[/cyan] from remote file [blue]{actual_location}:{actual_source_path}[/blue]...")
+            else:
+                console.print(f"🗜️  Creating archive [cyan]{archive_id}[/cyan] from local file [blue]{actual_source_path}[/blue]...")
             
             dto = CreateArchiveDto(
                 archive_id=archive_id,
-                location_name=location,
+                location_name=actual_location,
                 archive_type=archive_type,
-                source_path=source_path,
+                source_path=actual_source_path,
                 simulation_id=simulation
             )
             
