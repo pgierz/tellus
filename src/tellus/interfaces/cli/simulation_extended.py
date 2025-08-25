@@ -239,7 +239,7 @@ def ls_location(sim_id: str, location_name: str, path: str = ".",
         
         location = None
         try:
-            location = location_service.get_location(location_name)
+            location = location_service.get_location_filesystem(location_name)
         except Exception as e:
             console.print(f"[yellow]Warning:[/yellow] Location '{location_name}' not found in registry: {str(e)}")
             console.print(f"[yellow]Note:[/yellow] This appears to be a simulation-specific location context only.")
@@ -262,13 +262,19 @@ def ls_location(sim_id: str, location_name: str, path: str = ".",
         else:
             resolved_path = path
         
-        console.print(f"[dim]Listing: {location_name}:{resolved_path}[/dim]")
+        # Show full path context if we have location information
+        if location is not None and hasattr(location, 'get_base_path'):
+            base_path = location.get_base_path() or "/"
+            full_path = f"{base_path.rstrip('/')}/{resolved_path.lstrip('/')}" if resolved_path else base_path
+            console.print(f"[dim]Listing: {location_name}:{full_path}[/dim]")
+        else:
+            console.print(f"[dim]Listing: {location_name}:{resolved_path}[/dim]")
         
         # Try to get actual filesystem access
         if location is not None:
             try:
-                # Attempt to create filesystem from location config
-                fs = _get_filesystem_for_location(location)
+                # Use the clean architecture approach like location test does
+                fs = location_service._create_location_filesystem(location)
                 _perform_real_listing(fs, resolved_path, long, all, human_readable, 
                                     time, size, reverse, recursive, color)
             except Exception as e:
@@ -573,7 +579,12 @@ def _show_long_format(entries, human_readable: bool, use_color: bool):
         # Modification time
         mtime = entry.get('mtime', 0)
         if mtime:
-            mod_time = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
+            if isinstance(mtime, datetime):
+                # Already a datetime object
+                mod_time = mtime.strftime("%Y-%m-%d %H:%M")
+            else:
+                # Assume it's a timestamp
+                mod_time = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
         else:
             mod_time = "-"
         
