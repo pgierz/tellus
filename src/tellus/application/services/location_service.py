@@ -464,10 +464,11 @@ class LocationApplicationService:
             raise
     
     def get_location_filesystem(self, name: str):
-        """Get filesystem access for a location (for completion, browsing, etc.)."""
+        """Get location object for filesystem access (for completion, browsing, etc.)."""
         try:
             location = self._location_repo.get_by_name(name)
-            return self._create_location_filesystem(location)
+            # Return the location entity itself - the SmartPathCompleter expects a Location with .config
+            return location
         except LocationNotFoundError as e:
             raise EntityNotFoundError("Location", e.name)
     

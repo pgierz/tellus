@@ -5,6 +5,8 @@ from typing import List, Optional, Set
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.document import Document
 
+from ...application.container import get_service_container
+
 
 class LocationPathCompleter(Completer):
     """Path completer that works with Location filesystems (local, SSH, etc.)."""
@@ -13,7 +15,7 @@ class LocationPathCompleter(Completer):
         """Initialize completer for a specific Location.
         
         Args:
-            location: A Tellus Location instance
+            location: A Tellus LocationEntity (domain entity)
             only_directories: Only complete directories, not files
             expanduser: Expand ~ to user home directory
         """
@@ -21,6 +23,7 @@ class LocationPathCompleter(Completer):
         self.only_directories = only_directories
         self.expanduser = expanduser
         self._cache: dict = {}  # Cache for remote filesystem calls
+        self._fs = None  # Cached filesystem
         
     def get_completions(self, document: Document, complete_event) -> List[Completion]:
         """Get path completions for the current input."""
@@ -57,8 +60,8 @@ class LocationPathCompleter(Completer):
     def _complete_from_path(self, directory: str, prefix: str = "") -> List[Completion]:
         """Get completions from a specific directory."""
         try:
-            # Use location's filesystem to list directory
-            fs = self.location.fs
+            # Get or create filesystem for the location
+            fs = self._get_filesystem()
             
             # Cache key for this directory
             cache_key = f"{self.location.name}:{directory}"
@@ -147,6 +150,15 @@ class LocationPathCompleter(Completer):
         except Exception:
             # Any error in listing - return empty
             return []
+    
+    def _get_filesystem(self):
+        """Get or create filesystem for the location."""
+        if self._fs is None:
+            # Create filesystem through application service (clean architecture)
+            service_container = get_service_container()
+            location_service = service_container.service_factory.location_service
+            self._fs = location_service._create_location_filesystem(self.location)
+        return self._fs
 
 
 class SmartPathCompleter(Completer):
