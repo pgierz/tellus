@@ -164,13 +164,47 @@ def show_archive(archive_id: str):
 
 
 @archive.command(name="files")
-@click.argument("archive_id")
+@click.argument("archive_id", required=False)
 @click.option("--content-type", help="Filter by content type")
 @click.option("--pattern", help="Filter by filename pattern")
-def list_files(archive_id: str, content_type: str = None, pattern: str = None):
-    """List files in an archive."""
+def list_files(archive_id: str = None, content_type: str = None, pattern: str = None):
+    """List files in an archive.
+    
+    If no archive_id is provided, launches an interactive archive selection.
+    """
     try:
         service = _get_archive_service()
+        
+        # If no archive_id provided, launch interactive selection
+        if not archive_id:
+            import questionary
+            
+            # Get all archives for selection
+            archives_result = service.list_archives()
+            if not archives_result.archives:
+                console.print("[yellow]No archives found[/yellow]")
+                return
+                
+            archive_choices = [f"{archive.archive_id} (location: {archive.location})" 
+                             for archive in archives_result.archives]
+            
+            selected = questionary.select(
+                "Select archive to list files:",
+                choices=archive_choices,
+                style=questionary.Style([
+                    ('question', 'bold'),
+                    ('selected', 'fg:#cc5454'),
+                    ('pointer', 'fg:#ff0066 bold'),
+                ])
+            ).ask()
+            
+            if not selected:
+                console.print("[yellow]No archive selected[/yellow]")
+                return
+                
+            # Extract archive_id from selection
+            archive_id = selected.split(" (location:")[0]
+        
         files = service.list_archive_files(
             archive_id=archive_id,
             content_type=content_type,
