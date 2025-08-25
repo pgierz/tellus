@@ -865,6 +865,61 @@ class ArchiveApplicationService:
 
         return self._metadata_to_dto(metadata)
 
+    def update_archive(self, archive_id: str, update_dto: UpdateArchiveDto) -> bool:
+        """
+        Update archive metadata.
+        
+        Args:
+            archive_id: The ID of the archive to update
+            update_dto: DTO containing updated metadata fields
+            
+        Returns:
+            True if update was successful, False otherwise
+            
+        Raises:
+            EntityNotFoundError: If archive not found
+            ValidationError: If update data is invalid
+        """
+        self._logger.debug(f"Updating archive metadata: {archive_id}")
+        
+        try:
+            # Get existing archive metadata
+            metadata = self._archive_repo.get_by_id(archive_id)
+            if metadata is None:
+                raise EntityNotFoundError("Archive", archive_id)
+            
+            # Update only non-None fields from the DTO
+            updated = False
+            
+            if update_dto.simulation_date is not None:
+                metadata.simulation_date = update_dto.simulation_date
+                updated = True
+                
+            if update_dto.version is not None:
+                metadata.version = update_dto.version
+                updated = True
+                
+            if update_dto.description is not None:
+                metadata.description = update_dto.description
+                updated = True
+                
+            if update_dto.tags is not None:
+                metadata.tags = set(update_dto.tags)  # Convert to set
+                updated = True
+            
+            # Save updated metadata if any changes were made
+            if updated:
+                self._archive_repo.save(metadata)
+                self._logger.info(f"Successfully updated archive metadata: {archive_id}")
+                return True
+            else:
+                self._logger.debug(f"No changes to update for archive: {archive_id}")
+                return False
+                
+        except Exception as e:
+            self._logger.error(f"Failed to update archive {archive_id}: {str(e)}")
+            raise
+
     def list_archives(
         self,
         location_name: Optional[str] = None,
