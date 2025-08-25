@@ -41,13 +41,38 @@ class SimulationApplicationService:
         self,
         simulation_repository: ISimulationRepository,
         location_repository: ILocationRepository
-    ):
+    ) -> None:
         """
-        Initialize the simulation service.
+        Initialize the simulation application service.
         
-        Args:
-            simulation_repository: Repository for simulation persistence
-            location_repository: Repository for location data access
+        Sets up the service with required repositories for data persistence
+        and business logic orchestration.
+        
+        Parameters
+        ----------
+        simulation_repository : ISimulationRepository
+            Repository interface for simulation entity persistence operations.
+            Must implement create, read, update, delete operations.
+        location_repository : ILocationRepository
+            Repository interface for location entity data access.
+            Used to validate location associations.
+            
+        Examples
+        --------
+        >>> from tellus.infrastructure.repositories import JsonSimulationRepository
+        >>> from tellus.infrastructure.repositories import JsonLocationRepository
+        >>> sim_repo = JsonSimulationRepository("/tmp/simulations.json")
+        >>> loc_repo = JsonLocationRepository("/tmp/locations.json")
+        >>> service = SimulationApplicationService(sim_repo, loc_repo)
+        >>> service._simulation_repo is not None
+        True
+        >>> service._location_repo is not None
+        True
+        
+        See Also
+        --------
+        create_simulation : Create a new simulation
+        get_simulation : Retrieve simulation by ID
         """
         self._simulation_repo = simulation_repository
         self._location_repo = location_repository
@@ -55,17 +80,64 @@ class SimulationApplicationService:
     
     def create_simulation(self, dto: CreateSimulationDto) -> SimulationDto:
         """
-        Create a new simulation.
+        Create a new simulation with metadata and configuration.
         
-        Args:
-            dto: Data transfer object with simulation creation data
+        This method validates the input data, creates a simulation entity,
+        and persists it to the repository. It handles conflicts with existing
+        simulation IDs and enforces business rules.
+        
+        Parameters
+        ----------
+        dto : CreateSimulationDto
+            Data transfer object containing simulation ID, model information,
+            path configuration, and metadata attributes. The simulation_id
+            must be unique across all simulations.
             
-        Returns:
-            Created simulation DTO
+        Returns
+        -------
+        SimulationDto
+            Complete simulation data including generated UID, timestamps,
+            and all provided metadata.
             
-        Raises:
-            EntityAlreadyExistsError: If simulation already exists
-            ValidationError: If validation fails
+        Raises
+        ------
+        EntityAlreadyExistsError
+            If a simulation with the same simulation_id already exists
+            in the repository.
+        ValidationError
+            If the DTO contains invalid data, missing required fields,
+            or violates domain constraints.
+        RepositoryError
+            If there's an error persisting the simulation to storage.
+            
+        Examples
+        --------
+        >>> from tellus.application.dtos import CreateSimulationDto
+        >>> dto = CreateSimulationDto(
+        ...     simulation_id="climate-run-001",
+        ...     model_id="CESM2",
+        ...     attrs={"experiment": "historical", "years": "1850-2014"}
+        ... )
+        >>> # service = SimulationApplicationService(repo, location_repo)
+        >>> # result = service.create_simulation(dto)
+        >>> # result.simulation_id
+        >>> # 'climate-run-001'
+        >>> # result.model_id  
+        >>> # 'CESM2'
+        >>> # len(result.attrs)
+        >>> # 2
+        
+        Notes
+        -----
+        The simulation_id should follow naming conventions appropriate
+        for your organization. Common patterns include experiment codes,
+        date-based identifiers, or hierarchical naming schemes.
+        
+        See Also
+        --------
+        get_simulation : Retrieve an existing simulation
+        update_simulation : Modify simulation metadata
+        delete_simulation : Remove a simulation
         """
         self._logger.info(f"Creating simulation: {dto.simulation_id}")
         
@@ -119,12 +191,12 @@ class SimulationApplicationService:
         try:
             simulation = self._simulation_repo.get_by_id(simulation_id)
             if simulation is None:
-                raise EntityNotFoundError("Simulation", simulation_id)
+                return None
             
             return self._entity_to_dto(simulation)
             
         except SimulationNotFoundError as e:
-            raise EntityNotFoundError("Simulation", e.simulation_id)
+            return None
         except RepositoryError as e:
             self._logger.error(f"Repository error retrieving simulation: {str(e)}")
             raise

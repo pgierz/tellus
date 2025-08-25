@@ -17,13 +17,16 @@ from .archive import Checksum
 
 class FileContentType(Enum):
     """Types of content that simulation files can represent."""
-    INPUT = "input"              # Configuration files, parameters, initial conditions
-    OUTPUT = "output"            # Primary model output data
+    ANALYSIS = "analysis"        # Analysis results, statistical summaries
+    INPUT = "input"              # Initial conditions, boundary data, parameters  
+    CONFIG = "config"            # Configuration files, namelist files
+    RESTART = "restart"          # Restart files, checkpoint data
+    OUTDATA = "outdata"          # Primary model output data
     LOG = "log"                  # Log files, diagnostic output
-    INTERMEDIATE = "intermediate" # Temporary files, restart files, checkpoints
-    CONFIG = "config"            # Runtime configuration, namelist files
-    DIAGNOSTIC = "diagnostic"    # Analysis output, derived quantities
-    METADATA = "metadata"        # File catalogs, index files, documentation
+    SCRIPTS = "scripts"          # Scripts, executables, workflow files
+    VIZ = "viz"                  # Visualization files, plots, movies
+    AUXILIARY = "auxiliary"      # Supporting files, documentation
+    FORCING = "forcing"          # Forcing data, external input
 
 
 class FileImportance(Enum):
@@ -69,7 +72,7 @@ class SimulationFile:
     checksum: Optional[Checksum] = None          # File integrity checksum
     
     # Semantic Classification
-    content_type: FileContentType = FileContentType.OUTPUT
+    content_type: FileContentType = FileContentType.OUTDATA
     importance: FileImportance = FileImportance.IMPORTANT
     file_role: Optional[str] = None              # Specific role: "parameters", "restart", etc.
     
@@ -216,12 +219,15 @@ class SimulationFile:
         # Boost priority for certain content types
         content_boost = {
             FileContentType.INPUT: 20,
-            FileContentType.OUTPUT: 15,
+            FileContentType.OUTDATA: 15,
             FileContentType.CONFIG: 10,
-            FileContentType.DIAGNOSTIC: 5,
+            FileContentType.RESTART: 12,
+            FileContentType.ANALYSIS: 8,
             FileContentType.LOG: 2,
-            FileContentType.INTERMEDIATE: 1,
-            FileContentType.METADATA: 3
+            FileContentType.SCRIPTS: 5,
+            FileContentType.VIZ: 3,
+            FileContentType.FORCING: 10,
+            FileContentType.AUXILIARY: 1
         }
         priority += content_boost.get(self.content_type, 0)
         
@@ -271,7 +277,7 @@ class SimulationFile:
             relative_path=data['relative_path'],
             size=data.get('size'),
             checksum=checksum,
-            content_type=FileContentType(data.get('content_type', 'output')),
+            content_type=FileContentType(data.get('content_type', 'outdata')),
             importance=FileImportance(data.get('importance', 'important')),
             file_role=data.get('file_role'),
             simulation_date=simulation_date,

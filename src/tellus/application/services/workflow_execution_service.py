@@ -29,7 +29,7 @@ from ...domain.entities.workflow import (
 )
 from ...domain.entities.location import LocationEntity
 from ...domain.repositories.location_repository import ILocationRepository
-from ...progress import ProgressTracker
+from ...infrastructure.adapters.progress_tracking import ProgressTracker
 from .workflow_service import IWorkflowRepository
 
 logger = logging.getLogger(__name__)
