@@ -16560,7 +16560,7 @@ packages:
 - pypi: .
   name: tellus
   version: 0.1.0
-  sha256: ef1a2618627a6860d8d7fb1f2a01dc6b2bdbc49cac39387bbd67e8abb8f5dde2
+  sha256: df7acf411739cd53f524d94c90d9b2a825f157372396383c6e52c0799fa207df
   requires_python: '>=3.11'
   editable: true
 - pypi: ./src/tellus_chat

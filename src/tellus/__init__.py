@@ -2,16 +2,22 @@
 Tellus - A tool for managing Earth System Model simulations and their data.
 """
 
-from .simulation.simulation import Simulation
-from .simulation.cli import cli as simulation_cli
-from .simulation.api import app as simulation_api
-from .location.location import Location
-from .scoutfs import ScoutFSFileSystem
+# New clean architecture exports
+from .domain.entities.simulation import SimulationEntity
+from .domain.entities.location import LocationEntity, LocationKind
+from .application.services.simulation_service import SimulationApplicationService
+from .application.services.location_service import LocationApplicationService
+from .application.services.archive_service import ArchiveApplicationService
+from .application.container import get_service_container
+from .infrastructure.adapters.scoutfs_filesystem import ScoutFSFileSystem
 
 __all__ = [
-    "Simulation",
-    "simulation_cli",
-    "simulation_api",
-    "Location",
+    "SimulationEntity",
+    "LocationEntity", 
+    "LocationKind",
+    "SimulationApplicationService",
+    "LocationApplicationService",
+    "ArchiveApplicationService",
+    "get_service_container",
     "ScoutFSFileSystem",
 ]

@@ -8,7 +8,7 @@ version = "0.1.0"
 # Removed chat dependencies
 
 [project.scripts]
-tellus = "tellus.core.cli:main"
+tellus = "tellus.core.main:main"
 tellus-chat = "tellus_chat.cli:main"
 
 [tool.pytest.ini_options]
@@ -32,6 +32,7 @@ markers = [
     "earth_science: Tests specific to Earth science workflows",
     "archive: Tests for archive system components",
     "cache: Tests for caching functionality",
+    "asyncio: Tests that use asyncio functionality",
     "location: Tests for multi-location functionality",
     "security: Security tests for defensive measures and vulnerability prevention",
     "slow: Tests that take more than 30 seconds",
@@ -75,7 +76,7 @@ snakemake-storage-plugin-fsspec = { git = "git+https://github.com/pgierz/snakema
 
 [tool.pixi.tasks]
 # sandbox = "python3 sandbox/manual_tests.py"
-tellus = "python -m tellus.core.cli"
+tellus = "python -m tellus"
 sandbox = { cmd = "python3 my_tellus_script.py", cwd = "sandbox" , description = "Run a dummy script using tellus"}
 
 [tool.pixi.feature.test.pypi-dependencies]

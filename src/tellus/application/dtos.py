@@ -5,6 +5,7 @@ These objects define the contracts between the application layer and external cl
 providing a stable interface that can evolve independently of the domain model.
 """
 
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
@@ -14,6 +15,7 @@ from ..domain.entities.location import LocationKind
 from ..domain.entities.archive import ArchiveType, CacheCleanupPolicy
 from ..domain.entities.workflow import WorkflowStatus, WorkflowEngine, ExecutionEnvironment
 from ..domain.entities.simulation_file import FileContentType, FileImportance
+from ..domain.entities.file_tracking import TrackingStatus, FileChangeType
 
 
 # Base DTOs
@@ -195,7 +197,8 @@ class CreateArchiveDto:
     """DTO for creating a new archive."""
     archive_id: str
     location_name: str
-    archive_type: str  # Will be converted to ArchiveType enum
+    archive_type: str = "compressed"  # Will be converted to ArchiveType enum
+    source_path: Optional[str] = None  # Source path to archive
     simulation_id: Optional[str] = None  # Which simulation this archive contains parts of
     simulation_date: Optional[str] = None
     version: Optional[str] = None
@@ -830,4 +833,373 @@ class ExtractionManifestDto:
     source_location: str = ""
     checksum_verification: Dict[str, bool] = field(default_factory=dict)
     extraction_options: Dict[str, Any] = field(default_factory=dict)
+
+
+# File Transfer DTOs
+
+@dataclass
+class FileTransferOperationDto:
+    """DTO for single file transfer operations."""
+    source_location: str  # Location name or 'local'
+    source_path: str     # Path within source location
+    dest_location: str   # Location name
+    dest_path: str       # Path within destination location
+    operation_type: str = "file_transfer"  # For queue routing
+    overwrite: bool = False
+    verify_checksum: bool = True
+    chunk_size: int = 8 * 1024 * 1024  # 8MB chunks
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass 
+class BatchFileTransferOperationDto:
+    """DTO for batch file transfer operations."""
+    transfers: List[FileTransferOperationDto]
+    operation_type: str = "batch_file_transfer"
+    parallel_transfers: int = 3
+    stop_on_error: bool = False
+    verify_all_checksums: bool = True
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class DirectoryTransferOperationDto:
+    """DTO for recursive directory transfer operations."""
+    source_location: str
+    source_path: str
+    dest_location: str  
+    dest_path: str
+    operation_type: str = "directory_transfer"
+    recursive: bool = True
+    overwrite: bool = False
+    verify_checksums: bool = True
+    exclude_patterns: List[str] = field(default_factory=list)  # glob patterns
+    include_patterns: List[str] = field(default_factory=list)  # glob patterns
+    preserve_permissions: bool = False
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class FileTransferResultDto:
+    """DTO for file transfer operation results."""
+    operation_id: str
+    operation_type: str
+    success: bool
+    source_location: str
+    source_path: str
+    dest_location: str
+    dest_path: str
+    bytes_transferred: int = 0
+    files_transferred: int = 0
+    duration_seconds: float = 0.0
+    throughput_mbps: float = 0.0
+    checksum_verified: bool = False
+    error_message: Optional[str] = None
+    retry_count: int = 0
+    partial_transfer: bool = False  # True if transfer was resumed
+
+
+@dataclass
+class BatchFileTransferResultDto:
+    """DTO for batch file transfer results."""
+    operation_id: str
+    operation_type: str
+    total_files: int
+    successful_transfers: List[FileTransferResultDto] = field(default_factory=list)
+    failed_transfers: List[FileTransferResultDto] = field(default_factory=list)
+    total_bytes_transferred: int = 0
+    total_duration_seconds: float = 0.0
+    average_throughput_mbps: float = 0.0
+
+
+# Progress Tracking DTOs
+
+@dataclass
+class ProgressMetricsDto:
+    """DTO for progress metrics."""
+    percentage: float = 0.0  # 0.0 to 100.0
+    current_value: int = 0
+    total_value: Optional[int] = None
+    bytes_processed: int = 0
+    total_bytes: Optional[int] = None
+    files_processed: int = 0
+    total_files: Optional[int] = None
+    operations_completed: int = 0
+    total_operations: Optional[int] = None
+
+
+@dataclass
+class ThroughputMetricsDto:
+    """DTO for throughput and timing metrics."""
+    start_time: float
+    current_time: Optional[float] = None
+    bytes_per_second: float = 0.0
+    files_per_second: float = 0.0
+    operations_per_second: float = 0.0
+    estimated_completion_time: Optional[float] = None
+    estimated_remaining_seconds: Optional[float] = None
+    elapsed_seconds: float = 0.0
+
+
+@dataclass
+class ProgressLogEntryDto:
+    """DTO for progress log entries."""
+    timestamp: float
+    datetime: str  # ISO format
+    message: str
+    level: str  # INFO, WARN, ERROR, DEBUG
+    metrics: Optional[ProgressMetricsDto] = None
+    throughput: Optional[ThroughputMetricsDto] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class OperationContextDto:
+    """DTO for operation context information."""
+    user_id: Optional[str] = None
+    session_id: Optional[str] = None
+    parent_operation_id: Optional[str] = None
+    simulation_id: Optional[str] = None
+    location_name: Optional[str] = None
+    workflow_id: Optional[str] = None
+    tags: Set[str] = field(default_factory=set)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class CreateProgressTrackingDto:
+    """DTO for creating a new progress tracking entity."""
+    operation_id: str
+    operation_type: str  # OperationType enum value
+    operation_name: str
+    priority: str = "normal"  # Priority enum value
+    context: Optional[OperationContextDto] = None
+
+
+@dataclass
+class UpdateProgressDto:
+    """DTO for updating progress."""
+    operation_id: str
+    metrics: ProgressMetricsDto
+    message: Optional[str] = None
+    throughput: Optional[ThroughputMetricsDto] = None
+
+
+@dataclass
+class ProgressTrackingDto:
+    """DTO for complete progress tracking information."""
+    operation_id: str
+    operation_type: str
+    operation_name: str
+    priority: str
+    status: str  # OperationStatus enum value
+    context: OperationContextDto
+    created_time: float
+    started_time: Optional[float] = None
+    completed_time: Optional[float] = None
+    last_update_time: float = 0.0
+    current_metrics: ProgressMetricsDto = field(default_factory=ProgressMetricsDto)
+    current_throughput: Optional[ThroughputMetricsDto] = None
+    error_message: Optional[str] = None
+    warnings: List[str] = field(default_factory=list)
+    cancellation_requested: bool = False
+    sub_operations: List[str] = field(default_factory=list)
+    duration_seconds: Optional[float] = None
+
+
+@dataclass
+class ProgressTrackingListDto:
+    """DTO for paginated progress tracking lists."""
+    operations: List[ProgressTrackingDto]
+    pagination: PaginationInfo
+    filters_applied: FilterOptions
+
+
+@dataclass
+class ProgressUpdateNotificationDto:
+    """DTO for progress update notifications."""
+    operation_id: str
+    notification_type: str  # progress_update, status_change, completion, failure
+    timestamp: float
+    current_status: str
+    previous_status: Optional[str] = None
+    metrics: Optional[ProgressMetricsDto] = None
+    message: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class OperationControlDto:
+    """DTO for operation control commands."""
+    operation_id: str
+    command: str  # start, pause, resume, cancel, force_cancel
+    reason: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class OperationControlResultDto:
+    """DTO for operation control command results."""
+    operation_id: str
+    command: str
+    success: bool
+    previous_status: str
+    new_status: str
+    message: Optional[str] = None
+    timestamp: float = field(default_factory=time.time)
+
+
+@dataclass
+class BulkProgressQueryDto:
+    """DTO for querying multiple operations."""
+    operation_ids: List[str]
+    include_metrics: bool = True
+    include_throughput: bool = True
+    include_log_entries: bool = False
+    log_entry_limit: int = 10
+
+
+@dataclass
+class BulkProgressResponseDto:
+    """DTO for bulk progress query responses."""
+    operations: Dict[str, ProgressTrackingDto] = field(default_factory=dict)
+    not_found: List[str] = field(default_factory=list)
+    query_timestamp: float = field(default_factory=time.time)
+
+
+@dataclass
+class ProgressCallbackRegistrationDto:
+    """DTO for registering progress callbacks."""
+    operation_id: str
+    callback_id: str
+    callback_type: str  # websocket, http_post, file_write, in_memory
+    callback_config: Dict[str, Any] = field(default_factory=dict)
+    filter_criteria: Dict[str, Any] = field(default_factory=dict)  # e.g., min_percentage_change
+    active: bool = True
+
+
+@dataclass
+class ProgressSummaryDto:
+    """DTO for progress summary statistics."""
+    total_operations: int
+    active_operations: int
+    completed_operations: int
+    failed_operations: int
+    cancelled_operations: int
+    operations_by_type: Dict[str, int] = field(default_factory=dict)
+    operations_by_status: Dict[str, int] = field(default_factory=dict)
+    operations_by_priority: Dict[str, int] = field(default_factory=dict)
+    total_bytes_processed: int = 0
+    average_completion_time: Optional[float] = None
+    oldest_active_operation: Optional[str] = None
+
+
+@dataclass
+class NestedProgressDto:
+    """DTO for nested operation progress tracking."""
+    parent_operation_id: str
+    child_operations: List[ProgressTrackingDto] = field(default_factory=list)
+    aggregated_metrics: ProgressMetricsDto = field(default_factory=ProgressMetricsDto)
+    overall_status: str = "pending"
+    completion_order: List[str] = field(default_factory=list)
+
+
+# File Tracking DTOs
+
+@dataclass
+class CreateFileTrackingRepositoryDto:
+    """DTO for creating a file tracking repository."""
+    root_path: str
+    enable_dvc: bool = False
+    dvc_remote_name: Optional[str] = None
+    dvc_remote_url: Optional[str] = None
+    large_file_threshold: int = 100 * 1024 * 1024  # 100MB
+
+
+@dataclass
+class FileTrackingRepositoryDto:
+    """DTO for file tracking repository information."""
+    root_path: str
+    tracked_file_count: int
+    modified_file_count: int
+    staged_file_count: int
+    untracked_file_count: int
+    dvc_enabled: bool
+    last_snapshot_id: Optional[str] = None
+    last_snapshot_time: Optional[str] = None
+
+
+@dataclass
+class TrackedFileDto:
+    """DTO for tracked file information."""
+    path: str
+    size: int
+    modification_time: str  # ISO format
+    content_hash: str
+    hash_algorithm: str
+    status: str  # TrackingStatus value
+    stage_hash: Optional[str] = None
+    created_time: Optional[str] = None
+    is_dvc_tracked: bool = False
+
+
+@dataclass
+class AddFilesDto:
+    """DTO for adding files to tracking."""
+    file_paths: List[str]
+    force_add: bool = False
+    use_dvc_for_large_files: bool = True
+    
+
+@dataclass
+class FileStatusDto:
+    """DTO for file status information."""
+    tracked_files: List[TrackedFileDto] = field(default_factory=list)
+    modified_files: List[str] = field(default_factory=list)
+    staged_files: List[str] = field(default_factory=list)
+    untracked_files: List[str] = field(default_factory=list)
+    deleted_files: List[str] = field(default_factory=list)
+    ignored_files: List[str] = field(default_factory=list)
+
+
+@dataclass
+class CreateSnapshotDto:
+    """DTO for creating a repository snapshot."""
+    message: str
+    author: str
+    include_files: Optional[List[str]] = None  # If None, include all staged files
+
+
+@dataclass
+class RepositorySnapshotDto:
+    """DTO for repository snapshot information."""
+    id: str
+    short_id: str
+    timestamp: str  # ISO format
+    message: str
+    author: str
+    parent_id: Optional[str] = None
+    changed_files: List[str] = field(default_factory=list)
+    change_types: Dict[str, str] = field(default_factory=dict)  # file_path -> change_type
+
+
+@dataclass
+class DVCConfigurationDto:
+    """DTO for DVC configuration."""
+    enabled: bool = False
+    remote_name: Optional[str] = None
+    remote_url: Optional[str] = None
+    cache_dir: Optional[str] = None
+    large_file_threshold: int = 100 * 1024 * 1024
+
+
+@dataclass
+class DVCStatusDto:
+    """DTO for DVC status information."""
+    is_available: bool
+    repository_initialized: bool
+    configured_remotes: List[str] = field(default_factory=list)
+    tracked_files: List[str] = field(default_factory=list)
+    pending_pushes: List[str] = field(default_factory=list)
+    pending_pulls: List[str] = field(default_factory=list)
 
