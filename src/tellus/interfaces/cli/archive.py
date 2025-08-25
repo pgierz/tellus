@@ -173,8 +173,8 @@ def list_files(archive_id: str, content_type: str = None, pattern: str = None):
         service = _get_archive_service()
         files = service.list_archive_files(
             archive_id=archive_id,
-            content_type_filter=content_type,
-            pattern_filter=pattern
+            content_type=content_type,
+            pattern=pattern
         )
         
         if not files:
