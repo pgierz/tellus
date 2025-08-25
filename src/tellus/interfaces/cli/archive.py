@@ -221,3 +221,168 @@ def extract_archive(archive_id: str, destination_location: str, simulation: str 
         
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@archive.command(name="update")
+@click.argument("archive_id", required=False)
+@click.option("--simulation-date", help="Update simulation date")  
+@click.option("--version", help="Update version")
+@click.option("--description", help="Update description")
+@click.option("--add-tag", multiple=True, help="Add tags to archive")
+@click.option("--remove-tag", multiple=True, help="Remove tags from archive")
+def update_archive(archive_id: str = None, simulation_date: str = None, version: str = None, 
+                  description: str = None, add_tag: tuple = (), remove_tag: tuple = ()):
+    """Update an existing archive's metadata.
+    
+    If no archive ID is provided, launches an interactive wizard to select and update an archive.
+    """
+    try:
+        service = _get_archive_service()
+        
+        # If no archive_id provided, launch interactive wizard
+        if not archive_id:
+            import questionary
+            
+            # Get all archives for selection
+            archives_result = service.list_archives()
+            if not archives_result.archives:
+                console.print("[yellow]No archives found[/yellow]")
+                return
+                
+            archive_choices = [f"{archive.archive_id} (location: {archive.location})" 
+                             for archive in archives_result.archives]
+            
+            selected = questionary.select(
+                "Select archive to update:",
+                choices=archive_choices,
+                style=questionary.Style([
+                    ('question', 'bold'),
+                    ('selected', 'fg:#cc5454'),
+                    ('pointer', 'fg:#ff0066 bold'),
+                ])
+            ).ask()
+            
+            if not selected:
+                console.print("[yellow]No archive selected[/yellow]")
+                return
+                
+            # Extract archive_id from selection
+            archive_id = selected.split(" (location:")[0]
+            
+            # Get current archive info
+            current_archive = None
+            for archive in archives_result.archives:
+                if archive.archive_id == archive_id:
+                    current_archive = archive
+                    break
+                    
+            if not current_archive:
+                console.print(f"[red]Error:[/red] Archive '{archive_id}' not found")
+                return
+            
+            # Interactive questionary for updates
+            console.print(f"\n[bold]Current archive details:[/bold]")
+            console.print(f"Archive ID: {current_archive.archive_id}")
+            console.print(f"Location: {current_archive.location}")
+            console.print(f"Simulation Date: {current_archive.simulation_date or 'Not set'}")
+            console.print(f"Version: {current_archive.version or 'Not set'}")
+            console.print(f"Description: {current_archive.description or 'Not set'}")
+            console.print(f"Tags: {', '.join(current_archive.tags) if current_archive.tags else 'None'}")
+            
+            # Ask what to update
+            update_fields = questionary.checkbox(
+                "What would you like to update?",
+                choices=[
+                    "Simulation Date",
+                    "Version", 
+                    "Description",
+                    "Tags"
+                ],
+                style=questionary.Style([
+                    ('question', 'bold'),
+                    ('checkbox', 'fg:#ff0066'),
+                    ('selected', 'fg:#cc5454'),
+                    ('pointer', 'fg:#ff0066 bold'),
+                ])
+            ).ask()
+            
+            if not update_fields:
+                console.print("[yellow]No fields selected for update[/yellow]")
+                return
+            
+            # Collect new values
+            if "Simulation Date" in update_fields:
+                simulation_date = questionary.text(
+                    "New simulation date:",
+                    default=current_archive.simulation_date or ""
+                ).ask()
+                
+            if "Version" in update_fields:
+                version = questionary.text(
+                    "New version:",
+                    default=current_archive.version or ""
+                ).ask()
+                
+            if "Description" in update_fields:
+                description = questionary.text(
+                    "New description:",
+                    default=current_archive.description or ""
+                ).ask()
+                
+            if "Tags" in update_fields:
+                current_tags_str = ", ".join(current_archive.tags) if current_archive.tags else ""
+                new_tags_str = questionary.text(
+                    "Tags (comma-separated):",
+                    default=current_tags_str
+                ).ask()
+                
+                if new_tags_str:
+                    new_tags = {tag.strip() for tag in new_tags_str.split(",") if tag.strip()}
+                else:
+                    new_tags = set()
+        
+        # Apply command line arguments if no interactive mode
+        else:
+            # For command line mode, handle tags differently
+            if add_tag or remove_tag:
+                # Get current archive to modify tags
+                archives_result = service.list_archives()
+                current_archive = None
+                for archive in archives_result.archives:
+                    if archive.archive_id == archive_id:
+                        current_archive = archive
+                        break
+                        
+                if current_archive:
+                    new_tags = set(current_archive.tags) if current_archive.tags else set()
+                    new_tags.update(add_tag)
+                    new_tags.difference_update(remove_tag)
+                else:
+                    new_tags = set(add_tag) if add_tag else None
+            else:
+                new_tags = None
+        
+        # Create update DTO
+        from ...application.dtos import UpdateArchiveDto
+        
+        update_dto = UpdateArchiveDto(
+            simulation_date=simulation_date if simulation_date else None,
+            version=version if version else None,
+            description=description if description else None,
+            tags=new_tags if new_tags is not None else None
+        )
+        
+        # Call service method (this may not exist yet)
+        try:
+            result = service.update_archive(archive_id, update_dto)
+            if result:
+                console.print(f"[green]✓[/green] Successfully updated archive '{archive_id}'")
+            else:
+                console.print(f"[red]✗[/red] Failed to update archive '{archive_id}'")
+        except AttributeError:
+            console.print(f"[red]Error:[/red] Archive update service method not yet implemented")
+        except Exception as e:
+            console.print(f"[red]Error:[/red] {str(e)}")
+        
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
