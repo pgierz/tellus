@@ -198,18 +198,16 @@ def copy_archive(archive_id: str, source_location: str, destination_location: st
 
 @archive.command(name="extract")
 @click.argument("archive_id") 
-@click.argument("source_location")
 @click.argument("destination_location")
 @click.option("--simulation", help="Associated simulation ID")
 @click.option("--content-type", help="Filter by content type")
-def extract_archive(archive_id: str, source_location: str, destination_location: str, simulation: str = None, content_type: str = None):
+def extract_archive(archive_id: str, destination_location: str, simulation: str = None, content_type: str = None):
     """Extract an archive to a location."""
     try:
         service = _get_archive_service()
         
         dto = ArchiveExtractionDto(
             archive_id=archive_id,
-            source_location=source_location,
             destination_location=destination_location,
             simulation_id=simulation,
             content_type_filter=content_type
