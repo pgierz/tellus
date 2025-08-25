@@ -863,3 +863,44 @@ class LocationApplicationService:
         # For remote protocols, this would require actual connectivity
         # For now, just do basic validation
         return isinstance(path, str) and len(path) > 0
+    
+    def ensure_localhost_location(self) -> str:
+        """
+        Ensure a localhost location exists, creating a temporary one if needed.
+        
+        Returns:
+            Name of the localhost location that can be used
+        """
+        # Check if localhost already exists
+        try:
+            self.get_location("localhost")
+            return "localhost"
+        except EntityNotFoundError:
+            pass
+        
+        # Check if tellus_localhost exists (common in development)
+        try:
+            self.get_location("tellus_localhost")
+            return "tellus_localhost"
+        except EntityNotFoundError:
+            pass
+        
+        # Create a temporary localhost location
+        self._logger.info("Creating temporary localhost location")
+        
+        dto = CreateLocationDto(
+            name="localhost",
+            kinds=["compute", "disk"],
+            protocol="file",
+            config={}
+        )
+        
+        try:
+            self.create_location(dto)
+            return "localhost"
+        except Exception as e:
+            self._logger.error(f"Failed to create temporary localhost location: {e}")
+            raise LocationAccessError(
+                "localhost", 
+                f"Could not create localhost location for archive operation: {e}"
+            )
