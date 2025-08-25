@@ -10,6 +10,59 @@ from .simulation import simulation, _get_simulation_service
 from ...application.dtos import UpdateSimulationDto, SimulationLocationAssociationDto
 
 
+def _handle_simulation_not_found(sim_id: str, service):
+    """Handle simulation not found error with fuzzy matching suggestions."""
+    console.print(f"[red]Error:[/red] Simulation '{sim_id}' not found")
+    
+    # Get all simulations for fuzzy matching
+    try:
+        all_simulations = service.list_simulations()
+        if all_simulations.simulations:
+            # Use rapidfuzz for better fuzzy matching
+            try:
+                from rapidfuzz import fuzz
+                
+                def similarity_score(a, b):
+                    """Calculate similarity score using rapidfuzz."""
+                    # Use ratio for general similarity
+                    base_score = fuzz.ratio(a.lower(), b.lower()) / 100.0
+                    
+                    # Bonus for prefix matches
+                    if b.lower().startswith(a.lower()):
+                        base_score = min(base_score + 0.3, 1.0)
+                    
+                    return base_score
+                    
+            except ImportError:
+                # Fallback to difflib if rapidfuzz not available
+                import difflib
+                
+                def similarity_score(a, b):
+                    """Calculate similarity score using difflib fallback."""
+                    base_score = difflib.SequenceMatcher(None, a.lower(), b.lower()).ratio()
+                    
+                    # Bonus for prefix matches
+                    if b.lower().startswith(a.lower()):
+                        base_score = min(base_score + 0.3, 1.0)
+                    
+                    return base_score
+            
+            # Find best matches
+            matches = [(s.simulation_id, similarity_score(sim_id, s.simulation_id)) 
+                      for s in all_simulations.simulations]
+            matches.sort(key=lambda x: x[1], reverse=True)
+            
+            # Show suggestion if we have a good match
+            best_match, score = matches[0]
+            if score > 0.6:  # Threshold for "did you mean"
+                console.print(f"[yellow]Did you mean:[/yellow] {best_match}")
+    except Exception:
+        # If fuzzy matching fails, just continue
+        pass
+        
+    console.print("[dim]Use 'tellus simulation list' to see available simulations[/dim]")
+
+
 @simulation.command(name="update")
 @click.argument("sim_id")
 @click.option("--model-id", help="Update model identifier")
@@ -116,6 +169,10 @@ def list_locations(sim_id: str):
         service = _get_simulation_service()
         sim = service.get_simulation(sim_id)
         
+        if sim is None:
+            _handle_simulation_not_found(sim_id, service)
+            return
+        
         if not sim.associated_locations:
             console.print(f"No locations associated with simulation '{sim_id}'")
             return
@@ -165,6 +222,10 @@ def ls_location(sim_id: str, location_name: str, path: str = ".",
         # Get the simulation to verify location association
         service = _get_simulation_service()
         sim = service.get_simulation(sim_id)
+        
+        if sim is None:
+            _handle_simulation_not_found(sim_id, service)
+            return
         
         if location_name not in sim.associated_locations:
             console.print(f"[red]Error:[/red] Location '{location_name}' is not associated with simulation '{sim_id}'")
