@@ -13,6 +13,9 @@ from .services import (
     SimulationApplicationService, LocationApplicationService, ArchiveApplicationService,
     WorkflowApplicationService, WorkflowExecutionService
 )
+from .services.file_transfer_service import FileTransferApplicationService
+from .services.operation_queue_service import OperationQueueService
+from .services.progress_tracking_service import IProgressTrackingService
 from .services.workflow_service import IWorkflowRepository, IWorkflowTemplateRepository
 from .services.workflow_execution_service import IWorkflowRunRepository, IWorkflowEngine
 from .dtos import CacheConfigurationDto
@@ -20,7 +23,7 @@ from ..domain.repositories.simulation_repository import ISimulationRepository
 from ..domain.repositories.location_repository import ILocationRepository
 from ..domain.repositories.archive_repository import IArchiveRepository
 from ..domain.entities.workflow import WorkflowEngine
-from ..progress import ProgressTracker
+from ..infrastructure.adapters.progress_tracking import ProgressTracker
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +46,7 @@ class ApplicationServiceFactory:
         workflow_template_repository: Optional[IWorkflowTemplateRepository] = None,
         workflow_engines: Optional[Dict[WorkflowEngine, IWorkflowEngine]] = None,
         progress_tracker: Optional[ProgressTracker] = None,
+        progress_tracking_service: Optional[IProgressTrackingService] = None,
         cache_config: Optional[CacheConfigurationDto] = None,
         workflow_executor: Optional[ThreadPoolExecutor] = None
     ):
@@ -57,7 +61,8 @@ class ApplicationServiceFactory:
             workflow_run_repository: Repository for workflow run persistence
             workflow_template_repository: Repository for workflow template persistence
             workflow_engines: Map of workflow execution engines by type
-            progress_tracker: Progress tracking system
+            progress_tracker: Legacy progress tracking system (deprecated)
+            progress_tracking_service: New progress tracking service
             cache_config: Optional cache configuration
             workflow_executor: Thread pool for workflow execution
         """
@@ -69,6 +74,7 @@ class ApplicationServiceFactory:
         self._workflow_template_repo = workflow_template_repository
         self._workflow_engines = workflow_engines or {}
         self._progress_tracker = progress_tracker
+        self._progress_tracking_service = progress_tracking_service
         self._cache_config = cache_config
         self._workflow_executor = workflow_executor
         self._logger = logger
@@ -79,6 +85,8 @@ class ApplicationServiceFactory:
         self._archive_service: Optional[ArchiveApplicationService] = None
         self._workflow_service: Optional[WorkflowApplicationService] = None
         self._workflow_execution_service: Optional[WorkflowExecutionService] = None
+        self._file_transfer_service: Optional[FileTransferApplicationService] = None
+        self._operation_queue_service: Optional[OperationQueueService] = None
     
     @property
     def simulation_service(self) -> SimulationApplicationService:
@@ -109,7 +117,8 @@ class ApplicationServiceFactory:
             self._archive_service = ArchiveApplicationService(
                 location_repository=self._location_repo,
                 archive_repository=self._archive_repo,
-                cache_config=self._cache_config
+                cache_config=self._cache_config,
+                progress_tracking_service=self._progress_tracking_service
             )
         return self._archive_service
     
@@ -153,6 +162,36 @@ class ApplicationServiceFactory:
                 executor=self._workflow_executor
             )
         return self._workflow_execution_service
+    
+    @property
+    def file_transfer_service(self) -> FileTransferApplicationService:
+        """Get or create file transfer application service."""
+        if self._file_transfer_service is None:
+            self._logger.debug("Creating FileTransferApplicationService")
+            self._file_transfer_service = FileTransferApplicationService(
+                location_repo=self._location_repo,
+                progress_service=self._progress_tracking_service
+            )
+        return self._file_transfer_service
+    
+    @property
+    def operation_queue_service(self) -> OperationQueueService:
+        """Get or create operation queue service."""
+        if self._operation_queue_service is None:
+            self._logger.debug("Creating OperationQueueService")
+            self._operation_queue_service = OperationQueueService(
+                archive_service=self.archive_service,
+                file_transfer_service=self.file_transfer_service,
+                max_concurrent=3  # Can be made configurable
+            )
+        return self._operation_queue_service
+    
+    @property
+    def progress_tracking_service(self) -> IProgressTrackingService:
+        """Get the progress tracking service."""
+        if self._progress_tracking_service is None:
+            raise ValueError("Progress tracking service not configured")
+        return self._progress_tracking_service
     
     def create_simulation_workflow_coordinator(self) -> 'SimulationWorkflowCoordinator':
         """
