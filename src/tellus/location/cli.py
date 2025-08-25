@@ -14,8 +14,10 @@ from ..core.feature_flags import feature_flags, FeatureFlag
 from ..core.service_container import get_service_container
 from ..core.legacy_bridge import LocationBridge
 from ..application.exceptions import (
-    EntityNotFoundError, EntityAlreadyExistsError, 
-    ValidationError, ApplicationError
+    EntityNotFoundError,
+    EntityAlreadyExistsError,
+    ValidationError,
+    ApplicationError,
 )
 
 # Load legacy locations at module level like simulation CLI
@@ -33,7 +35,7 @@ def _get_location_bridge() -> Optional[LocationBridge]:
 def _get_improved_fs_representation(loc: Location) -> str:
     """Get improved filesystem representation that avoids common SSH/JSON errors."""
     protocol = loc.config.get("protocol", "file")
-    
+
     try:
         if protocol == "sftp":
             return _get_sftp_representation_fixed(loc)
@@ -51,14 +53,16 @@ def _get_sftp_representation_fixed(loc: Location) -> str:
         storage_opts = loc.config.get("storage_options", {})
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        
+
         # Support password or key-based authentication
         connect_kwargs = {
-            "hostname": storage_opts.get("host", storage_opts.get("hostname", loc.name)),
+            "hostname": storage_opts.get(
+                "host", storage_opts.get("hostname", loc.name)
+            ),
             "username": storage_opts.get("username", ""),
             "timeout": 5,
         }
-        
+
         password = storage_opts.get("password")
         key_filename = storage_opts.get("key_filename")
         if password:
@@ -68,17 +72,17 @@ def _get_sftp_representation_fixed(loc: Location) -> str:
         else:
             # Try passwordless connection (common in HPC environments)
             pass
-            
+
         client.connect(**connect_kwargs)
-        
+
         # Test the connection using SFTP protocol
         sftp = client.open_sftp()
         current_path = sftp.getcwd()
         sftp.close()
         client.close()
-        
+
         return f"SFTP connection successful. Current path: {current_path}"
-        
+
     except paramiko.AuthenticationException:
         return "Authentication failed. Check credentials or SSH keys."
     except paramiko.SSHException as e:
@@ -93,13 +97,13 @@ def _get_file_representation_fixed(loc: Location) -> str:
         storage_opts = loc.config.get("storage_options", {})
         host = storage_opts.get("host", "localhost")
         path = storage_opts.get("path", loc.config.get("path", ""))
-        
+
         # Return a user-friendly representation instead of raw JSON
         if path:
             return f"Local filesystem: {host}:{path}"
         else:
             return f"Local filesystem: {host} (no path specified)"
-            
+
     except Exception as e:
         return f"Error creating filesystem: {str(e)}"
 
@@ -115,53 +119,63 @@ def location():
     "--no-fs",
     is_flag=True,
     default=False,
-    help="Don't show the filesystem representation column"
+    help="Don't show the filesystem representation column",
 )
 def list_locations(no_fs: bool):
     """List all locations."""
     bridge = _get_location_bridge()
-    
+
     if bridge:
         # Use new architecture
         try:
             locations_data = bridge.list_locations_legacy_format()
             if not locations_data:
-                console.print("No locations configured.")
-                if feature_flags.is_enabled(FeatureFlag.USE_NEW_LOCATION_SERVICE):
-                    console.print("[dim]Using new location service[/dim]")
-                return
-            
+                # Graceful fallback to legacy store if new service has no data
+                Location.load_locations()
+                legacy_locations = Location.list_locations()
+                if legacy_locations:
+                    awaitable = _list_locations_async(legacy_locations, no_fs)
+                    # Run async function in event loop
+                    asyncio.run(awaitable)
+                    console.print("[dim]⚠️ New location service has no data; showing legacy locations[/dim]")
+                    return
+                else:
+                    console.print("No locations configured.")
+                    if feature_flags.is_enabled(FeatureFlag.USE_NEW_LOCATION_SERVICE):
+                        console.print("[dim]Using new location service[/dim]")
+                    return
+
             # Convert to legacy Location objects for display compatibility
             locations = []
             for name, loc_data in locations_data.items():
                 # Convert kinds back to LocationKind enum
                 kinds = []
-                for kind_str in loc_data['kinds']:
+                for kind_str in loc_data["kinds"]:
                     try:
                         kinds.append(LocationKind[kind_str])
                     except KeyError:
                         continue
-                
+
                 # Create legacy Location object
-                config = loc_data['config'].copy()
-                config['protocol'] = loc_data['protocol']
-                
+                config = loc_data["config"].copy()
+                config["protocol"] = loc_data["protocol"]
+
                 legacy_loc = Location(
                     name=name,
                     kinds=kinds,
                     config=config,
-                    optional=loc_data.get('optional', False),
-                    _skip_registry=True
+                    optional=loc_data.get("optional", False),
+                    _skip_registry=True,
                 )
                 locations.append(legacy_loc)
-            
+
             # Run async function in event loop
             asyncio.run(_list_locations_async(locations, no_fs))
-            
+
             # Show which architecture is being used
             if feature_flags.is_enabled(FeatureFlag.USE_NEW_LOCATION_SERVICE):
                 console.print("[dim]✨ Using new location service[/dim]")
-            
+
         except ApplicationError as e:
             console.print(f"[red]Error:[/red] {str(e)}")
             return
@@ -187,7 +201,7 @@ async def _list_locations_async(locations: list, no_fs: bool):
     table.add_column("Types", style="green")
     table.add_column("Protocol", style="blue")
     table.add_column("Path", style="yellow")
-    
+
     # Only add FS column if not disabled
     if not no_fs:
         table.add_column("Python FS Representation", justify="center")
@@ -210,7 +224,9 @@ async def _list_locations_async(locations: list, no_fs: bool):
     for name, types, protocol, path, loc in location_data:
         row_data = [name, types, protocol, path]
         if not no_fs:
-            fs_repr = fs_representations.get(name, "Error: Failed to get representation")
+            fs_repr = fs_representations.get(
+                name, "Error: Failed to get representation"
+            )
             row_data.append(fs_repr)
         table.add_row(*row_data)
 
@@ -220,7 +236,7 @@ async def _list_locations_async(locations: list, no_fs: bool):
 async def _get_fs_representations_async(location_data: list) -> dict:
     """Generate filesystem representations asynchronously."""
     fs_representations = {}
-    
+
     # Use ThreadPoolExecutor to run sync fs.to_json() calls in parallel
     with ThreadPoolExecutor(max_workers=10) as executor:
         # Submit all tasks
@@ -228,7 +244,7 @@ async def _get_fs_representations_async(location_data: list) -> dict:
         for name, types, protocol, path, loc in location_data:
             future = executor.submit(_get_fs_representation, loc)
             future_to_name[future] = name
-        
+
         # Collect results as they complete
         for future in as_completed(future_to_name):
             name = future_to_name[future]
@@ -237,7 +253,7 @@ async def _get_fs_representations_async(location_data: list) -> dict:
                 fs_representations[name] = fs_repr
             except Exception as e:
                 fs_representations[name] = str(e)
-    
+
     return fs_representations
 
 
@@ -274,7 +290,7 @@ def _get_fs_representation(location: Location) -> str:
 @click.option("--password", help="Password for authentication")
 def create(name, protocol, kind, is_optional, **storage_options):
     """Create a new storage location.
-    
+
     If no arguments are provided, an interactive wizard will guide you through the process.
     """
     # Load existing locations first
@@ -292,9 +308,9 @@ def create(name, protocol, kind, is_optional, **storage_options):
         # Get location name
         name = questionary.text(
             "Enter a name for this location:",
-            validate=lambda x: len(x.strip()) > 0 or "Name cannot be empty"
+            validate=lambda x: len(x.strip()) > 0 or "Name cannot be empty",
         ).ask()
-        
+
         if not name:
             console.print("\nOperation cancelled.")
             raise click.Abort(1)
@@ -302,8 +318,7 @@ def create(name, protocol, kind, is_optional, **storage_options):
         # Check if location already exists
         if Location.get_location(name):
             override = questionary.confirm(
-                f"Location '{name}' already exists. Override?",
-                default=False
+                f"Location '{name}' already exists. Override?", default=False
             ).ask()
             if not override:
                 console.print("Operation cancelled.")
@@ -346,8 +361,7 @@ def create(name, protocol, kind, is_optional, **storage_options):
 
         # Get optional flag
         is_optional = questionary.confirm(
-            "Is this location optional?",
-            default=False
+            "Is this location optional?", default=False
         ).ask()
 
         if is_optional is None:
@@ -356,7 +370,7 @@ def create(name, protocol, kind, is_optional, **storage_options):
 
         # Protocol-specific configuration
         storage_opts = {}
-        
+
         if protocol == "file":
             from prompt_toolkit import prompt
             from prompt_toolkit.completion import PathCompleter
@@ -374,10 +388,10 @@ def create(name, protocol, kind, is_optional, **storage_options):
             host = questionary.text("Enter hostname:").ask()
             if host:
                 storage_opts["host"] = host
-            
+
             port_str = questionary.text(
                 f"Enter port (default: {22 if protocol in ['sftp', 'scoutfs'] else 21}):",
-                default=""
+                default="",
             ).ask()
             if port_str:
                 try:
@@ -393,32 +407,50 @@ def create(name, protocol, kind, is_optional, **storage_options):
             if password:
                 storage_opts["password"] = password
 
+            # Use built-in SmartPathCompleter with a temporary Location for remote completion
             from prompt_toolkit import prompt
-            from prompt_toolkit.completion import PathCompleter
+            from ..core.completion import SmartPathCompleter
 
-            path_completer = PathCompleter(expanduser=True, only_directories=True)
-            path = prompt(
-                "Enter remote base path: ",
-                completer=path_completer,
-                complete_while_typing=True,
-            )
+            try:
+                temp_loc = Location(
+                    name="__temp__",
+                    kinds=[LocationKind.DISK],
+                    config={
+                        "protocol": protocol,
+                        "storage_options": storage_opts,
+                    },
+                    optional=True,
+                    _skip_registry=True,
+                )
+                path = prompt(
+                    "Enter remote base path (Tab to complete): ",
+                    completer=SmartPathCompleter(
+                        location=temp_loc, only_directories=True, expanduser=True
+                    ),
+                    complete_while_typing=True,
+                )
+            except Exception:
+                # Fallback to plain input if completion fails
+                path = questionary.text("Enter remote base path:").ask()
             if path:
                 storage_opts["path"] = path
 
         elif protocol in ["s3", "gs", "azure"]:
             console.print(f"\n[bold]{protocol.upper()} Configuration[/bold]")
-            console.print("Note: Credentials should be configured via environment variables or cloud SDK")
-            
+            console.print(
+                "Note: Credentials should be configured via environment variables or cloud SDK"
+            )
+
             if protocol == "s3":
                 bucket = questionary.text("Enter S3 bucket name:").ask()
                 if bucket:
                     storage_opts["path"] = f"s3://{bucket}"
-                    
+
             elif protocol == "gs":
                 bucket = questionary.text("Enter GCS bucket name:").ask()
                 if bucket:
                     storage_opts["path"] = f"gs://{bucket}"
-                    
+
             elif protocol == "azure":
                 container = questionary.text("Enter Azure container name:").ask()
                 account = questionary.text("Enter Azure storage account name:").ask()
@@ -433,7 +465,7 @@ def create(name, protocol, kind, is_optional, **storage_options):
         console.print(f"  [bold]Kind:[/bold] {kind}")
         console.print(f"  [bold]Optional:[/bold] {is_optional}")
         if storage_opts:
-            console.print(f"  [bold]Configuration:[/bold]")
+            console.print("  [bold]Configuration:[/bold]")
             for key, value in storage_opts.items():
                 display_value = "*****" if key == "password" else value
                 console.print(f"    • {key}: {display_value}")
@@ -442,7 +474,7 @@ def create(name, protocol, kind, is_optional, **storage_options):
             "\nCreate this location?",
             default=True,
         ).ask()
-        
+
         if not confirm:
             console.print("Operation cancelled.")
             return
@@ -451,8 +483,15 @@ def create(name, protocol, kind, is_optional, **storage_options):
         storage_options.update({k: v for k, v in storage_opts.items()})
 
     # Validate name
-    if Location.get_location(name) and not questionary.confirm(f"Location '{name}' exists. Override?", default=False).ask():
-        raise click.UsageError(f"Location '{name}' already exists. Use 'update' to modify it.")
+    if (
+        Location.get_location(name)
+        and not questionary.confirm(
+            f"Location '{name}' exists. Override?", default=False
+        ).ask()
+    ):
+        raise click.UsageError(
+            f"Location '{name}' already exists. Use 'update' to modify it."
+        )
 
     # Set defaults if not provided
     if protocol is None:
@@ -473,26 +512,30 @@ def create(name, protocol, kind, is_optional, **storage_options):
     config = {"protocol": protocol, "storage_options": storage_opts}
 
     bridge = _get_location_bridge()
-    
+
     if bridge:
         # Use new architecture
         try:
-            kind_names = [k.name for k in kinds] if isinstance(kinds[0], LocationKind) else kinds
+            kind_names = (
+                [k.name for k in kinds] if isinstance(kinds[0], LocationKind) else kinds
+            )
             result = bridge.create_location_from_legacy_data(
                 name=name,
                 protocol=protocol,
                 kinds=kind_names,
                 config=config,
-                optional=is_optional
+                optional=is_optional,
             )
-            
+
             if result:
                 console.print(f"✅ Created location: {name}")
                 if feature_flags.is_enabled(FeatureFlag.USE_NEW_LOCATION_SERVICE):
                     console.print("[dim]✨ Using new location service[/dim]")
             else:
-                raise click.UsageError(f"Location '{name}' already exists or creation failed.")
-                
+                raise click.UsageError(
+                    f"Location '{name}' already exists or creation failed."
+                )
+
         except ApplicationError as e:
             console.print(f"[red]Error:[/red] {str(e)}")
             return
@@ -512,33 +555,33 @@ def create(name, protocol, kind, is_optional, **storage_options):
 def show_location(name):
     """Show details for a specific location."""
     bridge = _get_location_bridge()
-    
+
     if bridge:
         # Use new architecture
         try:
             loc_data = bridge.get_location_legacy_format(name)
             if not loc_data:
                 raise click.UsageError(f"Location '{name}' not found.")
-            
+
             # Convert to legacy Location object for display compatibility
             kinds = []
-            for kind_str in loc_data['kinds']:
+            for kind_str in loc_data["kinds"]:
                 try:
                     kinds.append(LocationKind[kind_str])
                 except KeyError:
                     continue
-            
-            config = loc_data['config'].copy()
-            config['protocol'] = loc_data['protocol']
-            
+
+            config = loc_data["config"].copy()
+            config["protocol"] = loc_data["protocol"]
+
             loc = Location(
-                name=loc_data['name'],
+                name=loc_data["name"],
                 kinds=kinds,
                 config=config,
-                optional=loc_data.get('optional', False),
-                _skip_registry=True
+                optional=loc_data.get("optional", False),
+                _skip_registry=True,
             )
-            
+
         except ApplicationError as e:
             console.print(f"[red]Error:[/red] {str(e)}")
             return
@@ -595,7 +638,7 @@ def show_location(name):
 def update_location(name, **updates):
     """Update an existing location."""
     bridge = _get_location_bridge()
-    
+
     if bridge:
         # Use new architecture
         try:
@@ -606,11 +649,11 @@ def update_location(name, **updates):
 
             # Build update parameters for new service
             update_params = {}
-            
+
             # Update protocol if provided
             if "protocol" in updates and updates["protocol"] is not None:
                 update_params["protocol"] = updates["protocol"]
-            
+
             # Update kinds if provided
             if "kind" in updates and updates["kind"] is not None:
                 try:
@@ -618,21 +661,24 @@ def update_location(name, **updates):
                     update_params["kinds"] = [kind_obj.name]
                 except ValueError as e:
                     raise click.UsageError(str(e))
-            
+
             # Update optional flag if provided
             if updates.get("is_optional") is not None:
                 update_params["optional"] = updates["is_optional"]
-            
+
             # Build updated config
-            if any(key in updates for key in ["host", "port", "path", "username", "password"]):
+            if any(
+                key in updates
+                for key in ["host", "port", "path", "username", "password"]
+            ):
                 # Get current config and update storage options
-                current_config = loc_data['config'].copy()
+                current_config = loc_data["config"].copy()
                 storage_opts = current_config.get("storage_options", {})
-                
+
                 for key in ["host", "port", "path", "username", "password"]:
                     if key in updates and updates[key] is not None:
                         storage_opts[key] = updates[key]
-                
+
                 current_config["storage_options"] = storage_opts
                 update_params["config"] = current_config
 
@@ -647,7 +693,7 @@ def update_location(name, **updates):
                     raise click.ClickException(f"Failed to update location: {name}")
             else:
                 console.print("No changes specified.")
-                
+
         except ApplicationError as e:
             console.print(f"[red]Error:[/red] {str(e)}")
             return
@@ -664,7 +710,9 @@ def update_location(name, **updates):
         for opt in remove_options:
             if opt in loc.config:
                 del loc.config[opt]
-            elif "storage_options" in loc.config and opt in loc.config["storage_options"]:
+            elif (
+                "storage_options" in loc.config and opt in loc.config["storage_options"]
+            ):
                 del loc.config["storage_options"][opt]
 
         # Update protocol if provided
@@ -705,7 +753,7 @@ def update_location(name, **updates):
 def delete_location(name, force):
     """Delete a location."""
     bridge = _get_location_bridge()
-    
+
     if bridge:
         # Use new architecture
         try:
@@ -727,7 +775,7 @@ def delete_location(name, force):
                     console.print("[dim]✨ Using new location service[/dim]")
             else:
                 raise click.ClickException(f"Failed to delete location: {name}")
-                
+
         except ApplicationError as e:
             console.print(f"[red]Error:[/red] {str(e)}")
             return

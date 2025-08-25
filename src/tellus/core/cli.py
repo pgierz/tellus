@@ -22,12 +22,14 @@ def main():
     from tellus.location.cli import location
     from tellus.workflow.cli import workflow_cli
     from tellus.archive.cli import archive
+    from tellus.tui.cli import tui
 
     # Add subcommands
     cli.add_command(simulation)
     cli.add_command(location)
     cli.add_command(workflow_cli)
     cli.add_command(archive)
+    cli.add_command(tui)
 
     # Run the CLI
     cli()

@@ -566,7 +566,7 @@ class LocationApplicationService:
         
         if protocol in ("file", "local"):
             return self._test_local_connectivity(location)
-        elif protocol in ("sftp", "ssh"):
+        elif protocol in ("sftp", "ssh", "scoutfs"):
             return self._test_sftp_connectivity(location, timeout_seconds)
         elif protocol == "s3":
             return self._test_s3_connectivity(location, timeout_seconds)
@@ -623,20 +623,111 @@ class LocationApplicationService:
         location: LocationEntity,
         timeout_seconds: int
     ) -> Dict[str, Any]:
-        """Test SFTP connectivity."""
-        # This would require actual SFTP implementation
-        # For now, return a placeholder result
+        """Test SFTP connectivity using filesystem abstraction (works for SSH, SFTP, and ScoutFS)."""
         storage_options = location.get_storage_options()
         host = storage_options.get("host", "unknown")
+        port = storage_options.get("port", 22)
+        username = storage_options.get("username")
         
-        return {
-            "success": False,
-            "error": f"SFTP connectivity testing not implemented (host: {host})",
-            "protocol_info": {
-                "host": host,
-                "port": storage_options.get("port", 22)
+        try:
+            # Create filesystem using fsspec
+            from ...infrastructure.adapters.sandboxed_filesystem import PathSandboxedFileSystem
+            import fsspec
+            
+            protocol = location.get_protocol()
+            base_path = location.get_base_path() or "."
+            
+            if protocol in ('ssh', 'sftp'):
+                # SSH filesystem
+                ssh_config = {
+                    'host': host,
+                    'username': username,
+                    'port': port,
+                    'timeout': timeout_seconds
+                }
+                # Add authentication config
+                for key in ['password', 'key_filename']:
+                    if key in storage_options:
+                        if key == 'key_filename':
+                            ssh_config['client_keys'] = [storage_options[key]]
+                        else:
+                            ssh_config[key] = storage_options[key]
+                
+                base_fs = fsspec.filesystem('ssh', **ssh_config)
+                sandboxed_fs = PathSandboxedFileSystem(base_fs, base_path)
+                
+            elif protocol == 'scoutfs':
+                # ScoutFS filesystem (extends SFTP)
+                from ...infrastructure.adapters.scoutfs_filesystem import ScoutFSFileSystem
+                scoutfs_config = {k: v for k, v in storage_options.items() if k != 'host'}
+                scoutfs_config['timeout'] = timeout_seconds
+                
+                base_fs = ScoutFSFileSystem(host, **scoutfs_config)
+                sandboxed_fs = PathSandboxedFileSystem(base_fs, base_path)
+            
+            else:
+                return {
+                    "success": False,
+                    "error": f"Unsupported protocol for SFTP testing: {protocol}"
+                }
+            
+            # Test basic filesystem operations
+            try:
+                file_list = sandboxed_fs.ls(".", detail=False)
+                can_list = True
+                file_count = len(file_list)
+            except Exception:
+                can_list = False
+                file_count = 0
+            
+            # Skip disk usage checks - they can be very slow on remote systems
+            
+            return {
+                "success": True,
+                "available_space": None,  # Skip disk usage for performance
+                "protocol_info": {
+                    "host": host,
+                    "port": port,
+                    "username": username,
+                    "can_list_directory": can_list,
+                    "file_count": file_count,
+                    "base_path": base_path,
+                    "filesystem_type": type(sandboxed_fs._fs).__name__
+                }
             }
-        }
+            
+        except Exception as e:
+            error_msg = str(e)
+            
+            # Provide specific error messages for common issues
+            if "Authentication" in error_msg or "permission denied" in error_msg.lower():
+                return {
+                    "success": False,
+                    "error": f"Authentication failed for {username}@{host}",
+                    "protocol_info": {
+                        "host": host,
+                        "port": port,
+                        "username": username
+                    }
+                }
+            elif "Connection" in error_msg or "timeout" in error_msg.lower():
+                return {
+                    "success": False,
+                    "error": f"Connection failed to {host}:{port} - {error_msg}",
+                    "protocol_info": {
+                        "host": host,
+                        "port": port
+                    }
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": f"SFTP connectivity test failed: {error_msg}",
+                    "protocol_info": {
+                        "host": host,
+                        "port": port
+                    }
+                }
     
     def _test_s3_connectivity(
         self,

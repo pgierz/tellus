@@ -174,9 +174,12 @@ class Location:
         storage_options = self.config.get("storage_options", {}).copy()
         protocol = self.config.get("protocol", "file")
         
-        # Add host if not present for SSH-like protocols
-        if "host" not in storage_options and protocol in ("sftp", "ssh", "scoutfs"):
-            storage_options["host"] = self.name
+        # Host resolution: prefer explicit config; do NOT default to location name
+        if "host" not in storage_options:
+            explicit_host = self.config.get("host")
+            if explicit_host:
+                storage_options["host"] = explicit_host
+        # Note: we intentionally do not auto-set host to self.name to avoid invalid DNS lookups
         
         # Separate filesystem path from connection parameters
         # 'path' should not be passed to SSH connection, it's used for base path only

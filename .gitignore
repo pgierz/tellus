@@ -179,13 +179,17 @@ pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/python
 
+archives.json
 simulations.json
 locations.json
+workflow_runs.json
+workflows.json
+workflow_templates.json
+
 sandbox
 .snakemake/
 demo-experiment/
 trash/
-workflow_runs.json
-workflows.json
-workflow_templates.json
 .direnv/
+demo-work-area/
+ai_status.txt

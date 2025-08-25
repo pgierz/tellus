@@ -363,9 +363,11 @@ class SimulationApplicationService:
             simulation = self._simulation_repo.get_by_id(simulation_id)
             if simulation is None:
                 raise EntityNotFoundError("Simulation", simulation_id)
-            
-            return simulation.get_context_variables()
-            
+
+            # Only attributes participate in templating context
+            attrs = getattr(simulation, "attrs", {}) or {}
+            return {str(k): str(v) for k, v in attrs.items()}
+
         except SimulationNotFoundError as e:
             raise EntityNotFoundError("Simulation", e.simulation_id)
         except RepositoryError as e:
@@ -463,7 +465,7 @@ class SimulationApplicationService:
         
         try:
             # Get the simulation
-            simulation = self._simulation_repo.get(dto.simulation_id)
+            simulation = self._simulation_repo.get_by_id(dto.simulation_id)
             if not simulation:
                 raise EntityNotFoundError("Simulation", dto.simulation_id)
             
@@ -512,7 +514,7 @@ class SimulationApplicationService:
         
         try:
             # Get the simulation
-            simulation = self._simulation_repo.get(simulation_id)
+            simulation = self._simulation_repo.get_by_id(simulation_id)
             if not simulation:
                 raise EntityNotFoundError("Simulation", simulation_id)
             
@@ -562,7 +564,7 @@ class SimulationApplicationService:
         
         try:
             # Get the simulation
-            simulation = self._simulation_repo.get(simulation_id)
+            simulation = self._simulation_repo.get_by_id(simulation_id)
             if not simulation:
                 raise EntityNotFoundError("Simulation", simulation_id)
             
@@ -587,6 +589,26 @@ class SimulationApplicationService:
     
     def _entity_to_dto(self, simulation: SimulationEntity) -> SimulationDto:
         """Convert domain entity to DTO."""
+        # Build contexts from entity data
+        contexts = {}
+        
+        # Add location contexts
+        associated_locations = simulation.get_associated_locations()
+        if associated_locations:
+            location_contexts = {}
+            for location_name in associated_locations:
+                context_data = simulation.get_location_context(location_name)
+                if context_data:
+                    # Convert LocationContext to dict
+                    if hasattr(context_data, 'to_dict'):
+                        location_contexts[location_name] = context_data.to_dict()
+                    else:
+                        location_contexts[location_name] = context_data
+                else:
+                    # Default empty context
+                    location_contexts[location_name] = {"path_prefix": "", "overrides": {}, "metadata": {}}
+            contexts["LocationContext"] = location_contexts
+        
         return SimulationDto(
             simulation_id=simulation.simulation_id,
             uid=simulation.uid,
@@ -595,8 +617,7 @@ class SimulationApplicationService:
             attrs=simulation.attrs.copy(),
             namelists=simulation.namelists.copy(),
             snakemakes=simulation.snakemakes.copy(),
-            associated_locations=simulation.get_associated_locations(),
-            context_variables=simulation.get_context_variables()
+            contexts=contexts
         )
     
     def _apply_filters(

@@ -1,34 +1,29 @@
 """Main Textual TUI application for Tellus archive management."""
 
 from typing import Optional, List, Dict, Any
-import asyncio
-from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.widgets import (
-    Header, Footer, Static, Button, Input, Label, 
-    DataTable, Tree, ProgressBar, Log, Placeholder,
-    TabbedContent, TabPane, Select, Switch
+    Button,
+    DataTable,
+    Footer,
+    Header,
+    Input,
+    Markdown,
+    Static,
+    Tree,
 )
 from textual.binding import Binding
-from textual.screen import Screen, ModalScreen
-from textual.reactive import reactive, var
-from textual.message import Message
+from textual.reactive import reactive
 from textual import on
 
 from ..core.feature_flags import feature_flags, FeatureFlag
 from ..core.service_container import get_service_container
 from ..core.legacy_bridge import ArchiveBridge, SimulationBridge, LocationBridge
-from .screens import (
-    ArchiveBrowserScreen, LocationManagerScreen, 
-    OperationDashboardScreen, OperationQueueScreen,
-    ArchiveDetailsScreen, CreateArchiveScreen
-)
-from .widgets import (
-    ArchiveList, LocationList, OperationList,
-    StatusBar, LogViewer
-)
+
+# Screen imports will be added as needed when implementing those features
+from .widgets import StatusBar
 
 
 class TellusTUIApp(App):
@@ -44,6 +39,12 @@ class TellusTUIApp(App):
         Binding("j", "nav_down", "Down", show=False),
         Binding("k", "nav_up", "Up", show=False),
         Binding("l", "nav_right", "Right panel", show=False),
+        
+        # Arrow key navigation
+        Binding("left", "nav_left", "Left panel", show=False),
+        Binding("down", "nav_down", "Down", show=False),
+        Binding("up", "nav_up", "Up", show=False),
+        Binding("right", "nav_right", "Right panel", show=False),
         Binding("g,g", "nav_top", "Top", show=False),
         Binding("G", "nav_bottom", "Bottom", show=False),
         Binding("/", "search", "Search", show=True),
@@ -72,7 +73,7 @@ class TellusTUIApp(App):
         # View modes
         Binding("1", "show_simulations", "Simulations"),
         Binding("2", "show_archives", "Archives"),
-        Binding("3", "show_locations", "Locations"),
+        Binding("3", "show_location_manager", "Location Manager (Not Implemented)"),
         Binding("4", "show_operations", "Operations"),
         
         # Create new items
@@ -161,7 +162,7 @@ class TellusTUIApp(App):
                 with Vertical(id="right-panel", classes="panel"):
                     yield Static("Details", classes="panel-header")
                     with VerticalScroll(id="details-view"):
-                        yield Placeholder("Select an item to view details", id="item-details")
+                        yield Markdown("Select an item to view details", id="item-details", classes="-default")
                     with Horizontal(classes="panel-actions"):
                         yield Static("/:Search n:Next N:Prev", classes="panel-help")
             
@@ -191,10 +192,7 @@ class TellusTUIApp(App):
         
         # Initialize bridge
         try:
-            from ..core.feature_flags import feature_flags, FeatureFlag
             if feature_flags.is_enabled(FeatureFlag.USE_NEW_ARCHIVE_SERVICE):
-                from ..core.service_container import get_service_container
-                from ..core.legacy_bridge import ArchiveBridge
                 service_container = get_service_container()
                 self.archive_bridge = ArchiveBridge(service_container.service_factory)
                 self.simulation_bridge = None  # Placeholder for simulation service
@@ -376,9 +374,9 @@ class TellusTUIApp(App):
 
     # Event handlers for buttons
     @on(Button.Pressed, "#create-archive")
-    def on_create_archive(self) -> None:
-        """Handle create archive button press."""
-        self.push_screen(CreateArchiveScreen())
+    def show_create_archive(self) -> None:
+        """Show create archive screen."""
+        self._update_status("Create archive functionality not yet implemented")
 
     @on(Button.Pressed, "#import-archive")
     def on_import_archive(self) -> None:
@@ -391,9 +389,10 @@ class TellusTUIApp(App):
         self.call_later(self.load_archives_data)
 
     @on(Button.Pressed, "#add-location")
-    def on_add_location(self) -> None:
-        """Handle add location button press."""
-        self.push_screen(LocationManagerScreen())
+    def show_location_manager(self) -> None:
+        """Show location manager screen."""
+        # TODO: Implement location manager screen
+        self._update_status("Location manager not yet implemented")
 
     @on(Button.Pressed, "#test-location")
     def on_test_location(self) -> None:
@@ -410,9 +409,9 @@ class TellusTUIApp(App):
         self.call_later(self.load_locations_data)
 
     @on(Button.Pressed, "#start-bulk")
-    def on_start_bulk(self) -> None:
-        """Handle start bulk operation button press."""
-        self.push_screen(OperationQueueScreen())
+    def show_operation_queue(self) -> None:
+        """Show operation queue screen."""
+        self._update_status("Operation queue functionality not yet implemented")
 
     @on(Button.Pressed, "#refresh-operations")
     def on_refresh_operations(self) -> None:
@@ -597,11 +596,11 @@ class TellusTUIApp(App):
 
     def action_new_archive(self) -> None:
         """Create new archive."""
-        self.push_screen(CreateArchiveScreen())
+        self._update_status("Create archive functionality not yet implemented")
 
     def action_new_location(self) -> None:
         """Create new location."""
-        self.push_screen(LocationManagerScreen())
+        self._update_status("Create location functionality not yet implemented")
     
     def action_test_location(self) -> None:
         """Test connection to selected location."""
@@ -651,7 +650,8 @@ class TellusTUIApp(App):
                 self._update_status(f"✗ Connection test failed: {str(e)}", error=True)
                 
         except Exception as e:
-            self._update_status(f"Error testing location: {str(e)}", error=True)
+            error_msg = f"Error testing location: {str(e)}"
+            self._update_status(error_msg, error=True)
     
     # Helper methods for vim-like navigation
     def _update_panel_focus(self) -> None:
@@ -662,8 +662,9 @@ class TellusTUIApp(App):
                 panel = self.query_one(f"#{panel_id}")
                 header = panel.query_one(".panel-header")
                 header.remove_class("active")
-            except:
-                pass
+            except Exception as e:
+                error_msg = f"Error updating panel focus: {str(e)}"
+                self._update_status(error_msg, error=True)
         
         # Add active class to current panel
         try:
@@ -671,8 +672,9 @@ class TellusTUIApp(App):
             panel = self.query_one(f"#{current_panel_id}")
             header = panel.query_one(".panel-header")
             header.add_class("active")
-        except:
-            pass
+        except Exception as e:
+            error_msg = f"Error updating panel focus: {str(e)}"
+            self._update_status(error_msg, error=True)
     
     def _switch_nav_view(self, view_type: str) -> None:
         """Switch navigation tree to different view."""
@@ -712,7 +714,9 @@ class TellusTUIApp(App):
                 if not file_count and hasattr(sim, '_file_registry'):
                     try:
                         file_count = len(sim._file_registry.files) if sim._file_registry.files else 0
-                    except:
+                    except Exception as e:
+                        error_msg = f"Error getting file count: {str(e)}"
+                        self._update_status(error_msg, error=True)
                         file_count = 0
                 
                 # Add file count if available
@@ -725,21 +729,30 @@ class TellusTUIApp(App):
         """Load simulations data from the service."""
         try:
             if self.simulation_bridge:
-                # Use new architecture - placeholder for now
-                self.simulations_data = []
-                self._update_status("Simulations loaded (new service)")
+                # Use new architecture through the bridge
+                try:
+                    self.simulations_data = self.simulation_bridge.list_simulations_legacy_format() or []
+                    self._update_status(f"Loaded {len(self.simulations_data)} simulations (new service)")
+                except Exception as bridge_error:
+                    self.log(f"Error using simulation bridge: {bridge_error}")
+                    # Fall back to legacy method if bridge fails
+                    from ..simulation.simulation import Simulation
+                    self.simulations_data = Simulation.list_simulations()
+                    self._update_status(f"Loaded {len(self.simulations_data)} simulations (legacy fallback)")
             else:
                 # Use legacy architecture
                 from ..simulation.simulation import Simulation
-                simulations = Simulation.list_simulations()
-                self.simulations_data = simulations
-                self._update_status("Simulations loaded (legacy mode)")
+                self.simulations_data = Simulation.list_simulations()
+                self._update_status(f"Loaded {len(self.simulations_data)} simulations (legacy mode)")
             
             # Update navigation tree if currently showing simulations
             if hasattr(self, '_current_view') and self._current_view == 'simulations':
                 self._populate_simulations_tree(self.query_one("#nav-tree", Tree))
         except Exception as e:
-            self._update_status(f"Error loading simulations: {str(e)}", error=True)
+            error_msg = f"Error loading simulations: {str(e)}"
+            self._update_status(error_msg, error=True)
+            self.log(error_msg)
+            raise
     
     def _populate_archives_tree(self, tree: Tree) -> None:
         """Populate tree with archives."""
@@ -773,7 +786,7 @@ class TellusTUIApp(App):
         if self.operations_data:
             for op in self.operations_data:
                 status = op.get('status', 'unknown')
-                op_node = tree.root.add(f"⚡ {op.get('operation_id', 'Unknown')} ({status})")
+                tree.root.add(f"⚡ {op.get('operation_id', 'Unknown')} ({status})")
         else:
             tree.root.add_leaf("No operations running")
     
@@ -807,8 +820,9 @@ class TellusTUIApp(App):
                 if row_data and len(row_data) > 0:
                     file_path = row_data[0]
                     self._update_status(f"Selected file: {file_path}")
-        except Exception:
-            pass  # Ignore errors in optional status update
+        except Exception as e:
+            error_msg = f"Error updating file details: {str(e)}"
+            self._update_status(error_msg, error=True)
     
     @on(DataTable.RowHighlighted, "#file-browser")
     def on_file_highlighted(self, event: DataTable.RowHighlighted) -> None:
@@ -907,8 +921,9 @@ class TellusTUIApp(App):
                 self._update_status(f"Loaded {files_added} files for simulation {simulation_id}")
                 
         except Exception as e:
-            file_browser.add_row(f"Error loading simulation: {str(e)}", "", "", "", "")
-            self._update_status(f"Error loading simulation files: {str(e)}", error=True)
+            error_msg = f"Error loading simulation files: {str(e)}"
+            self._update_status(error_msg, error=True)
+            file_browser.add_row("Error", f"Failed to load simulation files: {str(e)}", "Exception occurred")
     
     def _load_archive_files(self, archive_id: str) -> None:
         """Load files for an archive."""
@@ -935,7 +950,9 @@ class TellusTUIApp(App):
                 else:
                     file_browser.add_row("Failed to load files", "", "", "")
             except Exception as e:
-                file_browser.add_row(f"Error: {str(e)}", "", "", "")
+                error_msg = f"Error loading archive files: {str(e)}"
+                self._update_status(error_msg, error=True)
+                file_browser.add_row("Error", f"Failed to load archive files: {str(e)}", "Exception occurred")
         else:
             file_browser.add_row("Archive service not available", "", "", "")
     
@@ -954,7 +971,8 @@ class TellusTUIApp(App):
             # Get location object
             try:
                 location = Location.from_name(location_name)
-            except:
+            except Exception as e:
+                self.log(f"Error in _load_archive_files: {e}")
                 # Fallback: find from location list
                 location = None
                 locations = Location.list_locations()
@@ -1008,6 +1026,8 @@ class TellusTUIApp(App):
                     else:
                         file_browser.add_row("Filesystem", "Not available", "Cannot create filesystem connection")
                 except Exception as e:
+                    error_msg = f"Error checking filesystem: {str(e)}"
+                    self._update_status(error_msg, error=True)
                     file_browser.add_row("Connection Error", str(e)[:50], "Filesystem connection failed")
                 
                 # Add usage stats if available
@@ -1020,12 +1040,13 @@ class TellusTUIApp(App):
                 file_browser.add_row("Available", f"{len(self.locations_data)} locations", "Use 'l' key to navigate")
                 
         except Exception as e:
+            error_msg = f"Error loading location info: {str(e)}"
+            self._update_status(error_msg, error=True)
             file_browser.add_row("Error", f"Failed to load location: {str(e)}", "Exception occurred")
-            self._update_status(f"Error loading location info: {str(e)}", error=True)
     
     def _update_details_view(self) -> None:
         """Update the details panel with current selection."""
-        details_placeholder = self.query_one("#item-details", Placeholder)
+        details_placeholder = self.query_one("#item-details", Markdown)
         
         if self.current_panel == "left":
             # Show details about selected nav item
@@ -1120,9 +1141,9 @@ Press [cyan]Enter[/cyan] to select""")
                 else:
                     details_placeholder.update("Select a file to view details")
             except Exception as e:
-                details_placeholder.update(f"Error loading file details: {str(e)}")
-        else:
-            details_placeholder.update("Select an item to view details")
+                error_msg = f"Error loading file details: {str(e)}"
+                self._update_status(error_msg, error=True)
+                details_placeholder.update(error_msg)
     
     def _highlight_search_result(self) -> None:
         """Highlight current search result."""
@@ -1151,6 +1172,11 @@ Press [cyan]Enter[/cyan] to select""")
         try:
             # For now, just update the subtitle since StatusBar widget may not exist
             self.sub_title = message
-        except Exception:
-            # Last resort fallback
-            pass
+        except Exception as e:
+            # Log any errors that occur during status update
+            self.log(f"Status update failed: {e}")
+            # Try a basic fallback to ensure the app remains responsive
+            try:
+                self.sub_title = "Error: See logs for details"
+            except Exception as fallback_error:
+                self.log(f"Fallback status update also failed: {fallback_error}")
