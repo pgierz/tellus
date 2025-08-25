@@ -271,11 +271,11 @@ def update_location(name: str = None, protocol: str = None, add_kind: tuple = ()
                 protocol = questionary.select(
                     "Select new protocol:",
                     choices=[
-                        questionary.Choice("file", "file (local filesystem)"),
-                        questionary.Choice("ssh", "ssh (SSH/SFTP)"),
-                        questionary.Choice("sftp", "sftp (SFTP)"),
-                        questionary.Choice("s3", "s3 (Amazon S3)"),
-                        questionary.Choice("scoutfs", "scoutfs (ScoutFS with tape staging)")
+                        questionary.Choice(title="file (local filesystem)", value="file"),
+                        questionary.Choice(title="ssh (SSH/SFTP)", value="ssh"),
+                        questionary.Choice(title="sftp (SFTP)", value="sftp"),
+                        questionary.Choice(title="s3 (Amazon S3)", value="s3"),
+                        questionary.Choice(title="scoutfs (ScoutFS with tape staging)", value="scoutfs")
                     ],
                     default=existing_loc.protocol
                 ).ask()
@@ -442,11 +442,11 @@ def create_location(name: str = None, protocol: str = None, kind: tuple = (), ho
                 protocol = questionary.select(
                     "Select protocol:",
                     choices=[
-                        questionary.Choice("file", "file (local filesystem)"),
-                        questionary.Choice("ssh", "ssh (SSH/SFTP)"),
-                        questionary.Choice("sftp", "sftp (SFTP)"),
-                        questionary.Choice("s3", "s3 (Amazon S3)"),
-                        questionary.Choice("scoutfs", "scoutfs (ScoutFS with tape staging)")
+                        questionary.Choice(title="file (local filesystem)", value="file"),
+                        questionary.Choice(title="ssh (SSH/SFTP)", value="ssh"),
+                        questionary.Choice(title="sftp (SFTP)", value="sftp"),
+                        questionary.Choice(title="s3 (Amazon S3)", value="s3"),
+                        questionary.Choice(title="scoutfs (ScoutFS with tape staging)", value="scoutfs")
                     ],
                     default="file"
                 ).ask()
