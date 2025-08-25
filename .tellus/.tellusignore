@@ -1,0 +1,27 @@
+# Tellus ignore patterns (supports .gitignore syntax)
+# Uncomment the following line to include .gitignore patterns
+# include:.gitignore
+
+# Default ignore patterns
+__pycache__/
+*.py[cod]
+*$py.class
+.git/
+.gitignore
+.DS_Store
+*.o
+*.mod
+*.a
+*.so
+*.dylib
+*.log
+*.nc
+*.nc4
+*.h5
+*.hdf5
+*.zarr
+*.zarr/
+*.tar
+*.tar.gz
+*.zip
+*.7z

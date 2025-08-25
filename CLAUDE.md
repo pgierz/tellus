@@ -46,6 +46,7 @@ Tellus is a distributed data management system for Earth System Model simulation
 - Use rich markup: `[red]Error:[/red]`, `[green]Success:[/green]`, `[dim]...[/dim]`
 - Use `Table` for tabular data, `Panel` for detailed info
 - Show "✨ Using new [service] service" indicators when feature flags are enabled
+- Path completion uses `SmartPathCompleter` for location-aware filesystem completion
 
 **Simulation Management (`tellus.simulation`)**
 - Central `Simulation` class representing computational experiments
@@ -111,3 +112,33 @@ src/tellus/
 ```
 
 The codebase is transitioning from `tellus.core.cli` to `tellus.cli` for CLI organization.
+
+## Architecture Guidelines
+
+**Entity vs Infrastructure Classes**
+- ALWAYS prefer the new clean architecture when available:
+  - Domain entities: `tellus.domain.entities.*` (pure business logic)
+  - Application services: `tellus.application.services.*` (orchestration)
+  - Infrastructure: `tellus.location.location.Location` (filesystem operations)
+  
+**Location Abstractions**
+- Use `LocationEntity` for pure domain logic
+- Use `Location.fs` property for filesystem operations (returns `PathSandboxedFileSystem`)
+- NEVER create fsspec filesystems directly - use the provided abstractions
+
+**Service Layer Pattern**
+- New architecture uses service layer with DTOs
+- Enable with feature flags: `TELLUS_USE_NEW_*_SERVICE=true`
+- Legacy bridge handles compatibility between old and new systems
+
+## ⚠️ Known Architectural Issues
+
+**Location Association Gap**: The new simulation service architecture does not yet handle location associations (simulation-location relationships). Currently, the CLI falls back to using the legacy `Simulation.get_simulation()` object for `add_location` operations. This creates a mixed architecture where:
+
+- Simulation listing/creation uses new service (with feature flags)
+- Location associations still use legacy objects
+- Need to implement location association support in new SimulationService
+
+This should be addressed before the new architecture becomes the default.
+- You should be consistently using questionary for interactive prompts in the wizards. Do not use rich or click based interactivity
+- Remember that you do not need to use these TELLUS_USE_NEW variables ever again.

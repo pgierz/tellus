@@ -1,301 +1,265 @@
 # API Reference
 
-This section provides comprehensive API documentation for all Tellus classes, functions, and modules.
+This section provides comprehensive API documentation for all Tellus classes, functions, and modules, automatically generated from docstrings using Sphinx autodoc.
 
 ```{note}
-This is a draft API reference structure. The actual API documentation will be auto-generated from docstrings using Sphinx autodoc.
+All classes and functions include complete type hints and follow NumPy-style documentation standards. Cross-references link to related Earth System Model libraries like xarray, dask, and fsspec.
 ```
 
-## Core Classes
+## Quick Reference
 
-### Simulation
+### Core Services
+- {class}`~tellus.application.services.simulation_service.SimulationApplicationService` - Simulation management
+- {class}`~tellus.application.services.location_service.LocationApplicationService` - Storage location management  
+- {class}`~tellus.application.services.archive_service.ArchiveApplicationService` - Archive operations
+- {class}`~tellus.application.services.file_transfer_service.FileTransferApplicationService` - File transfer operations
+- {class}`~tellus.application.services.progress_tracking_service.ProgressTrackingApplicationService` - Progress tracking
 
-The main entry point for Tellus operations.
+### Domain Entities
+- {class}`~tellus.domain.entities.simulation.SimulationEntity` - Simulation data model
+- {class}`~tellus.domain.entities.location.LocationEntity` - Location data model
+- {class}`~tellus.domain.entities.archive.ArchiveMetadata` - Archive metadata model
+- {class}`~tellus.domain.entities.file_tracking.TrackedFile` - File tracking model
 
-```{eval-rst}
-.. currentmodule:: tellus
+### Service Container
+- {class}`~tellus.application.container.ServiceContainer` - Dependency injection container
 
-.. autoclass:: Simulation
-   :members:
-   :undoc-members:
-   :show-inheritance:
-   :special-members: __init__
+## Application Layer
+
+The application layer provides high-level orchestration of business operations through application services and DTOs (Data Transfer Objects).
+
+```{toctree}
+:maxdepth: 2
+
+application/services
+application/dtos
+application/container
 ```
 
-**Key Methods:**
-- `add_location()` - Add a new storage location
-- `get_location()` - Retrieve an existing location
-- `list_locations()` - List all configured locations
-- `save()` - Save simulation configuration
-- `load()` - Load existing simulation
+## Domain Layer  
 
-### Location Classes
+The domain layer contains pure business logic, entities, and domain services without external dependencies.
 
-#### Location
+```{toctree}
+:maxdepth: 2
 
-Base class for all storage location types.
-
-```{eval-rst}
-.. autoclass:: Location
-   :members:
-   :undoc-members:
-   :show-inheritance:
+domain/entities
+domain/services
+domain/repositories
 ```
 
-**Note**: Specific location types (SSH, S3, etc.) will be documented here once implemented in the codebase.
+## Infrastructure Layer
 
-## Additional Classes
+The infrastructure layer implements technical concerns like data persistence, external service integration, and filesystem operations.
 
-```{note}
-Additional utility classes, configuration classes, exceptions, and functions will be documented here as they are implemented in the codebase. The current API reference shows the structure that will be auto-generated from docstrings.
+```{toctree}
+:maxdepth: 2
+
+infrastructure/repositories
+infrastructure/adapters
+infrastructure/services
 ```
 
-### Planned Classes
-- **FileInfo** - Information about files and directories
-- **TransferProgress** - Progress tracking for file transfers  
-- **Cache** - Caching system for remote data
-- **SimulationConfig** - Configuration management for simulations
-- **LocationConfig** - Configuration for storage locations
+## Interface Layer
 
-### Planned Exception Classes
-- **TellusError** - Base exception class for all Tellus errors
-- **ConnectionError** - Raised when connection to remote storage fails
-- **TransferError** - Raised when file transfers fail
-- **PermissionError** - Raised when file permission errors occur
-- **ConfigurationError** - Raised when configuration is invalid
+The interface layer provides user-facing interfaces including CLI commands, TUI applications, and programmatic APIs.
 
-### Planned Module Functions
-- **list_simulations()** - List all available simulations
-- **configure()** - Configure global settings
-- **get_version()** - Get Tellus version information
-- **set_log_level()** - Set logging level
+```{toctree}
+:maxdepth: 2
 
-## Archive System API
-
-```{note}
-The archive system provides intelligent file archiving and caching capabilities. Documentation will be auto-generated once implemented.
+interfaces/cli
+interfaces/tui
 ```
 
-### Planned Archive Classes
-- **ArchiveSystem** - Main archive system class
-- **Archive** - Individual archive representation  
-- **ArchiveEntry** - Individual file/directory within an archive
+## Testing Utilities
 
-## Interactive Features
+Test fixtures, utilities, and plugins for testing Tellus applications and extensions.
 
-```{note}
-Interactive wizards provide guided workflows for complex operations. Documentation will be auto-generated once implemented.
-```
+```{toctree}
+:maxdepth: 2
 
-### Planned Interactive Classes
-- **Wizard** - Base class for interactive wizards
-- **SimulationWizard** - Interactive simulation creation wizard
-- **LocationWizard** - Interactive location configuration wizard
-
-## CLI Interface
-
-```{note}
-Command-line interface functions provide programmatic access to CLI operations. Documentation will be auto-generated once implemented.
+testing
 ```
 
 ## Type Definitions
 
-Common type aliases used throughout Tellus:
+Common type aliases and protocols used throughout Tellus:
+
+```{eval-rst}
+.. currentmodule:: tellus
+
+.. autosummary::
+   :toctree: generated/
+   
+   application.dtos
+   domain.entities
+```
+
+### Path and Configuration Types
 
 ```python
-from typing import Union, List, Dict, Optional, Callable, Any
+from typing import Union, List, Dict, Optional, Protocol
 from pathlib import Path
 
-# Path types
+# Path types for filesystem operations
 PathLike = Union[str, Path]
 PathList = List[PathLike]
 
-# Configuration types
+# Configuration and metadata types
 ConfigDict = Dict[str, Any]
 MetadataDict = Dict[str, Any]
+AttrsDict = Dict[str, Any]
 
-# Callback types
-ProgressCallback = Callable[[int, int], None]
-ErrorCallback = Callable[[Exception], None]
+# Callback protocols for progress tracking
+class ProgressCallback(Protocol):
+    def __call__(self, current: int, total: int) -> None: ...
 
-# File patterns
-FilePattern = Union[str, List[str]]
+class ErrorCallback(Protocol):
+    def __call__(self, error: Exception) -> None: ...
+```
+
+## Exception Hierarchy
+
+Tellus uses a structured exception hierarchy for clear error handling:
+
+```{eval-rst}
+.. currentmodule:: tellus.application.exceptions
+
+.. autosummary::
+   :toctree: generated/
+   
+   TellusApplicationError
+   ServiceNotFoundError
+   ValidationError
+   OperationError
+```
+
+### Repository Exceptions
+
+```{eval-rst}
+.. currentmodule:: tellus.domain.repositories.exceptions
+
+.. autosummary::
+   :toctree: generated/
+   
+   RepositoryError
+   EntityNotFoundError
+   DuplicateEntityError
+   EntityValidationError
 ```
 
 ## Configuration Reference
 
-### Global Configuration Options
+### Service Container Configuration
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `default_cache_dir` | str | `"~/.tellus/cache"` | Default cache directory |
-| `max_parallel_transfers` | int | `4` | Maximum parallel transfers |
-| `default_timeout` | int | `300` | Default connection timeout (seconds) |
-| `chunk_size` | str | `"10MB"` | Default transfer chunk size |
-| `progress_bar_style` | str | `"rich"` | Progress bar style |
-| `log_level` | str | `"INFO"` | Default logging level |
-| `verify_checksums` | bool | `True` | Verify file checksums |
-| `enable_compression` | bool | `False` | Enable transfer compression |
-
-### Location-Specific Configuration
-
-#### SSH Location Options
-
-| Option | Type | Required | Description |
-|--------|------|----------|-------------|
-| `host` | str | Yes | SSH hostname |
-| `username` | str | Yes | SSH username |
-| `port` | int | No | SSH port (default: 22) |
-| `key_file` | str | No | SSH private key file |
-| `password` | str | No | SSH password (interactive if not provided) |
-| `timeout` | int | No | Connection timeout |
-| `compression` | bool | No | Enable SSH compression |
-
-#### S3 Location Options
-
-| Option | Type | Required | Description |
-|--------|------|----------|-------------|
-| `bucket` | str | Yes | S3 bucket name |
-| `prefix` | str | No | Key prefix |
-| `region` | str | No | AWS region |
-| `aws_access_key_id` | str | No | AWS access key |
-| `aws_secret_access_key` | str | No | AWS secret key |
-| `aws_profile` | str | No | AWS profile name |
-| `endpoint_url` | str | No | Custom S3 endpoint |
-
-#### Local Location Options
-
-| Option | Type | Required | Description |
-|--------|------|----------|-------------|
-| `path` | str | Yes | Local filesystem path |
-| `create_dirs` | bool | No | Create directories if missing |
-| `permissions` | str | No | Default file permissions |
-
-## Development API
-
-### Plugin System
-
-```{eval-rst}
-.. autoclass:: Plugin
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. autofunction:: register_plugin
-
-.. autofunction:: load_plugins
-
-.. autofunction:: get_plugins
-```
-
-### Testing Utilities
-
-```{eval-rst}
-.. autofunction:: create_test_simulation
-
-.. autofunction:: create_mock_location
-
-.. autofunction:: generate_test_data
-
-.. autoclass:: TellusTestCase
-   :members:
-   :undoc-members:
-   :show-inheritance:
-```
-
-## Examples
-
-### Basic Usage
+The service container can be configured with custom repository implementations:
 
 ```python
-import tellus
+from tellus.application.container import ServiceContainer
+from tellus.infrastructure.repositories import JsonSimulationRepository
 
-# Create simulation
-sim = tellus.Simulation("my-experiment")
-
-# Add locations
-local = sim.add_location("local", type="local", path="./data")
-remote = sim.add_location("hpc", type="ssh", host="hpc.edu", path="/scratch")
-
-# Transfer files
-remote.get("*.nc", "./data/")
-local.put("results.pdf", "analysis/")
-```
-
-### Advanced Configuration
-
-```python
-# Custom location with all options
-location = sim.add_location(
-    "advanced-ssh",
-    type="ssh",
-    host="secure.server.edu",
-    port=2222,
-    username="researcher",
-    key_file="~/.ssh/research_key",
-    timeout=600,
-    compression=True,
-    max_retries=5,
-    retry_delay=2.0,
-    cache_dir="./cache/",
-    cache_expires="1d"
+# Create container with custom repository
+container = ServiceContainer()
+container.register_simulation_repository(
+    JsonSimulationRepository("custom_simulations.json")
 )
 
-# Parallel transfer with progress tracking
-def progress_callback(current, total):
-    percent = (current / total) * 100
-    print(f"Progress: {percent:.1f}%")
+# Use configured services
+simulation_service = container.get_simulation_service()
+```
 
-location.get(
-    ["file1.nc", "file2.nc", "file3.nc"],
-    "./downloads/",
-    max_workers=4,
-    progress_callback=progress_callback,
-    verify_checksum=True
+### Environment Variables
+
+Tellus recognizes several environment variables for configuration:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `TELLUS_CONFIG_DIR` | Configuration directory | `~/.tellus` |
+| `TELLUS_CACHE_DIR` | Cache directory | `~/.cache/tellus` |
+| `TELLUS_LOG_LEVEL` | Logging level | `INFO` |
+| `TELLUS_MAX_WORKERS` | Maximum concurrent operations | `4` |
+
+## Integration Examples
+
+### Earth System Model Integration
+
+```python
+from tellus.application.container import ServiceContainer
+from tellus.application.dtos import CreateSimulationDto
+
+# Initialize Tellus for climate model workflow
+container = ServiceContainer()
+sim_service = container.get_simulation_service()
+
+# Register CESM2 simulation
+cesm_sim = CreateSimulationDto(
+    simulation_id="cesm2-historical-r1i1p1f1",
+    model_id="CESM2.1",
+    attrs={
+        "experiment": "historical",
+        "time_period": "1850-2014",
+        "resolution": "f09_g17",
+        "ensemble_member": "r1i1p1f1",
+        "atmospheric_model": "CAM6",
+        "ocean_model": "POP2",
+        "variables": ["tas", "pr", "psl", "tos"]
+    }
 )
+
+simulation = sim_service.create_simulation(cesm_sim)
 ```
 
-### Error Handling
+### HPC Integration
 
 ```python
-try:
-    location.get("important_file.nc", "./")
-except tellus.ConnectionError as e:
-    print(f"Connection failed: {e}")
-    # Retry with different settings
-except tellus.PermissionError as e:
-    print(f"Permission denied: {e}")
-    # Check credentials
-except tellus.TransferError as e:
-    print(f"Transfer failed: {e}")
-    # Handle partial transfer
+from tellus.application.dtos import CreateLocationDto
+from tellus.domain.entities.location import LocationKind
+
+# Configure HPC storage locations
+hpc_scratch = CreateLocationDto(
+    name="ncar-cheyenne-scratch",
+    kinds=[LocationKind.COMPUTE],
+    protocol="ssh",
+    config={
+        "host": "cheyenne.ucar.edu",
+        "username": "researcher",
+        "path": "/glade/scratch/researcher"
+    },
+    metadata={
+        "institution": "NCAR",
+        "scheduler": "PBS",
+        "max_walltime": "12:00:00",
+        "max_nodes": 4608
+    }
+)
+
+location_service = container.get_location_service()
+hpc_location = location_service.create_location(hpc_scratch)
 ```
 
-## Migration Guide
+## Performance Considerations
 
-### Upgrading from v1.x to v2.x
+### Memory Management
 
-Key changes in v2.x:
+- Services use lazy loading and connection pooling
+- Large file operations stream data to minimize memory usage
+- Progress tracking uses efficient callback mechanisms
 
-1. **New Archive System**: Added comprehensive archive management
-2. **Enhanced Location Types**: Support for more cloud providers
-3. **Improved Configuration**: YAML-based configuration files
-4. **Breaking Changes**: Some method signatures have changed
+### Concurrency
 
-```python
-# v1.x syntax
-sim = tellus.Simulation("name", config_file="sim.json")
-location = sim.add_ssh_location("name", host="server", user="user")
+- File transfer operations support configurable concurrency limits
+- Archive operations use async/await for non-blocking I/O
+- Progress tracking is thread-safe for concurrent operations
 
-# v2.x syntax  
-sim = tellus.Simulation.from_config("sim.yaml")
-location = sim.add_location("name", type="ssh", host="server", username="user")
-```
+### Caching
 
-See the {doc}`../changelog` for complete migration details.
+- Location filesystem objects are cached for performance
+- Archive metadata is cached to avoid repeated extraction
+- File classification results are cached for efficiency
 
 ## See Also
 
-- {doc}`../user-guide/index` - Comprehensive user guide
-- {doc}`../examples/index` - Practical examples
-- {doc}`../development/index` - Development and contributing guide
+- {doc}`../user-guide/index` - Comprehensive user guide with examples
+- {doc}`../tutorials/index` - Step-by-step tutorials for common workflows  
+- {doc}`../examples/index` - Real-world usage patterns and case studies
+- {doc}`../development/index` - Development guide for contributors

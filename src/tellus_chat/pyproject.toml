@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tellus-chat"
+version = "0.1.0"
+description = "Natural language interface for Tellus Earth System Model data and simulations"
+requires-python = ">=3.10"
+authors = [
+    { name = "Paul Gierz", email = "pgierz@awi.de" },
+]
+dependencies = [
+    "langchain-community>=0.0.10",
+    "pydantic>=2.5.0",
+    "python-dotenv>=1.0.0",
+    "typer>=0.12.0",
+    "ollama>=0.1.5",
+    "fastapi>=0.95.0",
+    "uvicorn>=0.22.0"
+]
+
+[project.optional-dependencies]
+full = [
+    "langchain>=0.1.0",
+    "langchain-core>=0.1.0"
+]
+
+[project.scripts]
+tellus-chat = "tellus_chat.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["tellus_chat"]

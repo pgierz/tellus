@@ -73,6 +73,55 @@ sphinx:
     html_show_sourcelink: false
     html_sourcelink_suffix: ""
     
+    # Autodoc configuration
+    autodoc_default_options:
+      members: true
+      member-order: bysource
+      special-members: "__init__"
+      undoc-members: true
+      exclude-members: "__weakref__"
+      show-inheritance: true
+    autodoc_typehints: description
+    autodoc_typehints_description_target: documented
+    autodoc_class_signature: mixed
+    
+    # Autosummary configuration  
+    autosummary_generate: true
+    autosummary_imported_members: true
+    
+    # Napoleon configuration for NumPy/Google style docstrings
+    napoleon_google_docstring: true
+    napoleon_numpy_docstring: true
+    napoleon_include_init_with_doc: false
+    napoleon_include_private_with_doc: false
+    napoleon_include_special_with_doc: true
+    napoleon_use_admonition_for_examples: false
+    napoleon_use_admonition_for_notes: false
+    napoleon_use_admonition_for_references: false
+    napoleon_use_ivar: false
+    napoleon_use_param: true
+    napoleon_use_rtype: true
+    napoleon_use_keyword: true
+    napoleon_preprocess_types: true
+    napoleon_type_aliases:
+      PathLike: "Union[str, pathlib.Path]"
+      Dict: Dict
+      List: List
+      Optional: Optional
+      Union: Union
+      
+    # Intersphinx mapping for cross-references
+    intersphinx_mapping:
+      python: ["https://docs.python.org/3", null]
+      numpy: ["https://numpy.org/doc/stable/", null]
+      pandas: ["https://pandas.pydata.org/docs/", null]
+      xarray: ["https://docs.xarray.dev/en/stable/", null]
+      dask: ["https://docs.dask.org/en/stable/", null]
+      fsspec: ["https://filesystem-spec.readthedocs.io/en/latest/", null]
+      rich: ["https://rich.readthedocs.io/en/stable/", null]
+      click: ["https://click.palletsprojects.com/en/8.1.x/", null]
+      pydantic: ["https://docs.pydantic.dev/latest/", null]
+    
   extra_extensions:
     - sphinx.ext.autodoc
     - sphinx.ext.autosummary
@@ -80,6 +129,9 @@ sphinx:
     - sphinx.ext.napoleon
     - sphinx.ext.intersphinx
     - sphinx.ext.mathjax
+    - sphinx.ext.doctest
+    - sphinx.ext.coverage
+    - sphinx.ext.linkcode
     - myst_nb
     - sphinx_copybutton
     - sphinx_design
