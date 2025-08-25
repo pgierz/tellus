@@ -463,7 +463,62 @@ class LocationApplicationService:
             self._logger.error(f"Repository error validating path: {str(e)}")
             raise
     
+    def get_location_filesystem(self, name: str):
+        """Get filesystem access for a location (for completion, browsing, etc.)."""
+        try:
+            location = self._location_repo.get_by_name(name)
+            return self._create_location_filesystem(location)
+        except LocationNotFoundError as e:
+            raise EntityNotFoundError("Location", e.name)
+    
     # Private helper methods
+    
+    def _create_location_filesystem(self, location: LocationEntity):
+        """Create filesystem access for a location."""
+        protocol = location.get_protocol()
+        base_path = location.get_base_path()
+        storage_options = location.get_storage_options()
+        
+        if protocol in ("file", "local"):
+            # Local filesystem
+            from ...infrastructure.adapters.sandboxed_filesystem import PathSandboxedFileSystem
+            import fsspec
+            base_fs = fsspec.filesystem('file')
+            return PathSandboxedFileSystem(base_fs, base_path)
+            
+        elif protocol in ('ssh', 'sftp'):
+            # SSH filesystem
+            from ...infrastructure.adapters.sandboxed_filesystem import PathSandboxedFileSystem
+            import fsspec
+            
+            host = storage_options.get("host", "localhost")
+            ssh_config = {
+                'host': host,
+                'timeout': 30  # Default timeout
+            }
+            
+            # Add optional SSH configuration
+            for key in ['username', 'password', 'key_filename', 'port']:
+                if key in storage_options:
+                    ssh_config[key] = storage_options[key]
+            
+            base_fs = fsspec.filesystem('ssh', **ssh_config)
+            return PathSandboxedFileSystem(base_fs, base_path)
+            
+        elif protocol == 'scoutfs':
+            # ScoutFS filesystem (extends SFTP)
+            from ...infrastructure.adapters.scoutfs_filesystem import ScoutFSFileSystem
+            from ...infrastructure.adapters.sandboxed_filesystem import PathSandboxedFileSystem
+            
+            host = storage_options.get("host", "localhost")
+            scoutfs_config = {k: v for k, v in storage_options.items() if k != 'host'}
+            scoutfs_config['timeout'] = 30  # Default timeout
+            
+            base_fs = ScoutFSFileSystem(host=host, **scoutfs_config)
+            return PathSandboxedFileSystem(base_fs, base_path)
+            
+        else:
+            raise ConfigurationError(protocol, f"Unsupported protocol for filesystem access: {protocol}")
     
     def _entity_to_dto(self, location: LocationEntity) -> LocationDto:
         """Convert domain entity to DTO."""

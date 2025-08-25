@@ -491,24 +491,22 @@ def create_location(name: str = None, protocol: str = None, kind: tuple = (), ho
                         default="https://hsm.dmawi.de:8080/v1"
                     ).ask()
             
-            # Get path with smart tab completion  
+            # For path, we'll set a default and offer to update with tab completion after creation
             if not path:
-                # For remote protocols, we'll use a simple text input since we don't have the location created yet
-                # The SmartPathCompleter needs an existing Location object
                 if protocol in ['ssh', 'sftp', 'scoutfs', 's3']:
+                    # For remote protocols, default to root - we'll offer tab completion after creation
+                    path = "/"
+                else:
+                    # For local filesystem, use SmartPathCompleter which provides proper tab completion
+                    from ...interfaces.cli.completion import SmartPathCompleter
+                    completer = SmartPathCompleter(location=None, only_directories=True)
                     path = questionary.text(
                         "Path on the location:",
-                        default="/"
+                        completer=completer
                     ).ask()
-                else:
-                    # For local filesystem, use path completion
-                    path = questionary.path(
-                        "Path on the location:",
-                        only_directories=True
-                    ).ask()
-                
+                    
                 if path is None:
-                    path = ""
+                    path = "/"
             
             # Optional flag
             if not optional:
@@ -559,6 +557,39 @@ def create_location(name: str = None, protocol: str = None, kind: tuple = (), ho
         
         result = service.create_location(dto)
         console.print(f"[green]✓[/green] Created location: {result.name}")
+        
+        # For remote protocols in interactive mode, offer to update the path with tab completion now that the location exists
+        if protocol in ['ssh', 'sftp', 'scoutfs', 's3'] and path == "/" and host:
+            import questionary
+            update_path = questionary.confirm(
+                f"Would you like to browse and set a specific path on {host}? (uses tab completion)",
+                default=True
+            ).ask()
+            
+            if update_path:
+                from ...interfaces.cli.completion import SmartPathCompleter
+                
+                try:
+                    # Get filesystem access through the application service (clean architecture)
+                    filesystem_wrapper = service.get_location_filesystem(result.name)
+                    completer = SmartPathCompleter(filesystem_wrapper, only_directories=True)
+                    
+                    new_path = questionary.text(
+                        f"Enter path on {host}:",
+                        default="/",
+                        completer=completer
+                    ).ask()
+                    
+                    if new_path and new_path != "/":
+                        # Update the location with the new path
+                        from ...application.dtos import UpdateLocationDto
+                        update_dto = UpdateLocationDto(path=new_path)
+                        result = service.update_location(result.name, update_dto)
+                        console.print(f"[green]✓[/green] Updated path to: {new_path}")
+                        
+                except Exception as e:
+                    console.print(f"[yellow]Warning:[/yellow] Tab completion not available: {str(e)}")
+                    console.print("[dim]You can update the path later with: tellus location update[/dim]")
         
         # Show summary
         table = Table(title=f"Created Location: {name}")
