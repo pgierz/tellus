@@ -146,7 +146,7 @@ def show_archive(archive_id: str):
     """Show details for an archive."""
     try:
         service = _get_archive_service()
-        archive = service.get_archive(archive_id)
+        archive = service.get_archive_metadata(archive_id)
         
         table = Table(title=f"Archive: {archive_id}")
         table.add_column("Property", style="cyan")
@@ -156,6 +156,21 @@ def show_archive(archive_id: str):
         table.add_row("Location", archive.location)
         table.add_row("Type", archive.archive_type)
         table.add_row("Simulation", archive.simulation_id or "-")
+        
+        # Additional metadata if available
+        if hasattr(archive, 'size') and archive.size:
+            size_mb = archive.size / (1024 * 1024)
+            table.add_row("Size", f"{size_mb:.1f} MB")
+        if hasattr(archive, 'created_time') and archive.created_time:
+            from datetime import datetime
+            created_date = datetime.fromtimestamp(archive.created_time).strftime("%Y-%m-%d %H:%M")
+            table.add_row("Created", created_date)
+        if hasattr(archive, 'description') and archive.description:
+            table.add_row("Description", archive.description)
+        if hasattr(archive, 'version') and archive.version:
+            table.add_row("Version", archive.version)
+        if hasattr(archive, 'tags') and archive.tags:
+            table.add_row("Tags", ", ".join(archive.tags))
         
         console.print(Panel.fit(table))
         
