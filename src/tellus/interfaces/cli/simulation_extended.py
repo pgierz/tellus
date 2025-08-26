@@ -946,11 +946,27 @@ def put_file(sim_id: str, location_name: str, local_file: str = None, remote_pat
                     ) as prog:
                         task = prog.add_task(f"Uploading {os.path.basename(local_path)}", total=file_size)
                         
-                        def update_progress(bytes_transferred):
-                            prog.update(task, completed=bytes_transferred)
-                            
+                        # Create proper fsspec callback for upload progress
+                        from fsspec.callbacks import Callback
+                        
+                        class ProgressCallback(Callback):
+                            def __init__(self, progress_obj, task_id):
+                                super().__init__()
+                                self.prog = progress_obj
+                                self.task = task_id
+                                
+                            def set_size(self, size):
+                                """Called when file size is known"""
+                                self.prog.update(self.task, total=size)
+                                
+                            def absolute_update(self, value):
+                                """Called with absolute bytes transferred"""
+                                self.prog.update(self.task, completed=value)
+                        
+                        callback = ProgressCallback(prog, task)
+                        
                         # Upload with progress callback
-                        fs.put(local_path, resolved_remote, callback=update_progress)
+                        fs.put(local_path, resolved_remote, callback=callback)
                         
                 else:
                     # Upload without progress
@@ -1139,11 +1155,27 @@ def get_file(sim_id: str, location_name: str, remote_file: str = None, local_pat
                     ) as prog:
                         task = prog.add_task(f"Downloading {remote_name}", total=file_size)
                         
-                        def update_progress(bytes_transferred):
-                            prog.update(task, completed=bytes_transferred)
-                            
+                        # Create proper fsspec callback for download progress
+                        from fsspec.callbacks import Callback
+                        
+                        class ProgressCallback(Callback):
+                            def __init__(self, progress_obj, task_id):
+                                super().__init__()
+                                self.prog = progress_obj
+                                self.task = task_id
+                                
+                            def set_size(self, size):
+                                """Called when file size is known"""
+                                self.prog.update(self.task, total=size)
+                                
+                            def absolute_update(self, value):
+                                """Called with absolute bytes transferred"""
+                                self.prog.update(self.task, completed=value)
+                        
+                        callback = ProgressCallback(prog, task)
+                        
                         # Download with progress callback
-                        fs.get(resolved_remote, local_name, callback=update_progress)
+                        fs.get(resolved_remote, local_name, callback=callback)
                         
                 else:
                     # Download without progress
