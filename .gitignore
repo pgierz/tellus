@@ -2,6 +2,10 @@
 # pixi environments
 .pixi
 *.egg-info
+
+# Tellus data directories
+.tellus/
+*.json
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python
 

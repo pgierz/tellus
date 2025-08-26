@@ -37,12 +37,16 @@ def create_main_cli():
     
     # File transfer - using clean architecture
     from .transfer import transfer, queue_group
+    
+    # Configuration management
+    from .config import config
 
     # Add working subcommands
     cli.add_command(simulation)
     cli.add_command(location)
     cli.add_command(archive)
     cli.add_command(workflow_cli)
+    cli.add_command(config)
     # TUI functionality now fixed and re-enabled
     tui_commands = create_tui_commands()
     cli.add_command(tui_commands)

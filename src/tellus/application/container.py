@@ -24,27 +24,67 @@ logger = logging.getLogger(__name__)
 class ServiceContainer:
     """Dependency injection container for Tellus application services."""
     
-    def __init__(self, config_path: Optional[Path] = None):
-        self._config_path = config_path or Path.cwd()
+    def __init__(self, config_path: Optional[Path] = None, project_path: Optional[Path] = None):
+        """
+        Initialize the service container with hybrid data persistence paths.
+        
+        Args:
+            config_path: Legacy parameter for backward compatibility (deprecated)
+            project_path: Path to the current project directory (defaults to current working directory)
+        """
+        # For backward compatibility, config_path overrides project_path if provided
+        if config_path is not None:
+            self._project_path = config_path
+        else:
+            self._project_path = project_path or Path.cwd()
+            
+        # Global data directory in user home
+        self._global_data_path = Path.home() / ".tellus"
+        
+        # Project-specific data directory
+        self._project_data_path = self._project_path / ".tellus"
+        
         self._service_factory: Optional[ApplicationServiceFactory] = None
         self._progress_tracking_service: Optional[ProgressTrackingService] = None
+        
+        # Ensure directories exist
+        self._global_data_path.mkdir(parents=True, exist_ok=True)
+        self._project_data_path.mkdir(parents=True, exist_ok=True)
+    
+    @property
+    def global_data_path(self) -> Path:
+        """Get the global data directory path (~/.tellus/)."""
+        return self._global_data_path
+    
+    @property
+    def project_data_path(self) -> Path:
+        """Get the project-specific data directory path (<project>/.tellus/).""" 
+        return self._project_data_path
+    
+    @property
+    def project_path(self) -> Path:
+        """Get the current project directory path."""
+        return self._project_path
         
     @property
     def service_factory(self) -> ApplicationServiceFactory:
         """Get or create the application service factory."""
         if self._service_factory is None:
-            # Initialize repositories with JSON backends
-            simulation_repo = JsonSimulationRepository(
-                file_path=self._config_path / "simulations.json"
-            )
+            # Initialize repositories with hybrid data persistence
+            # Global data (shared across projects)
             location_repo = JsonLocationRepository(
-                file_path=self._config_path / "locations.json"
+                file_path=self._global_data_path / "locations.json"
             )
             archive_repo = JsonArchiveRepository(
-                file_path=self._config_path / "archives.json"
+                file_path=self._global_data_path / "archives.json"
             )
             progress_tracking_repo = JsonProgressTrackingRepository(
-                storage_path=str(Path.home() / ".tellus" / "progress_tracking.json")
+                storage_path=str(self._global_data_path / "progress_tracking.json")
+            )
+            
+            # Project-specific data
+            simulation_repo = JsonSimulationRepository(
+                file_path=self._project_data_path / "simulations.json"
             )
             
             # Configure cache settings
@@ -93,11 +133,44 @@ class ServiceContainer:
 _service_container: Optional[ServiceContainer] = None
 
 
+def _detect_project_directory() -> Path:
+    """
+    Detect the current project directory by looking for tellus project markers.
+    
+    Returns:
+        Path: The detected project directory, or current working directory if no markers found
+    """
+    current = Path.cwd()
+    
+    # Look for tellus project markers in current directory and parents
+    for path in [current] + list(current.parents):
+        # Check for existing .tellus directory
+        if (path / ".tellus").exists():
+            return path
+        
+        # Check for other tellus project indicators (pyproject.toml with tellus, etc.)
+        pyproject_file = path / "pyproject.toml"
+        if pyproject_file.exists():
+            try:
+                # Try to read pyproject.toml to detect tellus project
+                with open(pyproject_file, 'r') as f:
+                    content = f.read()
+                    # Simple string search (avoiding toml dependency)
+                    if 'name = "tellus"' in content or "name = 'tellus'" in content:
+                        return path
+            except Exception:
+                pass
+                
+    # Default to current working directory
+    return current
+
+
 def get_service_container() -> ServiceContainer:
-    """Get the global service container instance."""
+    """Get the global service container instance with project directory detection."""
     global _service_container
     if _service_container is None:
-        _service_container = ServiceContainer()
+        project_path = _detect_project_directory()
+        _service_container = ServiceContainer(project_path=project_path)
     return _service_container
 
 
