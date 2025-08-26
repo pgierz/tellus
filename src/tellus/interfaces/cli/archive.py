@@ -143,11 +143,45 @@ def create_archive(archive_id: str, source_path: str, simulation: str = None, ar
 
 
 @archive.command(name="show")
-@click.argument("archive_id")
-def show_archive(archive_id: str):
-    """Show details for an archive."""
+@click.argument("archive_id", required=False)
+def show_archive(archive_id: str = None):
+    """Show details for an archive.
+    
+    If no archive_id is provided, launches an interactive archive selection.
+    """
     try:
         service = _get_archive_service()
+        
+        # If no archive_id provided, launch interactive selection
+        if not archive_id:
+            import questionary
+            
+            # Get all archives for selection
+            archives_result = service.list_archives()
+            if not archives_result.archives:
+                console.print("[yellow]No archives found[/yellow]")
+                return
+                
+            archive_choices = [f"{archive.archive_id} (location: {archive.location})" 
+                             for archive in archives_result.archives]
+            
+            selected = questionary.select(
+                "Select archive to show details:",
+                choices=archive_choices,
+                style=questionary.Style([
+                    ('question', 'bold'),
+                    ('selected', 'fg:#cc5454'),
+                    ('pointer', 'fg:#ff0066 bold'),
+                ])
+            ).ask()
+            
+            if not selected:
+                console.print("[yellow]No archive selected[/yellow]")
+                return
+                
+            # Extract archive_id from selection
+            archive_id = selected.split(" (location:")[0]
+        
         archive = service.get_archive_metadata(archive_id)
         
         table = Table(title=f"Archive: {archive_id}")
