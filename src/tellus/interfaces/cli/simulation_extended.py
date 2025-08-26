@@ -116,15 +116,70 @@ def simulation_location():
 
 
 @simulation_location.command(name="add")
-@click.argument("sim_id")
-@click.argument("location_name")
+@click.argument("sim_id", required=False)
+@click.argument("location_name", required=False)
 @click.option("--context", help="JSON string with location context data")
-def add_location(sim_id: str, location_name: str, context: str = None):
-    """Associate a location with a simulation."""
+def add_location(sim_id: str = None, location_name: str = None, context: str = None):
+    """Associate a location with a simulation.
+    
+    If no arguments are provided, launches an interactive selection wizard.
+    """
     try:
         import json
         
         service = _get_simulation_service()
+        
+        # Interactive mode when no arguments provided
+        if not sim_id or not location_name:
+            import questionary
+            
+            # Get simulation ID if not provided
+            if not sim_id:
+                simulations = service.list_simulations()
+                if not simulations.simulations:
+                    console.print("[yellow]No simulations found[/yellow]")
+                    return
+                    
+                sim_choices = [sim.simulation_id for sim in simulations.simulations]
+                sim_id = questionary.select(
+                    "Select simulation:",
+                    choices=sim_choices,
+                    style=questionary.Style([
+                        ('question', 'bold'),
+                        ('selected', 'fg:#cc5454'),
+                        ('pointer', 'fg:#ff0066 bold'),
+                    ])
+                ).ask()
+                
+                if not sim_id:
+                    console.print("[yellow]No simulation selected[/yellow]")
+                    return
+            
+            # Get location name if not provided  
+            if not location_name:
+                from ...application.container import get_service_container
+                container = get_service_container()
+                location_service = container.service_factory.location_service
+                locations = location_service.list_locations()
+                
+                if not locations.locations:
+                    console.print("[yellow]No locations found[/yellow]")
+                    return
+                    
+                loc_choices = [loc.name for loc in locations.locations]
+                location_name = questionary.select(
+                    "Select location:",
+                    choices=loc_choices,
+                    style=questionary.Style([
+                        ('question', 'bold'),
+                        ('selected', 'fg:#cc5454'),
+                        ('pointer', 'fg:#ff0066 bold'),
+                    ])
+                ).ask()
+                
+                if not location_name:
+                    console.print("[yellow]No location selected[/yellow]")
+                    return
         
         location_context = {}
         if context:
@@ -137,7 +192,7 @@ def add_location(sim_id: str, location_name: str, context: str = None):
         dto = SimulationLocationAssociationDto(
             simulation_id=sim_id,
             location_names=[location_name],
-            location_contexts={location_name: location_context} if location_context else {}
+            context_overrides={location_name: location_context} if location_context else {}
         )
         
         service.associate_locations(dto)
@@ -204,10 +259,11 @@ def list_locations(sim_id: str):
 @click.option("-r", "--reverse", is_flag=True, help="Reverse sort order")
 @click.option("-R", "--recursive", is_flag=True, help="List subdirectories recursively")
 @click.option("--color", is_flag=True, default=True, help="Colorize output")
+@click.option("-T", "--tape-status", is_flag=True, help="Show tape staging status (ScoutFS only)")
 def ls_location(sim_id: str, location_name: str, path: str = ".", 
                 long: bool = False, all: bool = False, human_readable: bool = False,
                 time: bool = False, size: bool = False, reverse: bool = False,
-                recursive: bool = False, color: bool = True):
+                recursive: bool = False, color: bool = True, tape_status: bool = False):
     """List directory contents at a simulation location.
     
     Performs remote directory listing similar to Unix ls command.
@@ -276,7 +332,7 @@ def ls_location(sim_id: str, location_name: str, path: str = ".",
                 # Use the clean architecture approach like location test does
                 fs = location_service._create_location_filesystem(location)
                 _perform_real_listing(fs, resolved_path, long, all, human_readable, 
-                                    time, size, reverse, recursive, color)
+                                    time, size, reverse, recursive, color, tape_status, location)
             except Exception as e:
                 console.print(f"[yellow]Warning:[/yellow] Could not access registered location filesystem: {str(e)}")
                 console.print(f"[dim]Location '{location_name}' is registered but filesystem access failed[/dim]")
@@ -507,7 +563,8 @@ def _get_filesystem_for_location(location):
 
 def _perform_real_listing(fs, path: str, long_format: bool, show_all: bool, 
                         human_readable: bool, sort_time: bool, sort_size: bool, 
-                        reverse_sort: bool, recursive: bool, use_color: bool):
+                        reverse_sort: bool, recursive: bool, use_color: bool, 
+                        tape_status: bool = False, location=None):
     """Perform actual filesystem listing."""
     try:
         # Get directory contents
@@ -530,9 +587,9 @@ def _perform_real_listing(fs, path: str, long_format: bool, show_all: bool,
             return
         
         if long_format:
-            _show_long_format(entries, human_readable, use_color)
+            _show_long_format(entries, human_readable, use_color, tape_status, fs)
         else:
-            _show_simple_format(entries, use_color)
+            _show_simple_format(entries, use_color, tape_status, fs)
             
         if recursive:
             # Recursively list subdirectories
@@ -541,14 +598,14 @@ def _perform_real_listing(fs, path: str, long_format: bool, show_all: bool,
                     console.print(f"\n[bold]{entry['name']}:[/bold]")
                     _perform_real_listing(fs, entry['name'], long_format, show_all,
                                         human_readable, sort_time, sort_size, 
-                                        reverse_sort, False, use_color)
+                                        reverse_sort, False, use_color, tape_status, location)
     
     except Exception as e:
         console.print(f"[red]Error accessing filesystem:[/red] {str(e)}")
         raise
 
 
-def _show_long_format(entries, human_readable: bool, use_color: bool):
+def _show_long_format(entries, human_readable: bool, use_color: bool, tape_status: bool = False, fs=None):
     """Show entries in long format."""
     from datetime import datetime
     
@@ -556,6 +613,8 @@ def _show_long_format(entries, human_readable: bool, use_color: bool):
     table.add_column("Permissions", style="cyan")
     table.add_column("Size", style="green", justify="right")
     table.add_column("Modified", style="yellow")
+    if tape_status:
+        table.add_column("Tape", style="magenta", justify="center")
     table.add_column("Name", style="blue" if use_color else "white")
     
     for entry in entries:
@@ -588,23 +647,35 @@ def _show_long_format(entries, human_readable: bool, use_color: bool):
         else:
             mod_time = "-"
         
-        table.add_row(perms, size_str, mod_time, name)
+        # Tape status (ScoutFS only)
+        if tape_status:
+            tape_status_str = _get_tape_status(fs, entry['name'], entry['type'])
+            table.add_row(perms, size_str, mod_time, tape_status_str, name)
+        else:
+            table.add_row(perms, size_str, mod_time, name)
     
     console.print(table)
 
 
-def _show_simple_format(entries, use_color: bool):
+def _show_simple_format(entries, use_color: bool, tape_status: bool = False, fs=None):
     """Show entries in simple format."""
     items = []
     for entry in entries:
         name = entry['name'].split('/')[-1]
         if entry['type'] == 'directory':
             if use_color:
-                items.append(f"[bold blue]{name}/[/bold blue]")
+                item = f"[bold blue]{name}/[/bold blue]"
             else:
-                items.append(f"{name}/")
+                item = f"{name}/"
         else:
-            items.append(name)
+            item = name
+            
+        # Add tape status indicator for files
+        if tape_status and entry['type'] != 'directory':
+            status = _get_tape_status(fs, entry['name'], entry['type'])
+            item = f"{item} {status}"
+            
+        items.append(item)
     
     # Print items in columns (simplified)
     console.print("  ".join(items))
@@ -620,6 +691,33 @@ def _human_readable_size(size: int) -> str:
                 return f"{size:.1f}{unit}"
         size /= 1024.0
     return f"{size:.1f}P"
+
+
+def _get_tape_status(fs, path: str, file_type: str) -> str:
+    """Get tape staging status for ScoutFS filesystems."""
+    # Skip directories
+    if file_type == 'directory':
+        return "-"
+    
+    # Check if this is a ScoutFS filesystem
+    if not hasattr(fs, 'is_online'):
+        return "-"
+    
+    try:
+        # Use ScoutFS methods to check staging status
+        is_online = fs.is_online(path)
+        if is_online:
+            return "[green]●[/green]"  # Online (green filled circle)
+        else:
+            return "[red]○[/red]"      # Offline (red empty circle)
+    except ValueError as e:
+        # Filesystem detection errors (no ScoutFS mount for path)
+        if "No ScoutFS filesystem found" in str(e):
+            return "-"  # Not a ScoutFS path, no status available
+        return "[yellow]?[/yellow]"  # Other filesystem errors
+    except Exception as e:
+        # Other errors in staging status determination
+        return "[yellow]?[/yellow]"
 
 
 def _show_filesystem_listing(location_name: str, path: str, long_format: bool, 
@@ -676,9 +774,9 @@ def _perform_simple_listing(path: str, long_format: bool, show_all: bool,
             return
         
         if long_format:
-            _show_long_format(entries, human_readable, use_color)
+            _show_long_format(entries, human_readable, use_color, tape_status, fs)
         else:
-            _show_simple_format(entries, use_color)
+            _show_simple_format(entries, use_color, tape_status, fs)
             
         if recursive:
             # Recursively list subdirectories
@@ -694,6 +792,882 @@ def _perform_simple_listing(path: str, long_format: bool, show_all: bool,
         console.print(f"[red]Error:[/red] Permission denied accessing: {path}")
     except FileNotFoundError:
         console.print(f"[red]Error:[/red] Directory not found: {path}")
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@simulation_location.command(name="put")
+@click.argument("sim_id")
+@click.argument("location_name") 
+@click.argument("local_file", required=False)
+@click.argument("remote_path", required=False)
+@click.option("--glob", "-g", help="Use glob pattern to select multiple files")
+@click.option("--progress", "-p", is_flag=True, default=True, help="Show progress bar")
+@click.option("--overwrite", "-f", is_flag=True, help="Force overwrite existing files")
+def put_file(sim_id: str, location_name: str, local_file: str = None, remote_path: str = None,
+            glob: str = None, progress: bool = True, overwrite: bool = False):
+    """Upload a file to simulation location.
+    
+    Upload local files to a remote simulation location. Supports interactive
+    selection, glob patterns, and progress tracking.
+    
+    Examples:
+        tellus simulation location put MIS11.3-B tellus_hsm ./data.nc
+        tellus simulation location put MIS11.3-B tellus_hsm ./data.nc /remote/path/
+        tellus simulation location put MIS11.3-B tellus_hsm --glob "*.nc" /remote/output/
+        tellus simulation location put MIS11.3-B tellus_hsm --interactive
+    """
+    import os
+    import glob as glob_module
+    from pathlib import Path
+    
+    try:
+        # Get the simulation to verify location association
+        service = _get_simulation_service()
+        sim = service.get_simulation(sim_id)
+        
+        if sim is None:
+            _handle_simulation_not_found(sim_id, service)
+            return
+            
+        if location_name not in sim.associated_locations:
+            console.print(f"[red]Error:[/red] Location '{location_name}' is not associated with simulation '{sim_id}'")
+            console.print(f"Available locations: {', '.join(sim.associated_locations)}")
+            return
+            
+        # Get location service to access the filesystem
+        from ...application.container import get_service_container
+        container = get_service_container()
+        location_service = container.service_factory.location_service
+        
+        location = None
+        try:
+            location = location_service.get_location_filesystem(location_name)
+            fs = location_service._create_location_filesystem(location)
+        except Exception as e:
+            console.print(f"[red]Error:[/red] Could not access location '{location_name}': {str(e)}")
+            return
+            
+        # Get location context for path resolution
+        context = sim.get_location_context(location_name) if hasattr(sim, 'get_location_context') else {}
+        path_prefix = context.get('path_prefix', '') if context else ''
+        
+        # Handle different input modes
+        files_to_upload = []
+        interactive = not local_file and not glob  # Auto-interactive when no args
+        
+        if interactive:
+            # Interactive file selection using questionary
+            import questionary
+            from pathlib import Path
+            
+            # Get current directory files
+            current_dir = Path.cwd()
+            all_files = [f for f in current_dir.rglob('*') if f.is_file()]
+            file_choices = [str(f.relative_to(current_dir)) for f in all_files]
+            
+            if not file_choices:
+                console.print("[yellow]No files found in current directory[/yellow]")
+                return
+                
+            selected_file = questionary.select(
+                "Select a file to upload:",
+                choices=file_choices,
+                style=questionary.Style([
+                    ('question', 'bold'),
+                    ('selected', 'fg:#cc5454'),
+                    ('pointer', 'fg:#ff0066 bold'),
+                ])
+            ).ask()
+            
+            if not selected_file:
+                console.print("[yellow]No file selected[/yellow]")
+                return
+                
+            files_to_upload = [(selected_file, selected_file)]  # (local_path, remote_name)
+            
+        elif glob:
+            # Glob pattern selection
+            matching_files = glob_module.glob(glob, recursive=True)
+            if not matching_files:
+                console.print(f"[yellow]No files match pattern '{glob}'[/yellow]")
+                return
+                
+            files_to_upload = [(f, os.path.basename(f)) for f in matching_files if os.path.isfile(f)]
+            
+        else:
+            # Single file upload
+            if not os.path.exists(local_file):
+                console.print(f"[red]Error:[/red] File '{local_file}' not found")
+                return
+                
+            if os.path.isdir(local_file):
+                console.print(f"[red]Error:[/red] '{local_file}' is a directory. Use mput for directories or specify a file.")
+                return
+                
+            remote_name = remote_path or os.path.basename(local_file)
+            files_to_upload = [(local_file, remote_name)]
+            
+        if not files_to_upload:
+            console.print("[yellow]No files to upload[/yellow]")
+            return
+            
+        console.print(f"[dim]Uploading {len(files_to_upload)} file(s) to {location_name}[/dim]")
+        
+        # Upload files
+        for local_path, remote_name in files_to_upload:
+            # Resolve remote path with context
+            if remote_path and remote_path.startswith('/'):
+                # Absolute path
+                resolved_remote = remote_path
+            elif path_prefix:
+                # Use path prefix
+                resolved_remote = f"{path_prefix.rstrip('/')}/{remote_name.lstrip('/')}"
+            else:
+                resolved_remote = remote_name
+                
+            try:
+                # Check if file exists and handle overwrite
+                if fs.exists(resolved_remote) and not overwrite:
+                    console.print(f"[yellow]Skipping '{remote_name}' - already exists (use --overwrite to force)[/yellow]")
+                    continue
+                    
+                # Create progress callback if requested
+                if progress:
+                    from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
+                    
+                    file_size = os.path.getsize(local_path)
+                    with Progress(
+                        SpinnerColumn(),
+                        TextColumn("[progress.description]{task.description}"),
+                        BarColumn(),
+                        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                        console=console
+                    ) as prog:
+                        task = prog.add_task(f"Uploading {os.path.basename(local_path)}", total=file_size)
+                        
+                        def update_progress(bytes_transferred):
+                            prog.update(task, completed=bytes_transferred)
+                            
+                        # Upload with progress callback
+                        fs.put(local_path, resolved_remote, callback=update_progress)
+                        
+                else:
+                    # Upload without progress
+                    fs.put(local_path, resolved_remote)
+                    
+                console.print(f"[green]✓[/green] Uploaded '{local_path}' → '{resolved_remote}'")
+                
+            except Exception as e:
+                console.print(f"[red]✗[/red] Failed to upload '{local_path}': {str(e)}")
+                
+        console.print(f"[green]Upload completed[/green]")
+        
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@simulation_location.command(name="get")
+@click.argument("sim_id")
+@click.argument("location_name")
+@click.argument("remote_file", required=False)
+@click.argument("local_path", required=False)
+@click.option("--glob", "-g", help="Use glob pattern to select multiple remote files")
+@click.option("--progress", "-p", is_flag=True, default=True, help="Show progress bar")
+@click.option("--overwrite", "-f", is_flag=True, help="Force overwrite existing files")
+def get_file(sim_id: str, location_name: str, remote_file: str = None, local_path: str = None,
+            glob: str = None, progress: bool = True, overwrite: bool = False):
+    """Download a file from simulation location.
+    
+    Download files from a remote simulation location to local filesystem.
+    Supports interactive selection, glob patterns, and progress tracking.
+    
+    Examples:
+        tellus simulation location get MIS11.3-B tellus_hsm data.nc
+        tellus simulation location get MIS11.3-B tellus_hsm data.nc ./local_data.nc
+        tellus simulation location get MIS11.3-B tellus_hsm --glob "*.nc" ./output/
+        tellus simulation location get MIS11.3-B tellus_hsm --interactive
+    """
+    import os
+    from pathlib import Path
+    
+    try:
+        # Get the simulation to verify location association
+        service = _get_simulation_service()
+        sim = service.get_simulation(sim_id)
+        
+        if sim is None:
+            _handle_simulation_not_found(sim_id, service)
+            return
+            
+        if location_name not in sim.associated_locations:
+            console.print(f"[red]Error:[/red] Location '{location_name}' is not associated with simulation '{sim_id}'")
+            console.print(f"Available locations: {', '.join(sim.associated_locations)}")
+            return
+            
+        # Get location service to access the filesystem
+        from ...application.container import get_service_container
+        container = get_service_container()
+        location_service = container.service_factory.location_service
+        
+        location = None
+        try:
+            location = location_service.get_location_filesystem(location_name)
+            fs = location_service._create_location_filesystem(location)
+        except Exception as e:
+            console.print(f"[red]Error:[/red] Could not access location '{location_name}': {str(e)}")
+            return
+            
+        # Get location context for path resolution
+        context = sim.get_location_context(location_name) if hasattr(sim, 'get_location_context') else {}
+        path_prefix = context.get('path_prefix', '') if context else ''
+        
+        # Handle different input modes
+        files_to_download = []
+        interactive = not remote_file and not glob  # Auto-interactive when no args
+        
+        if interactive:
+            # Interactive file selection using questionary
+            import questionary
+            
+            # Get remote directory listing  
+            try:
+                # Use the same path resolution logic as ls command
+                base_path = path_prefix.rstrip('/ ') if path_prefix else '.'
+                console.print(f"[dim]Listing files at: {base_path}[/dim]")
+                entries = fs.ls(base_path, detail=True)
+                file_choices = [entry['name'].split('/')[-1] for entry in entries if entry['type'] != 'directory']
+                
+                if not file_choices:
+                    console.print(f"[yellow]No files found in remote location '{base_path}'[/yellow]")
+                    return
+                    
+                selected_file = questionary.select(
+                    "Select a file to download:",
+                    choices=file_choices,
+                    style=questionary.Style([
+                        ('question', 'bold'),
+                        ('selected', 'fg:#cc5454'),
+                        ('pointer', 'fg:#ff0066 bold'),
+                    ])
+                ).ask()
+                
+                if not selected_file:
+                    console.print("[yellow]No file selected[/yellow]")
+                    return
+                    
+                files_to_download = [(selected_file, selected_file)]  # (remote_name, local_name)
+                
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Could not list remote files: {str(e)}")
+                return
+                
+        elif glob:
+            # Glob pattern selection on remote
+            try:
+                import fnmatch
+                base_path = path_prefix.rstrip('/') if path_prefix else '.'
+                entries = fs.ls(base_path, detail=True)
+                matching_files = []
+                
+                for entry in entries:
+                    if entry['type'] != 'directory':
+                        filename = entry['name'].split('/')[-1]
+                        if fnmatch.fnmatch(filename, glob):
+                            matching_files.append(filename)
+                            
+                if not matching_files:
+                    console.print(f"[yellow]No remote files match pattern '{glob}'[/yellow]")
+                    return
+                    
+                files_to_download = [(f, f) for f in matching_files]
+                
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Could not search remote files: {str(e)}")
+                return
+                
+        else:
+            # Single file download
+            local_name = local_path or remote_file
+            files_to_download = [(remote_file, local_name)]
+            
+        if not files_to_download:
+            console.print("[yellow]No files to download[/yellow]")
+            return
+            
+        console.print(f"[dim]Downloading {len(files_to_download)} file(s) from {location_name}[/dim]")
+        
+        # Download files
+        for remote_name, local_name in files_to_download:
+            # Resolve remote path with context
+            if remote_name.startswith('/'):
+                # Absolute path
+                resolved_remote = remote_name
+            elif path_prefix:
+                # Use path prefix
+                resolved_remote = f"{path_prefix.rstrip('/')}/{remote_name.lstrip('/')}"
+            else:
+                resolved_remote = remote_name
+                
+            try:
+                # Check if local file exists and handle overwrite
+                if os.path.exists(local_name) and not overwrite:
+                    console.print(f"[yellow]Skipping '{local_name}' - already exists (use --overwrite to force)[/yellow]")
+                    continue
+                    
+                # Create local directory if needed
+                local_dir = os.path.dirname(local_name)
+                if local_dir:
+                    Path(local_dir).mkdir(parents=True, exist_ok=True)
+                    
+                # Create progress callback if requested
+                if progress:
+                    from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
+                    
+                    try:
+                        file_info = fs.info(resolved_remote)
+                        file_size = file_info.get('size', 0)
+                    except:
+                        file_size = 0
+                        
+                    with Progress(
+                        SpinnerColumn(),
+                        TextColumn("[progress.description]{task.description}"),
+                        BarColumn(),
+                        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                        console=console
+                    ) as prog:
+                        task = prog.add_task(f"Downloading {remote_name}", total=file_size)
+                        
+                        def update_progress(bytes_transferred):
+                            prog.update(task, completed=bytes_transferred)
+                            
+                        # Download with progress callback
+                        fs.get(resolved_remote, local_name, callback=update_progress)
+                        
+                else:
+                    # Download without progress
+                    fs.get(resolved_remote, local_name)
+                    
+                console.print(f"[green]✓[/green] Downloaded '{resolved_remote}' → '{local_name}'")
+                
+            except Exception as e:
+                console.print(f"[red]✗[/red] Failed to download '{remote_name}': {str(e)}")
+                
+        console.print(f"[green]Download completed[/green]")
+        
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@simulation_location.command(name="mput")
+@click.argument("sim_id")
+@click.argument("location_name")
+@click.argument("pattern", required=False)
+@click.option("--recursive", "-r", is_flag=True, help="Upload directories recursively")
+@click.option("--progress", "-p", is_flag=True, default=True, help="Show progress bar")
+@click.option("--overwrite", "-f", is_flag=True, help="Force overwrite existing files")
+@click.option("--exclude", help="Exclude pattern (can be used multiple times)", multiple=True)
+def mput_files(sim_id: str, location_name: str, pattern: str = None,
+               recursive: bool = False, progress: bool = True,
+               overwrite: bool = False, exclude: tuple = ()):
+    """Upload multiple files/directories to simulation location.
+    
+    Upload multiple files and directories using glob patterns or interactive selection.
+    Supports recursive directory uploads and file exclusion patterns.
+    
+    Examples:
+        tellus simulation location mput MIS11.3-B tellus_hsm "*.nc"
+        tellus simulation location mput MIS11.3-B tellus_hsm --interactive
+        tellus simulation location mput MIS11.3-B tellus_hsm "data/*" --recursive
+        tellus simulation location mput MIS11.3-B tellus_hsm "*.txt" --exclude "*.tmp"
+    """
+    import os
+    import glob as glob_module
+    from pathlib import Path
+    import fnmatch
+    
+    try:
+        # Get the simulation to verify location association
+        service = _get_simulation_service()
+        sim = service.get_simulation(sim_id)
+        
+        if sim is None:
+            _handle_simulation_not_found(sim_id, service)
+            return
+            
+        if location_name not in sim.associated_locations:
+            console.print(f"[red]Error:[/red] Location '{location_name}' is not associated with simulation '{sim_id}'")
+            console.print(f"Available locations: {', '.join(sim.associated_locations)}")
+            return
+            
+        # Get location service to access the filesystem
+        from ...application.container import get_service_container
+        container = get_service_container()
+        location_service = container.service_factory.location_service
+        
+        location = None
+        try:
+            location = location_service.get_location_filesystem(location_name)
+            fs = location_service._create_location_filesystem(location)
+        except Exception as e:
+            console.print(f"[red]Error:[/red] Could not access location '{location_name}': {str(e)}")
+            return
+            
+        # Get location context for path resolution
+        context = sim.get_location_context(location_name) if hasattr(sim, 'get_location_context') else {}
+        path_prefix = context.get('path_prefix', '') if context else ''
+        
+        # Handle different input modes
+        files_to_upload = []
+        interactive = not pattern  # Auto-interactive when no pattern
+        
+        if interactive:
+            # Interactive selection using questionary
+            import questionary
+            
+            current_dir = Path.cwd()
+            
+            # Get all files and directories
+            all_items = []
+            for item in current_dir.rglob('*'):
+                relative_path = str(item.relative_to(current_dir))
+                if item.is_file():
+                    all_items.append(f"📄 {relative_path}")
+                elif item.is_dir() and any(item.iterdir()):  # Non-empty directories
+                    all_items.append(f"📁 {relative_path}/")
+                    
+            if not all_items:
+                console.print("[yellow]No files found in current directory[/yellow]")
+                return
+                
+            selected_items = questionary.checkbox(
+                "Select files and directories to upload:",
+                choices=sorted(all_items),
+                style=questionary.Style([
+                    ('question', 'bold'),
+                    ('checkbox', 'fg:#ff0066'),
+                    ('selected', 'fg:#cc5454'),
+                    ('pointer', 'fg:#ff0066 bold'),
+                ])
+            ).ask()
+            
+            if not selected_items:
+                console.print("[yellow]No items selected[/yellow]")
+                return
+                
+            # Process selected items
+            for item_display in selected_items:
+                item_path = item_display[2:].rstrip('/')  # Remove emoji and trailing slash
+                full_path = current_dir / item_path
+                
+                if full_path.is_file():
+                    files_to_upload.append((str(full_path), item_path))
+                elif full_path.is_dir() and recursive:
+                    # Add all files in directory recursively
+                    for file_path in full_path.rglob('*'):
+                        if file_path.is_file():
+                            rel_path = str(file_path.relative_to(current_dir))
+                            files_to_upload.append((str(file_path), rel_path))
+                elif full_path.is_dir():
+                    console.print(f"[yellow]Skipping directory '{item_path}' (use --recursive to include)[/yellow]")
+                    
+        else:
+            # Pattern-based selection
+            matching_files = glob_module.glob(pattern, recursive=recursive)
+            if not matching_files:
+                console.print(f"[yellow]No files match pattern '{pattern}'[/yellow]")
+                return
+                
+            # Process each match
+            for match in matching_files:
+                match_path = Path(match)
+                
+                # Check exclusion patterns
+                excluded = False
+                for exclude_pattern in exclude:
+                    if fnmatch.fnmatch(match, exclude_pattern):
+                        console.print(f"[dim]Excluding '{match}' (matches {exclude_pattern})[/dim]")
+                        excluded = True
+                        break
+                        
+                if excluded:
+                    continue
+                    
+                if match_path.is_file():
+                    files_to_upload.append((match, os.path.basename(match)))
+                elif match_path.is_dir() and recursive:
+                    # Add all files in directory recursively
+                    for file_path in match_path.rglob('*'):
+                        if file_path.is_file():
+                            rel_path = str(file_path.relative_to(Path.cwd()))
+                            
+                            # Check exclusion on individual files too
+                            excluded_file = False
+                            for exclude_pattern in exclude:
+                                if fnmatch.fnmatch(str(file_path), exclude_pattern):
+                                    excluded_file = True
+                                    break
+                                    
+                            if not excluded_file:
+                                files_to_upload.append((str(file_path), rel_path))
+                elif match_path.is_dir():
+                    console.print(f"[yellow]Skipping directory '{match}' (use --recursive to include)[/yellow]")
+                    
+        if not files_to_upload:
+            console.print("[yellow]No files to upload[/yellow]")
+            return
+            
+        console.print(f"[dim]Uploading {len(files_to_upload)} file(s) to {location_name}[/dim]")
+        
+        # Upload files with progress
+        successful_uploads = 0
+        failed_uploads = 0
+        
+        if progress and len(files_to_upload) > 1:
+            from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, MofNCompleteColumn
+            
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                MofNCompleteColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                console=console
+            ) as prog:
+                overall_task = prog.add_task("Uploading files...", total=len(files_to_upload))
+                
+                for local_path, remote_name in files_to_upload:
+                    # Resolve remote path with context
+                    if path_prefix:
+                        resolved_remote = f"{path_prefix.rstrip('/')}/{remote_name.lstrip('/')}"
+                    else:
+                        resolved_remote = remote_name
+                        
+                    # Create remote directory if needed
+                    remote_dir = os.path.dirname(resolved_remote)
+                    if remote_dir:
+                        try:
+                            fs.makedirs(remote_dir, exist_ok=True)
+                        except:
+                            pass  # Directory might already exist
+                            
+                    try:
+                        # Check if file exists and handle overwrite
+                        if fs.exists(resolved_remote) and not overwrite:
+                            console.print(f"[yellow]Skipping '{remote_name}' - already exists[/yellow]")
+                            prog.advance(overall_task)
+                            continue
+                            
+                        # Upload file
+                        fs.put(local_path, resolved_remote)
+                        successful_uploads += 1
+                        console.print(f"[green]✓[/green] {remote_name}")
+                        
+                    except Exception as e:
+                        console.print(f"[red]✗[/red] Failed to upload '{remote_name}': {str(e)}")
+                        failed_uploads += 1
+                        
+                    prog.advance(overall_task)
+                    
+        else:
+            # Upload without overall progress
+            for local_path, remote_name in files_to_upload:
+                # Resolve remote path with context
+                if path_prefix:
+                    resolved_remote = f"{path_prefix.rstrip('/')}/{remote_name.lstrip('/')}"
+                else:
+                    resolved_remote = remote_name
+                    
+                # Create remote directory if needed
+                remote_dir = os.path.dirname(resolved_remote)
+                if remote_dir:
+                    try:
+                        fs.makedirs(remote_dir, exist_ok=True)
+                    except:
+                        pass  # Directory might already exist
+                        
+                try:
+                    # Check if file exists and handle overwrite
+                    if fs.exists(resolved_remote) and not overwrite:
+                        console.print(f"[yellow]Skipping '{remote_name}' - already exists (use --overwrite to force)[/yellow]")
+                        continue
+                        
+                    # Upload file
+                    fs.put(local_path, resolved_remote)
+                    successful_uploads += 1
+                    console.print(f"[green]✓[/green] Uploaded '{local_path}' → '{resolved_remote}'")
+                    
+                except Exception as e:
+                    console.print(f"[red]✗[/red] Failed to upload '{remote_name}': {str(e)}")
+                    failed_uploads += 1
+                    
+        # Summary
+        console.print(f"\n[green]Upload summary:[/green] {successful_uploads} successful, {failed_uploads} failed")
+        
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@simulation_location.command(name="mget")
+@click.argument("sim_id")
+@click.argument("location_name")
+@click.argument("pattern", required=False)
+@click.option("--recursive", "-r", is_flag=True, help="Download directories recursively")
+@click.option("--progress", "-p", is_flag=True, default=True, help="Show progress bar")
+@click.option("--overwrite", "-f", is_flag=True, help="Force overwrite existing files")
+@click.option("--exclude", help="Exclude pattern (can be used multiple times)", multiple=True)
+@click.option("--output-dir", "-o", help="Output directory (default: current directory)")
+def mget_files(sim_id: str, location_name: str, pattern: str = None,
+               recursive: bool = False, progress: bool = True,
+               overwrite: bool = False, exclude: tuple = (), output_dir: str = None):
+    """Download multiple files/directories from simulation location.
+    
+    Download multiple files and directories using glob patterns or interactive selection.
+    Supports recursive directory downloads and file exclusion patterns.
+    
+    Examples:
+        tellus simulation location mget MIS11.3-B tellus_hsm "*.nc"
+        tellus simulation location mget MIS11.3-B tellus_hsm --interactive
+        tellus simulation location mget MIS11.3-B tellus_hsm "*.txt" --output-dir ./downloads/
+        tellus simulation location mget MIS11.3-B tellus_hsm "*" --exclude "*.tmp" --recursive
+    """
+    import os
+    from pathlib import Path
+    import fnmatch
+    
+    try:
+        # Get the simulation to verify location association
+        service = _get_simulation_service()
+        sim = service.get_simulation(sim_id)
+        
+        if sim is None:
+            _handle_simulation_not_found(sim_id, service)
+            return
+            
+        if location_name not in sim.associated_locations:
+            console.print(f"[red]Error:[/red] Location '{location_name}' is not associated with simulation '{sim_id}'")
+            console.print(f"Available locations: {', '.join(sim.associated_locations)}")
+            return
+            
+        # Get location service to access the filesystem
+        from ...application.container import get_service_container
+        container = get_service_container()
+        location_service = container.service_factory.location_service
+        
+        location = None
+        try:
+            location = location_service.get_location_filesystem(location_name)
+            fs = location_service._create_location_filesystem(location)
+        except Exception as e:
+            console.print(f"[red]Error:[/red] Could not access location '{location_name}': {str(e)}")
+            return
+            
+        # Get location context for path resolution
+        context = sim.get_location_context(location_name) if hasattr(sim, 'get_location_context') else {}
+        path_prefix = context.get('path_prefix', '') if context else ''
+        
+        # Set up output directory
+        output_path = Path(output_dir) if output_dir else Path.cwd()
+        output_path.mkdir(parents=True, exist_ok=True)
+        
+        # Handle different input modes  
+        files_to_download = []
+        interactive = not pattern  # Auto-interactive when no pattern
+        
+        if interactive:
+            # Interactive selection using questionary
+            import questionary
+            
+            try:
+                base_path = path_prefix.rstrip('/') if path_prefix else '.'
+                
+                def get_remote_items(remote_path, prefix=""):
+                    """Recursively get remote items for display."""
+                    items = []
+                    try:
+                        entries = fs.ls(remote_path, detail=True)
+                        for entry in entries:
+                            item_name = entry['name'].split('/')[-1]
+                            full_prefix = f"{prefix}{item_name}" if prefix else item_name
+                            
+                            if entry['type'] == 'directory':
+                                items.append(f"📁 {full_prefix}/")
+                                if recursive:
+                                    # Add subdirectory items
+                                    sub_items = get_remote_items(entry['name'], f"{full_prefix}/")
+                                    items.extend(sub_items)
+                            else:
+                                items.append(f"📄 {full_prefix}")
+                    except:
+                        pass
+                    return items
+                
+                all_remote_items = get_remote_items(base_path)
+                
+                if not all_remote_items:
+                    console.print(f"[yellow]No files found in remote location[/yellow]")
+                    return
+                    
+                selected_items = questionary.checkbox(
+                    "Select files to download:",
+                    choices=sorted(all_remote_items),
+                    style=questionary.Style([
+                        ('question', 'bold'),
+                        ('checkbox', 'fg:#ff0066'),
+                        ('selected', 'fg:#cc5454'),
+                        ('pointer', 'fg:#ff0066 bold'),
+                    ])
+                ).ask()
+                
+                if not selected_items:
+                    console.print("[yellow]No files selected[/yellow]")
+                    return
+                    
+                # Process selected items
+                for item_display in selected_items:
+                    if item_display.startswith("📄 "):  # File
+                        remote_name = item_display[2:]  # Remove emoji
+                        local_name = os.path.join(str(output_path), remote_name)
+                        files_to_download.append((remote_name, local_name))
+                        
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Could not list remote files: {str(e)}")
+                return
+                
+        else:
+            # Pattern-based selection
+            try:
+                base_path = path_prefix.rstrip('/') if path_prefix else '.'
+                
+                def find_matching_files(remote_path, current_pattern):
+                    """Find files matching pattern recursively."""
+                    matches = []
+                    try:
+                        entries = fs.ls(remote_path, detail=True)
+                        for entry in entries:
+                            item_name = entry['name'].split('/')[-1]
+                            
+                            if entry['type'] == 'directory' and recursive:
+                                # Recursively search subdirectories
+                                sub_matches = find_matching_files(entry['name'], current_pattern)
+                                matches.extend(sub_matches)
+                            elif entry['type'] != 'directory':
+                                # Check if file matches pattern
+                                if fnmatch.fnmatch(item_name, current_pattern):
+                                    # Check exclusion patterns
+                                    excluded = False
+                                    for exclude_pattern in exclude:
+                                        if fnmatch.fnmatch(item_name, exclude_pattern):
+                                            excluded = True
+                                            break
+                                    
+                                    if not excluded:
+                                        # Calculate relative path from base
+                                        if remote_path == base_path:
+                                            relative_remote = item_name
+                                        else:
+                                            relative_remote = entry['name'].replace(f"{base_path}/", "")
+                                        
+                                        local_name = os.path.join(str(output_path), relative_remote)
+                                        matches.append((relative_remote, local_name))
+                                        
+                    except Exception as e:
+                        console.print(f"[yellow]Warning:[/yellow] Could not search {remote_path}: {str(e)}")
+                        
+                    return matches
+                
+                files_to_download = find_matching_files(base_path, pattern)
+                
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Could not search remote files: {str(e)}")
+                return
+                
+        if not files_to_download:
+            console.print("[yellow]No files to download[/yellow]")
+            return
+            
+        console.print(f"[dim]Downloading {len(files_to_download)} file(s) from {location_name}[/dim]")
+        
+        # Download files with progress
+        successful_downloads = 0
+        failed_downloads = 0
+        
+        if progress and len(files_to_download) > 1:
+            from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, MofNCompleteColumn
+            
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                MofNCompleteColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                console=console
+            ) as prog:
+                overall_task = prog.add_task("Downloading files...", total=len(files_to_download))
+                
+                for remote_name, local_name in files_to_download:
+                    # Resolve remote path with context
+                    if path_prefix:
+                        resolved_remote = f"{path_prefix.rstrip('/')}/{remote_name.lstrip('/')}"
+                    else:
+                        resolved_remote = remote_name
+                        
+                    try:
+                        # Check if local file exists and handle overwrite
+                        if os.path.exists(local_name) and not overwrite:
+                            console.print(f"[yellow]Skipping '{remote_name}' - already exists[/yellow]")
+                            prog.advance(overall_task)
+                            continue
+                            
+                        # Create local directory if needed
+                        local_dir = os.path.dirname(local_name)
+                        if local_dir:
+                            Path(local_dir).mkdir(parents=True, exist_ok=True)
+                            
+                        # Download file
+                        fs.get(resolved_remote, local_name)
+                        successful_downloads += 1
+                        console.print(f"[green]✓[/green] {remote_name}")
+                        
+                    except Exception as e:
+                        console.print(f"[red]✗[/red] Failed to download '{remote_name}': {str(e)}")
+                        failed_downloads += 1
+                        
+                    prog.advance(overall_task)
+                    
+        else:
+            # Download without overall progress
+            for remote_name, local_name in files_to_download:
+                # Resolve remote path with context
+                if path_prefix:
+                    resolved_remote = f"{path_prefix.rstrip('/')}/{remote_name.lstrip('/')}"
+                else:
+                    resolved_remote = remote_name
+                    
+                try:
+                    # Check if local file exists and handle overwrite
+                    if os.path.exists(local_name) and not overwrite:
+                        console.print(f"[yellow]Skipping '{remote_name}' - already exists (use --overwrite to force)[/yellow]")
+                        continue
+                        
+                    # Create local directory if needed
+                    local_dir = os.path.dirname(local_name)
+                    if local_dir:
+                        Path(local_dir).mkdir(parents=True, exist_ok=True)
+                        
+                    # Download file
+                    fs.get(resolved_remote, local_name)
+                    successful_downloads += 1
+                    console.print(f"[green]✓[/green] Downloaded '{resolved_remote}' → '{local_name}'")
+                    
+                except Exception as e:
+                    console.print(f"[red]✗[/red] Failed to download '{remote_name}': {str(e)}")
+                    failed_downloads += 1
+                    
+        # Summary
+        console.print(f"\n[green]Download summary:[/green] {successful_downloads} successful, {failed_downloads} failed")
+        
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")
 
