@@ -38,38 +38,67 @@ from ...infrastructure.adapters.progress_tracking import ProgressTracker
 # Initialize console
 console = Console()
 
-# Initialize services (using default paths)
-workflow_repo = JsonWorkflowRepository(workflows_file="workflows.json")
-run_repo = JsonWorkflowRunRepository(runs_file="workflow_runs.json")
-template_repo = JsonWorkflowTemplateRepository(templates_file="workflow_templates.json")
-location_repo = JsonLocationRepository(file_path=Path("locations.json"))
+# Initialize services using container
+def _get_workflow_services():
+    """Get workflow services using the application container."""
+    from ...application.container import get_service_container
+    
+    container = get_service_container()
+    
+    # Create workflow-specific repositories using container paths
+    workflow_repo = JsonWorkflowRepository(
+        workflows_file=str(container.project_data_path / "workflows.json")
+    )
+    run_repo = JsonWorkflowRunRepository(
+        runs_file=str(container.project_data_path / "workflow_runs.json")
+    )
+    template_repo = JsonWorkflowTemplateRepository(
+        templates_file=str(container.project_data_path / "workflow_templates.json")
+    )
+    
+    # Use location service from container
+    location_service = container.service_factory.location_service
+    
+    workflow_service = WorkflowApplicationService(
+        workflow_repository=workflow_repo,
+        template_repository=template_repo,
+        location_repository=location_service._location_repo  # Access underlying repo
+    )
+    
+    return workflow_service, run_repo
 
-workflow_service = WorkflowApplicationService(
-    workflow_repository=workflow_repo,
-    template_repository=template_repo,
-    location_repository=location_repo
-)
-
-execution_engines = {
-    WorkflowEngine.SNAKEMAKE: SnakemakeWorkflowEngine(),
-    WorkflowEngine.PYTHON: PythonWorkflowEngine()
-}
-
-progress_tracker = ProgressTracker()
-
-execution_service = WorkflowExecutionService(
-    workflow_repository=workflow_repo,
-    run_repository=run_repo,
-    location_repository=location_repo,
-    workflow_engines=execution_engines,
-    progress_tracker=progress_tracker
-)
+def _get_execution_service():
+    """Get workflow execution service using container."""
+    workflow_service, run_repo = _get_workflow_services()
+    
+    execution_engines = {
+        WorkflowEngine.SNAKEMAKE: SnakemakeWorkflowEngine(),
+        WorkflowEngine.PYTHON: PythonWorkflowEngine()
+    }
+    
+    progress_tracker = ProgressTracker()
+    
+    # Get container for location repository
+    from ...application.container import get_service_container
+    container = get_service_container()
+    location_service = container.service_factory.location_service
+    
+    execution_service = WorkflowExecutionService(
+        workflow_repository=workflow_service._workflow_repository,
+        run_repository=run_repo,
+        location_repository=location_service._location_repo,
+        workflow_engines=execution_engines,
+        progress_tracker=progress_tracker
+    )
+    
+    return execution_service
 
 
 # Helper functions
 def get_workflow_or_exit(workflow_id: str) -> WorkflowEntity:
     """Helper to get a workflow or exit with error."""
     try:
+        workflow_service, _ = _get_workflow_services()
         workflow = workflow_service.get_workflow(workflow_id)
         if not workflow:
             console.print(f"[red]Error:[/red] Workflow with ID '{workflow_id}' not found")
@@ -241,6 +270,7 @@ def create_workflow_interactive():
             return
         
         # Save workflow
+        workflow_service, _ = _get_workflow_services()
         workflow_service.create_workflow(workflow)
         console.print(f"[green]✓[/green] Workflow '{workflow_id}' created successfully!")
         
@@ -276,6 +306,7 @@ def create_from_template(template_id: str, workflow_id: str, parameters: Optiona
 def list_workflows(workflow_type: Optional[str], status: Optional[str], verbose: bool):
     """List all workflows."""
     try:
+        workflow_service, _ = _get_workflow_services()
         workflow_list_dto = workflow_service.list_workflows()
         workflows = workflow_list_dto.workflows
         
