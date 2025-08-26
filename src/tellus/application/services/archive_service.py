@@ -1374,18 +1374,11 @@ class ArchiveApplicationService:
             if location_entity is None:
                 raise EntityNotFoundError("Location", metadata.location)
 
-            # Convert to infrastructure Location for filesystem access
-            from ...location.location import Location
+            # Create filesystem access from location entity
+            location_fs = self._create_location_filesystem(location_entity)
 
-            location = Location(
-                name=location_entity.name,
-                kinds=[],  # Not needed for filesystem access
-                config=location_entity.config,
-                _skip_registry=True,
-            )
-
-            # Access archive file through location's filesystem
-            archive_files = self._extract_file_list_from_archive(metadata, location)
+            # Access archive file through filesystem
+            archive_files = self._extract_file_list_from_archive(metadata, location_entity, location_fs)
 
             # Apply filters
             filtered_files = []
@@ -1587,31 +1580,18 @@ class ArchiveApplicationService:
             if dest_location_entity is None:
                 raise EntityNotFoundError("Location", copy_dto.destination_location)
 
-            # Convert to infrastructure Location objects for filesystem access
-            from ...location.location import Location
-
-            source_location = Location(
-                name=source_location_entity.name,
-                kinds=[],  # Not needed for filesystem access
-                config=source_location_entity.config,
-                _skip_registry=True,  # Skip registry to avoid conflicts
-            )
-            dest_location = Location(
-                name=dest_location_entity.name,
-                kinds=[],
-                config=dest_location_entity.config,
-                _skip_registry=True,
-            )
+            # Create filesystem access from location entities
+            source_fs = self._create_location_filesystem(source_location_entity)
+            dest_fs = self._create_location_filesystem(dest_location_entity)
 
             # Perform real copy operation using fsspec with progress tracking
             archive_filename = f"{archive_metadata.archive_id.value}.tar.gz"
             source_path = archive_filename
             dest_path = archive_filename
 
-            # Get filesystems
+            # Filesystems already created above
             try:
-                source_fs = source_location.fs
-                dest_fs = dest_location.fs
+                pass  # source_fs and dest_fs already available
             except Exception as e:
                 raise ArchiveOperationError(
                     copy_dto.archive_id,
@@ -1893,25 +1873,13 @@ class ArchiveApplicationService:
             if dest_location_entity is None:
                 raise EntityNotFoundError("Location", extract_dto.destination_location)
             
-            # Convert to infrastructure Location objects
-            from ...location.location import Location
-            source_location = Location(
-                name=source_location_entity.name,
-                kinds=[],
-                config=source_location_entity.config,
-                _skip_registry=True
-            )
-            dest_location = Location(
-                name=dest_location_entity.name,
-                kinds=[],
-                config=dest_location_entity.config,
-                _skip_registry=True
-            )
+            # Create filesystem access from location entities
+            source_fs = self._create_location_filesystem(source_location_entity)
+            dest_fs = self._create_location_filesystem(dest_location_entity)
             
-            # Get filesystems
+            # Filesystems already created above
             try:
-                source_fs = source_location.fs
-                dest_fs = dest_location.fs
+                pass  # source_fs and dest_fs already available
             except Exception as e:
                 raise ArchiveOperationError(
                     extract_dto.archive_id,
@@ -2089,21 +2057,9 @@ class ArchiveApplicationService:
             if dest_location_entity is None:
                 raise EntityNotFoundError("Location", copy_dto.destination_location)
 
-            # Convert to infrastructure Location objects for filesystem access
-            from ...location.location import Location
-
-            source_location = Location(
-                name=source_location_entity.name,
-                kinds=[],  # Not needed for filesystem access
-                config=source_location_entity.config,
-                _skip_registry=True,  # Skip registry to avoid conflicts
-            )
-            dest_location = Location(
-                name=dest_location_entity.name,
-                kinds=[],
-                config=dest_location_entity.config,
-                _skip_registry=True,
-            )
+            # Create filesystem access from location entities
+            source_fs = self._create_location_filesystem(source_location_entity)
+            dest_fs = self._create_location_filesystem(dest_location_entity)
 
             # Perform real copy operation using fsspec
             # Get archive filename for relative path in source location
@@ -2113,10 +2069,9 @@ class ArchiveApplicationService:
             # For destination, use just the filename too since resolved_path would be absolute
             dest_path = archive_filename
 
-            # Get filesystems
+            # Filesystems already created above
             try:
-                source_fs = source_location.fs
-                dest_fs = dest_location.fs
+                pass  # source_fs and dest_fs already available
             except Exception as e:
                 raise ArchiveOperationError(
                     copy_dto.archive_id,
@@ -2282,17 +2237,8 @@ class ArchiveApplicationService:
             # If copy succeeded and cleanup_source is enabled, remove source
             if move_dto.cleanup_source:
                 try:
-                    # Convert to infrastructure Location
-                    from ...location.location import Location
-
-                    source_loc = Location(
-                        name=source_location.name,
-                        kinds=[],
-                        config=source_location.config,
-                        _skip_registry=True,
-                    )
-                    
-                    source_fs = source_loc.fs
+                    # Create filesystem access from location
+                    source_fs = self._create_location_filesystem(source_location)
                     if not source_fs:
                         raise ArchiveOperationError(
                             move_dto.archive_id,
@@ -2390,7 +2336,7 @@ class ArchiveApplicationService:
             if not source_location:
                 raise EntityNotFoundError("Location", archive_metadata.location)
 
-            source_fs = source_location.fs
+            source_fs = self._create_location_filesystem(source_location)
             if not source_fs:
                 raise ArchiveOperationError(
                     extract_dto.archive_id,
@@ -2412,7 +2358,7 @@ class ArchiveApplicationService:
             if not dest_location:
                 raise EntityNotFoundError("Location", extract_dto.destination_location)
 
-            dest_fs = dest_location.fs
+            dest_fs = self._create_location_filesystem(dest_location)
             if not dest_fs:
                 raise ArchiveOperationError(
                     extract_dto.archive_id,
@@ -2585,25 +2531,13 @@ class ArchiveApplicationService:
             if dest_location_entity is None:
                 raise EntityNotFoundError("Location", extract_dto.destination_location)
             
-            # Convert to infrastructure Location objects
-            from ...location.location import Location
-            source_location = Location(
-                name=source_location_entity.name,
-                kinds=[],
-                config=source_location_entity.config,
-                _skip_registry=True
-            )
-            dest_location = Location(
-                name=dest_location_entity.name,
-                kinds=[],
-                config=dest_location_entity.config,
-                _skip_registry=True
-            )
+            # Create filesystem access from location entities
+            source_fs = self._create_location_filesystem(source_location_entity)
+            dest_fs = self._create_location_filesystem(dest_location_entity)
             
-            # Get filesystems
+            # Filesystems already created above
             try:
-                source_fs = source_location.fs
-                dest_fs = dest_location.fs
+                pass  # source_fs and dest_fs already available
             except Exception as e:
                 raise ArchiveOperationError(
                     extract_dto.archive_id,
@@ -3083,14 +3017,12 @@ class ArchiveApplicationService:
             workflow.error_message = str(e)
 
     def _extract_file_list_from_archive(
-        self, metadata: ArchiveMetadata, location: LocationEntity
+        self, metadata: ArchiveMetadata, location: LocationEntity, fs
     ) -> List[SimulationFile]:
         """Extract list of files from archive using real filesystem operations."""
         files = []
 
         try:
-            # Get filesystem from location
-            fs = location.fs
             if fs is None:
                 self._logger.warning(
                     f"No filesystem available for location {location.name}"
@@ -3955,17 +3887,8 @@ class ArchiveApplicationService:
             # If copy succeeded and cleanup_source is enabled, remove source
             if move_dto.cleanup_source:
                 try:
-                    # Convert to infrastructure Location
-                    from ...location.location import Location
-
-                    source_loc = Location(
-                        name=source_location.name,
-                        kinds=[],
-                        config=source_location.config,
-                        _skip_registry=True,
-                    )
-                    
-                    source_fs = source_loc.fs
+                    # Create filesystem access from location
+                    source_fs = self._create_location_filesystem(source_location)
                     if not source_fs:
                         raise ArchiveOperationError(
                             move_dto.archive_id,
@@ -4072,3 +3995,59 @@ class ArchiveApplicationService:
                 error_message=error_msg,
                 progress_tracker_id=progress_tracker_id,
             )
+    
+    def _create_location_filesystem(self, location_entity):
+        """Create filesystem access from a LocationEntity."""
+        protocol = location_entity.config.get('protocol', 'file')
+        storage_options = location_entity.config
+        base_path = storage_options.get('path', '/')
+        
+        if protocol in ('file', 'local'):
+            # Local filesystem
+            from ...infrastructure.adapters.sandboxed_filesystem import PathSandboxedFileSystem
+            import fsspec
+            base_fs = fsspec.filesystem('file')
+            return PathSandboxedFileSystem(base_fs, base_path)
+            
+        elif protocol in ('ssh', 'sftp'):
+            # SSH filesystem
+            from ...infrastructure.adapters.sandboxed_filesystem import PathSandboxedFileSystem
+            import fsspec
+            
+            # Extract SSH configuration
+            host = storage_options.get('host')
+            if not host:
+                raise ValueError("SSH/SFTP requires 'host' configuration")
+            
+            ssh_config = {
+                'host': host,
+                'username': storage_options.get('username'),
+                'password': storage_options.get('password'),
+                'port': storage_options.get('port', 22),
+                'timeout': 30,
+            }
+            
+            base_fs = fsspec.filesystem('ssh', **ssh_config)
+            return PathSandboxedFileSystem(base_fs, base_path)
+            
+        elif protocol == 'scoutfs':
+            # ScoutFS filesystem (extends SFTP)
+            from ...infrastructure.adapters.scoutfs_filesystem import ScoutFSFileSystem
+            from ...infrastructure.adapters.sandboxed_filesystem import PathSandboxedFileSystem
+            
+            host = storage_options.get('host')
+            if not host:
+                raise ValueError("ScoutFS requires 'host' configuration")
+            
+            scoutfs_config = {k: v for k, v in storage_options.items() if k != 'host'}
+            scoutfs_config['timeout'] = 30  # Default timeout
+            
+            base_fs = ScoutFSFileSystem(host=host, **scoutfs_config)
+            return PathSandboxedFileSystem(base_fs, base_path)
+            
+        else:
+            raise ValueError(f"Unsupported protocol for filesystem access: {protocol}")
+    
+    def copy_archive_to_location(self, copy_dto: ArchiveCopyOperationDto) -> ArchiveOperationResultDto:
+        """Alias for copy_archive method to match CLI expectations."""
+        return self.copy_archive(copy_dto)
