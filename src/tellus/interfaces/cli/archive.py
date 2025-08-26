@@ -222,13 +222,13 @@ def list_files(archive_id: str = None, content_type: str = None, pattern: str = 
             # Extract archive_id from selection
             archive_id = selected.split(" (location:")[0]
         
-        files = service.list_archive_files(
+        file_list_result = service.list_archive_files(
             archive_id=archive_id,
             content_type=content_type,
             pattern=pattern
         )
         
-        if not files:
+        if not file_list_result.files:
             console.print("No files found in archive.")
             return
             
@@ -242,7 +242,7 @@ def list_files(archive_id: str = None, content_type: str = None, pattern: str = 
         table.add_column("Type", style="blue")
         table.add_column("Role", style="yellow")
 
-        for file in files:
+        for file in file_list_result.files:
             size_str = f"{file.size}" if file.size else "-"
             table.add_row(
                 file.relative_path, 
