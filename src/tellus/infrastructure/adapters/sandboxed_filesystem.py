@@ -284,9 +284,17 @@ class PathSandboxedFileSystem:
         """Move file or directory."""
         return self._fs.move(self._resolve_path(src), self._resolve_path(dst), **kwargs)
     
+    def get(self, remote_path: Union[str, Path], local_path: Union[str, Path], **kwargs) -> None:
+        """Download file(s) from remote to local with path resolution."""
+        return self._fs.get(self._resolve_path(remote_path), local_path, **kwargs)
+    
     def get_file(self, remote_path: Union[str, Path], local_path: Union[str, Path], **kwargs) -> None:
         """Download file from remote to local."""
         return self._fs.get_file(self._resolve_path(remote_path), local_path, **kwargs)
+    
+    def put(self, local_path: Union[str, Path], remote_path: Union[str, Path], **kwargs) -> None:
+        """Upload file(s) from local to remote with path resolution."""
+        return self._fs.put(local_path, self._resolve_path(remote_path), **kwargs)
     
     def put_file(self, local_path: Union[str, Path], remote_path: Union[str, Path], **kwargs) -> None:
         """Upload file from local to remote."""
