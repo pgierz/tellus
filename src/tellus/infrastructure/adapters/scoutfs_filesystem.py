@@ -6,6 +6,8 @@ support for staging files from tape storage and progress tracking.
 
 import datetime
 import time
+import warnings
+from contextlib import contextmanager
 from typing import Any, Dict, Optional, Union
 
 import fsspec
@@ -35,8 +37,44 @@ class ScoutFSFileSystem(fsspec.implementations.sftp.SFTPFileSystem):
             **kwargs: Additional arguments passed to SFTPFileSystem
         """
         self._scoutfs_config = kwargs.pop("scoutfs_config", {})
+        
+        # Extract warning filter configuration
+        self._warning_filters = kwargs.pop("warning_filters", {})
+        
         ssh_kwargs = kwargs
         super().__init__(host, **ssh_kwargs)
+
+    @contextmanager
+    def _filtered_warnings(self):
+        """Context manager to apply warning filters for this filesystem instance."""
+        if not self._warning_filters:
+            # No filters configured, just yield
+            yield
+            return
+            
+        # Apply warning filters
+        suppress_warnings = self._warning_filters.get("suppress", [])
+        original_filters = warnings.filters[:]
+        
+        try:
+            for warning_type in suppress_warnings:
+                if warning_type == "InsecureRequestWarning":
+                    # Handle urllib3 InsecureRequestWarning specifically
+                    import urllib3
+                    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+                elif warning_type == "SSLVerificationWarning":
+                    # Handle requests SSL verification warnings
+                    import requests.packages.urllib3 as urllib3
+                    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+                else:
+                    # Handle other warning types generically
+                    warnings.filterwarnings("ignore", category=UserWarning, message=f".*{warning_type}.*")
+            
+            yield
+            
+        finally:
+            # Restore original warning filters
+            warnings.filters[:] = original_filters
 
     # --- ScoutFS API Methods ---
 
@@ -53,13 +91,14 @@ class ScoutFSFileSystem(fsspec.implementations.sftp.SFTPFileSystem):
             "pass": "filestat",
         }
 
-        # Ignore SSL certificate warnings (verify=False)
-        response = requests.post(
-            f"{self._scoutfs_api_url}/security/login",
-            headers=headers,
-            json=data,
-            verify=False,
-        )
+        # Make request with warning filters applied
+        with self._filtered_warnings():
+            response = requests.post(
+                f"{self._scoutfs_api_url}/security/login",
+                headers=headers,
+                json=data,
+                verify=False,
+            )
         response.raise_for_status()
         return response.json().get("response")
 
@@ -82,11 +121,12 @@ class ScoutFSFileSystem(fsspec.implementations.sftp.SFTPFileSystem):
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self._scoutfs_token}",
         }
-        response = requests.get(
-            f"{self._scoutfs_api_url}/filesystems",
-            headers=headers,
-            verify=False,
-        )
+        with self._filtered_warnings():
+            response = requests.get(
+                f"{self._scoutfs_api_url}/filesystems",
+                headers=headers,
+                verify=False,
+            )
         response.raise_for_status()
         return response.json()
 
@@ -97,10 +137,13 @@ class ScoutFSFileSystem(fsspec.implementations.sftp.SFTPFileSystem):
         for fsid_info in fsid_response.get("fsids", []):
             if path.startswith(fsid_info["mount"]):
                 matching_fsids.append(fsid_info)
-        assert len(matching_fsids) == 1, (
-            f"Expected exactly one matching filesystem for path '{path}', "
-            f"found {len(matching_fsids)}: {matching_fsids}"
-        )
+        
+        if len(matching_fsids) == 0:
+            raise ValueError(f"No ScoutFS filesystem found for path '{path}'. "
+                           f"Available mounts: {[f['mount'] for f in fsid_response.get('fsids', [])]}")
+        elif len(matching_fsids) > 1:
+            raise ValueError(f"Multiple ScoutFS filesystems match path '{path}': {matching_fsids}")
+        
         return matching_fsids[0]["fsid"]
 
     def _scoutfs_file(self, path):
@@ -111,11 +154,12 @@ class ScoutFSFileSystem(fsspec.implementations.sftp.SFTPFileSystem):
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self._scoutfs_token}",
         }
-        response = requests.get(
-            f"{self._scoutfs_api_url}/file?fsid={fsid}&path={path}",
-            headers=headers,
-            verify=False,
-        )
+        with self._filtered_warnings():
+            response = requests.get(
+                f"{self._scoutfs_api_url}/file?fsid={fsid}&path={path}",
+                headers=headers,
+                verify=False,
+            )
         response.raise_for_status()
         return response.json()
 
@@ -127,12 +171,13 @@ class ScoutFSFileSystem(fsspec.implementations.sftp.SFTPFileSystem):
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self._scoutfs_token}",
         }
-        response = requests.post(
-            f"{self._scoutfs_api_url}/request/{command}?fsid={fsid}&path={path}",
-            headers=headers,
-            json={"path": path},
-            verify=False,
-        )
+        with self._filtered_warnings():
+            response = requests.post(
+                f"{self._scoutfs_api_url}/request/{command}?fsid={fsid}&path={path}",
+                headers=headers,
+                json={"path": path},
+                verify=False,
+            )
         response.raise_for_status()
         return response.json()
 
@@ -143,11 +188,12 @@ class ScoutFSFileSystem(fsspec.implementations.sftp.SFTPFileSystem):
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self._scoutfs_token}",
         }
-        response = requests.get(
-            f"{self._scoutfs_api_url}/queues",
-            headers=headers,
-            verify=False,
-        )
+        with self._filtered_warnings():
+            response = requests.get(
+                f"{self._scoutfs_api_url}/queues",
+                headers=headers,
+                verify=False,
+            )
         response.raise_for_status()
         return response.json()
 
@@ -182,7 +228,7 @@ class ScoutFSFileSystem(fsspec.implementations.sftp.SFTPFileSystem):
                 "/batchfile": None,
             }
         except Exception as e:
-            logger.warning(f"Failed to get ScoutFS info for {path}: {e}")
+            logger.error(f"Failed to get ScoutFS info for {path}: {e}")
             robj["scoutfs_info"] = {
                 "/file": {"error": str(e)},
                 "/batchfile": None,
@@ -205,16 +251,22 @@ class ScoutFSFileSystem(fsspec.implementations.sftp.SFTPFileSystem):
             online_blocks = scoutfs_info.get("onlineblocks", "")
             offline_blocks = scoutfs_info.get("offlineblocks", "")
 
+            # Convert to int, defaulting to 0 for empty strings
             if online_blocks != "":
                 online_blocks = int(online_blocks)
+            else:
+                online_blocks = 0
+                
             if offline_blocks != "":
                 offline_blocks = int(offline_blocks)
+            else:
+                offline_blocks = 0
 
             # [FIXME]: Partially online files might be mis-represented here?
             return online_blocks > 0 and offline_blocks == 0
 
         except Exception as e:
-            logger.warning(f"Error checking if {path} is online: {e}")
+            logger.error(f"Error checking if {path} is online: {e}")
             # If we can't determine the status, assume the file is online
             # to avoid unnecessary staging attempts
             return True

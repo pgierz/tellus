@@ -4042,6 +4042,10 @@ class ArchiveApplicationService:
             scoutfs_config = {k: v for k, v in storage_options.items() if k != 'host'}
             scoutfs_config['timeout'] = 30  # Default timeout
             
+            # Pass warning filters from location configuration
+            warning_filters = location_entity.config.get('warning_filters', {})
+            scoutfs_config['warning_filters'] = warning_filters
+            
             base_fs = ScoutFSFileSystem(host=host, **scoutfs_config)
             return PathSandboxedFileSystem(base_fs, base_path)
             
