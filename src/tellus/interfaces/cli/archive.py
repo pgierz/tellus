@@ -602,3 +602,60 @@ def delete_archives(archive_ids: tuple, force: bool = False):
         
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@archive.command(name="add")
+@click.argument("archive_id")
+@click.argument("remote_path")
+@click.option("--simulation", help="Associated simulation ID")
+@click.option("--type", "archive_type", default="compressed", help="Archive type (compressed, uncompressed)")
+@click.option("--description", help="Archive description")
+def add_archive(archive_id: str, remote_path: str, simulation: str = None, archive_type: str = "compressed", description: str = None):
+    """Register an existing remote archive.
+    
+    This command registers metadata for an archive that already exists on a remote location
+    without attempting to access or create the archive file.
+    
+    Examples:
+        tellus archive add my_archive.tgz tellus_hsm:/path/to/archive.tgz --simulation my-sim
+        tellus archive add data_archive.tar.gz remote_storage:/archives/data.tar.gz --description "Climate data archive"
+    """
+    try:
+        # Parse remote_path to extract location and path
+        if ':' not in remote_path:
+            console.print("[red]Error:[/red] Remote path must be in format location:path")
+            console.print("Example: tellus_hsm:/path/to/archive.tgz")
+            return
+            
+        location_name, archive_path = remote_path.split(':', 1)
+        
+        # Display what will be registered
+        console.print(f"📝  Registering archive [cyan]{archive_id}[/cyan] at [blue]{remote_path}[/blue]...")
+        
+        service = _get_archive_service()
+        
+        # Create DTO for metadata-only archive registration
+        from ...application.dtos import CreateArchiveDto
+        
+        dto = CreateArchiveDto(
+            archive_id=archive_id,
+            location_name=location_name,
+            archive_type=archive_type,
+            source_path=None,  # No source path for metadata-only
+            simulation_id=simulation,
+            description=description
+        )
+        
+        # Use the metadata-only creation method
+        result = service.create_archive_metadata(dto)
+        
+        console.print(f"[green]✓[/green] Successfully registered archive: [cyan]{archive_id}[/cyan]")
+        console.print(f"   Location: [dim]{location_name}[/dim]")
+        console.print(f"   Type: [dim]{archive_type}[/dim]")
+        if simulation:
+            console.print(f"   Simulation: [dim]{simulation}[/dim]")
+        if description:
+            console.print(f"   Description: [dim]{description}[/dim]")
+            
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
