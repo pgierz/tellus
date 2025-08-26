@@ -922,7 +922,7 @@ def put_file(sim_id: str, location_name: str, local_file: str = None, remote_pat
                 resolved_remote = remote_path
             elif path_prefix:
                 # Use path prefix
-                resolved_remote = f"{path_prefix.rstrip('/')}/{remote_name.lstrip('/')}"
+                resolved_remote = f"{path_prefix.rstrip(' /')}/{remote_name.lstrip('/')}"
             else:
                 resolved_remote = remote_name
                 
@@ -1082,7 +1082,7 @@ def get_file(sim_id: str, location_name: str, remote_file: str = None, local_pat
             # Glob pattern selection on remote
             try:
                 import fnmatch
-                base_path = path_prefix.rstrip('/') if path_prefix else '.'
+                base_path = path_prefix.rstrip(' /') if path_prefix else '.'
                 entries = fs.ls(base_path, detail=True)
                 matching_files = []
                 
@@ -1121,7 +1121,7 @@ def get_file(sim_id: str, location_name: str, remote_file: str = None, local_pat
                 resolved_remote = remote_name
             elif path_prefix:
                 # Use path prefix
-                resolved_remote = f"{path_prefix.rstrip('/')}/{remote_name.lstrip('/')}"
+                resolved_remote = f"{path_prefix.rstrip(' /')}/{remote_name.lstrip('/')}"
             else:
                 resolved_remote = remote_name
                 
@@ -1372,7 +1372,7 @@ def mput_files(sim_id: str, location_name: str, pattern: str = None,
                 for local_path, remote_name in files_to_upload:
                     # Resolve remote path with context
                     if path_prefix:
-                        resolved_remote = f"{path_prefix.rstrip('/')}/{remote_name.lstrip('/')}"
+                        resolved_remote = f"{path_prefix.rstrip(' /')}/{remote_name.lstrip('/')}"
                     else:
                         resolved_remote = remote_name
                         
@@ -1407,7 +1407,7 @@ def mput_files(sim_id: str, location_name: str, pattern: str = None,
             for local_path, remote_name in files_to_upload:
                 # Resolve remote path with context
                 if path_prefix:
-                    resolved_remote = f"{path_prefix.rstrip('/')}/{remote_name.lstrip('/')}"
+                    resolved_remote = f"{path_prefix.rstrip(' /')}/{remote_name.lstrip('/')}"
                 else:
                     resolved_remote = remote_name
                     
@@ -1512,7 +1512,7 @@ def mget_files(sim_id: str, location_name: str, pattern: str = None,
             import questionary
             
             try:
-                base_path = path_prefix.rstrip('/') if path_prefix else '.'
+                base_path = path_prefix.rstrip(' /') if path_prefix else '.'
                 
                 def get_remote_items(remote_path, prefix=""):
                     """Recursively get remote items for display."""
@@ -1570,7 +1570,7 @@ def mget_files(sim_id: str, location_name: str, pattern: str = None,
         else:
             # Pattern-based selection
             try:
-                base_path = path_prefix.rstrip('/') if path_prefix else '.'
+                base_path = path_prefix.rstrip(' /') if path_prefix else '.'
                 
                 def find_matching_files(remote_path, current_pattern):
                     """Find files matching pattern recursively."""
@@ -1641,7 +1641,7 @@ def mget_files(sim_id: str, location_name: str, pattern: str = None,
                 for remote_name, local_name in files_to_download:
                     # Resolve remote path with context
                     if path_prefix:
-                        resolved_remote = f"{path_prefix.rstrip('/')}/{remote_name.lstrip('/')}"
+                        resolved_remote = f"{path_prefix.rstrip(' /')}/{remote_name.lstrip('/')}"
                     else:
                         resolved_remote = remote_name
                         
@@ -1673,7 +1673,7 @@ def mget_files(sim_id: str, location_name: str, pattern: str = None,
             for remote_name, local_name in files_to_download:
                 # Resolve remote path with context
                 if path_prefix:
-                    resolved_remote = f"{path_prefix.rstrip('/')}/{remote_name.lstrip('/')}"
+                    resolved_remote = f"{path_prefix.rstrip(' /')}/{remote_name.lstrip('/')}"
                 else:
                     resolved_remote = remote_name
                     
