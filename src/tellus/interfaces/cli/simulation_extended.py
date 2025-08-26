@@ -567,6 +567,22 @@ def _perform_real_listing(fs, path: str, long_format: bool, show_all: bool,
                         tape_status: bool = False, location=None):
     """Perform actual filesystem listing."""
     try:
+        # Check if path is a file or directory
+        try:
+            path_info = fs.info(path)
+            if path_info.get('type') == 'file':
+                # Show single file info instead of trying to list it
+                entries = [path_info]
+                # For single files, we don't need recursion or directory-specific sorting
+                if long_format:
+                    _show_long_format(entries, human_readable, use_color, tape_status, fs)
+                else:
+                    _show_simple_format(entries, use_color, tape_status, fs)
+                return
+        except Exception:
+            # If info() fails, fallback to trying ls() - might be a directory
+            pass
+        
         # Get directory contents
         entries = fs.ls(path, detail=True)
         
