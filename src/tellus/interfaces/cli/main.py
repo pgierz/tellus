@@ -39,9 +39,10 @@ def create_main_cli():
     from .transfer import transfer, queue_group
     
     # Configuration management
-    from .config import config
+    from .config import config, init_command
 
     # Add working subcommands
+    cli.add_command(init_command)
     cli.add_command(simulation)
     cli.add_command(location)
     cli.add_command(archive)
