@@ -4051,3 +4051,37 @@ class ArchiveApplicationService:
     def copy_archive_to_location(self, copy_dto: ArchiveCopyOperationDto) -> ArchiveOperationResultDto:
         """Alias for copy_archive method to match CLI expectations."""
         return self.copy_archive(copy_dto)
+    
+    def delete_archive(self, archive_id: str) -> bool:
+        """
+        Delete an archive by its ID.
+        
+        Args:
+            archive_id: The ID of the archive to delete
+            
+        Returns:
+            True if the archive was deleted, False if it didn't exist
+            
+        Raises:
+            EntityNotFoundError: If the archive doesn't exist
+        """
+        self._logger.info(f"Deleting archive: {archive_id}")
+        
+        try:
+            # Check if archive exists first
+            if not self._archive_repo.exists(archive_id):
+                raise EntityNotFoundError("Archive", archive_id)
+            
+            # Delete from repository
+            success = self._archive_repo.delete(archive_id)
+            
+            if success:
+                self._logger.info(f"Successfully deleted archive: {archive_id}")
+            else:
+                self._logger.warning(f"Failed to delete archive: {archive_id}")
+                
+            return success
+            
+        except Exception as e:
+            self._logger.error(f"Error deleting archive {archive_id}: {str(e)}")
+            raise

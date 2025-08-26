@@ -505,3 +505,100 @@ def update_archive(archive_id: str = None, simulation_date: str = None, version:
         
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@archive.command(name="delete")
+@click.argument("archive_ids", nargs=-1)
+@click.option("--force", is_flag=True, help="Skip confirmation prompts")
+def delete_archives(archive_ids: tuple, force: bool = False):
+    """Delete one or more archives.
+    
+    Examples:
+        tellus archive delete                           # Interactive selection
+        tellus archive delete archive1 archive2         # Delete specific archives
+        tellus archive delete archive1 --force          # Skip confirmation
+    """
+    try:
+        service = _get_archive_service()
+        archives_to_delete = []
+        
+        # If no archive_ids provided, launch interactive selection
+        if not archive_ids:
+            import questionary
+            
+            # Get all archives for selection
+            archives_result = service.list_archives()
+            if not archives_result.archives:
+                console.print("[yellow]No archives found[/yellow]")
+                return
+                
+            archive_choices = [f"{archive.archive_id} (location: {archive.location})" 
+                             for archive in archives_result.archives]
+            
+            selected = questionary.checkbox(
+                "Select archives to delete:",
+                choices=archive_choices,
+                style=questionary.Style([
+                    ('question', 'bold'),
+                    ('checkbox', 'fg:#ff0066'),
+                    ('selected', 'fg:#cc5454'),
+                    ('pointer', 'fg:#ff0066 bold'),
+                ])
+            ).ask()
+            
+            if not selected:
+                console.print("[yellow]No archives selected[/yellow]")
+                return
+                
+            # Extract archive_ids from selections
+            archives_to_delete = [selection.split(" (location:")[0] for selection in selected]
+        else:
+            archives_to_delete = list(archive_ids)
+        
+        if not archives_to_delete:
+            console.print("[yellow]No archives to delete[/yellow]")
+            return
+            
+        # Show what will be deleted
+        console.print(f"\n[bold]Archives to delete:[/bold]")
+        for archive_id in archives_to_delete:
+            console.print(f"  • {archive_id}")
+        
+        # Confirmation prompt (unless --force used)
+        if not force:
+            import questionary
+            
+            confirm = questionary.confirm(
+                f"Are you sure you want to delete {len(archives_to_delete)} archive(s)? This action cannot be undone.",
+                default=False
+            ).ask()
+            
+            if not confirm:
+                console.print("[yellow]Deletion cancelled[/yellow]")
+                return
+        
+        # Delete archives
+        deleted_count = 0
+        failed_count = 0
+        
+        for archive_id in archives_to_delete:
+            try:
+                success = service.delete_archive(archive_id)
+                if success:
+                    console.print(f"[green]✓[/green] Deleted archive: [cyan]{archive_id}[/cyan]")
+                    deleted_count += 1
+                else:
+                    console.print(f"[red]✗[/red] Failed to delete archive: [cyan]{archive_id}[/cyan]")
+                    failed_count += 1
+            except Exception as e:
+                console.print(f"[red]✗[/red] Error deleting [cyan]{archive_id}[/cyan]: {str(e)}")
+                failed_count += 1
+        
+        # Summary
+        console.print(f"\n[bold]Summary:[/bold]")
+        console.print(f"  [green]Deleted:[/green] {deleted_count}")
+        if failed_count > 0:
+            console.print(f"  [red]Failed:[/red] {failed_count}")
+        
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
