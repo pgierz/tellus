@@ -34,9 +34,14 @@ class ArchiveId:
         if not self.value or not isinstance(self.value, str):
             raise ValueError("Archive ID must be a non-empty string")
         
-        # Validate ID format (alphanumeric, hyphens, underscores)
-        if not self.value.replace('-', '').replace('_', '').isalnum():
-            raise ValueError("Archive ID can only contain alphanumeric characters, hyphens, and underscores")
+        # Validate ID format (alphanumeric, hyphens, underscores, periods)
+        # NOTE: Periods are allowed but may cause issues in future web applications:
+        # - URL path segments with periods might be interpreted as file extensions
+        # - Some web frameworks treat periods specially in routing
+        # - Consider URL encoding or alternative representations for web APIs
+        allowed_chars = self.value.replace('-', '').replace('_', '').replace('.', '')
+        if not allowed_chars.isalnum():
+            raise ValueError("Archive ID can only contain alphanumeric characters, hyphens, underscores, and periods")
     
     def __str__(self) -> str:
         return self.value
