@@ -459,17 +459,18 @@ def ls_location(sim_id: str, location_name: str, path: str = ".",
         tellus simulation location ls MIS11.3-B tellus_localhost . -lah
     """
     try:
-        # Get the simulation to verify location association
+        # Get the simulation entity to verify location association and resolve templates
         service = _get_simulation_service()
-        sim = service.get_simulation(sim_id)
+        sim_entity = service._simulation_repo.get_by_id(sim_id)
         
-        if sim is None:
+        if sim_entity is None:
             _handle_simulation_not_found(sim_id, service)
             return
         
-        if location_name not in sim.associated_locations:
+        if not sim_entity.is_location_associated(location_name):
             console.print(f"[red]Error:[/red] Location '{location_name}' is not associated with simulation '{sim_id}'")
-            console.print(f"Available locations: {', '.join(sim.associated_locations)}")
+            available_locations = list(sim_entity.get_associated_locations())
+            console.print(f"Available locations: {', '.join(available_locations)}")
             return
         
         # Get location service to access the filesystem
@@ -485,9 +486,15 @@ def ls_location(sim_id: str, location_name: str, path: str = ".",
             console.print(f"[yellow]Note:[/yellow] This appears to be a simulation-specific location context only.")
             console.print(f"The simulation knows about this location, but it's not registered in the global location registry.")
         
-        # Get the location context for path resolution
-        context = sim.get_location_context(location_name) if hasattr(sim, 'get_location_context') else {}
+        # Get the location context for path resolution and resolve templates
+        context = sim_entity.get_location_context(location_name) or {}
         path_prefix = context.get('path_prefix', '') if context else ''
+        
+        # Resolve template variables in path_prefix
+        if path_prefix:
+            template_context = service.get_simulation_context(sim_id)
+            for key, value in template_context.items():
+                path_prefix = path_prefix.replace(f'{{{key}}}', str(value))
         
         # Resolve the actual path
         if path.startswith('/'):

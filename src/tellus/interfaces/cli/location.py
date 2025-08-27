@@ -254,8 +254,7 @@ def update_location(name: str = None, protocol: str = None, add_kind: tuple = ()
                     "Protocol",
                     "Kinds",
                     "Path", 
-                    "Host (for remote protocols)",
-                    "Optional flag"
+                    "Host (for remote protocols)"
                 ]
             ).ask()
             
@@ -321,13 +320,6 @@ def update_location(name: str = None, protocol: str = None, add_kind: tuple = ()
                     default=current_host
                 ).ask()
                 
-            if "Optional flag" in update_options:
-                set_optional = questionary.confirm(
-                    "Mark as optional?",
-                    default=existing_loc.optional
-                ).ask()
-                if not set_optional:
-                    set_required = True
         
         # Prepare update data
         updates = {}
@@ -383,10 +375,6 @@ def update_location(name: str = None, protocol: str = None, add_kind: tuple = ()
             changes.append(f"added kinds: {', '.join(add_kind)}")
         if remove_kind:
             changes.append(f"removed kinds: {', '.join(remove_kind)}")
-        if set_optional:
-            changes.append("marked as optional")
-        if set_required:
-            changes.append("marked as required")
             
         if changes:
             console.print(f"[dim]Changes: {'; '.join(changes)}[/dim]")
