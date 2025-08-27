@@ -3138,7 +3138,7 @@ class ArchiveApplicationService:
                 relative_path="output/results.nc",
                 size=1024 * 1024 * 50,  # 50MB
                 checksum=Checksum("d41d8cd98f00b204e9800998ecf8427e", "md5"),
-                content_type=FileContentType.OUTPUT,
+                content_type=FileContentType.OUTDATA,
                 importance=FileImportance.CRITICAL,
                 file_role="model_output",
                 created_time=time.time() - 3600,
@@ -3999,7 +3999,9 @@ class ArchiveApplicationService:
     def _create_location_filesystem(self, location_entity):
         """Create filesystem access from a LocationEntity."""
         protocol = location_entity.config.get('protocol', 'file')
-        storage_options = location_entity.config
+        # Extract storage_options from config - can be nested or at top level
+        nested_storage_options = location_entity.config.get('storage_options', {})
+        storage_options = {**location_entity.config, **nested_storage_options}
         base_path = storage_options.get('path', '/')
         
         if protocol in ('file', 'local'):
@@ -4027,6 +4029,12 @@ class ArchiveApplicationService:
                 'timeout': 30,
             }
             
+            # Add any other SSH-specific options, filtering out location config keys
+            excluded_keys = {'protocol', 'path', 'kinds', 'optional', 'storage_options'}
+            for k, v in storage_options.items():
+                if k not in excluded_keys and k not in ssh_config:
+                    ssh_config[k] = v
+            
             base_fs = fsspec.filesystem('ssh', **ssh_config)
             return PathSandboxedFileSystem(base_fs, base_path)
             
@@ -4039,7 +4047,9 @@ class ArchiveApplicationService:
             if not host:
                 raise ValueError("ScoutFS requires 'host' configuration")
             
-            scoutfs_config = {k: v for k, v in storage_options.items() if k != 'host'}
+            # Filter out config keys that shouldn't be passed to filesystem
+            excluded_keys = {'host', 'protocol', 'path', 'kinds', 'optional', 'storage_options'}
+            scoutfs_config = {k: v for k, v in storage_options.items() if k not in excluded_keys}
             scoutfs_config['timeout'] = 30  # Default timeout
             
             # Pass warning filters from location configuration

@@ -2,6 +2,25 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Github Issue Workflow
+
+The user may occassionally want to work in "github issue flow" mode. The workflow is as follows:
+
+* Work has (more-or-less) stabilized on a branch (e.g. `wip`). Regular commits are occuring, and the tool is in a usable form.
+* User creates a new issue with `gh issue` (or `gh issue create`)
+* The AI will be asked to "work on gh-issues" or "work on github issues" or "work on issues". The AI will then look at the issues like this:
+```
+$ gh issue list
+$ gh issue view <issue_number>
+```
+* The AI can work on one issue until it would normally report a summary back to the user.
+* The AI will ensure an atomic commit of its work is made, which includes a reference to the issue number.
+* The AI will add the summary of the work for that issue to a global summary.
+* The AI will examine it's credit token usage, and if it is close to the limit, it will report the global summary to the user. If it is not close, it will go to the next issue.
+* The limit is close if the token usage is 90% of the limit.
+* The AI will then ask the user to "close issue <issue_number>" or "close issues <issue_number1>,<issue_number2>,..."
+
+
 ## Development Commands
 
 This project uses **Pixi** as the package and environment manager. All development commands should use `pixi run`.
@@ -142,3 +161,6 @@ The codebase is transitioning from `tellus.core.cli` to `tellus.cli` for CLI org
 This should be addressed before the new architecture becomes the default.
 - You should be consistently using questionary for interactive prompts in the wizards. Do not use rich or click based interactivity
 - Remember that you do not need to use these TELLUS_USE_NEW variables ever again.
+- Can you please forget about the old structure entirely before we had the "new" and "old" architecture? Anything that is old is wrong, by definition.
+
+- You do not need to set TELLUS_USE_NEW_ARCHIVE_SERVICE

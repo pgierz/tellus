@@ -72,11 +72,11 @@ tellus = { path = ".", editable = true }
 tellus-chat = { path = "./src/tellus_chat", editable = true }
 animavox = { path = "./vendor/animavox", editable = true }
 # snakemake-storage-plugin-fsspec = { git = "git+https://github.com/pgierz/snakemake-storage-plugin-fsspec.git" }
-snakemake-storage-plugin-fsspec = { git = "git+https://github.com/pgierz/snakemake-storage-plugin-fsspec.git" }
+# snakemake-storage-plugin-fsspec = { git = "git+https://github.com/pgierz/snakemake-storage-plugin-fsspec.git" }
 
 [tool.pixi.tasks]
 # sandbox = "python3 sandbox/manual_tests.py"
-tellus = "python -m tellus"
+tellus = {cmd = "python -m tellus", cwd = "." }
 sandbox = { cmd = "python3 my_tellus_script.py", cwd = "sandbox" , description = "Run a dummy script using tellus"}
 
 [tool.pixi.feature.test.pypi-dependencies]
@@ -136,7 +136,7 @@ questionary = ">=2.1.0,<3"
 requests = ">=2.32.4,<3"
 loguru = ">=0.7.3,<0.8"
 inquirerpy = ">=0.3.4,<0.4"
-snakemake = ">=9.8.0,<10"
+snakemake = ">=9.9.0,<10"
 fastapi = ">=0.116.1,<0.117"
 uvicorn = ">=0.35.0,<0.36"
 hypothesis = ">=6.136.9,<7"
