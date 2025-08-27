@@ -8,6 +8,7 @@ from rich.panel import Panel
 from .main import console
 from .simulation import simulation, _get_simulation_service
 from ...application.dtos import UpdateSimulationDto, SimulationLocationAssociationDto
+from ...application.exceptions import EntityNotFoundError
 
 
 def _handle_simulation_not_found(sim_id: str, service):
@@ -212,6 +213,187 @@ def remove_location(sim_id: str, location_name: str):
         result = service.disassociate_simulation_from_location(sim_id, location_name)
         console.print(f"[green]✓[/green] Removed location '{location_name}' from simulation '{sim_id}'")
         
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@simulation_location.command(name="update")
+@click.argument("sim_id", required=False)
+@click.argument("location_name", required=False) 
+@click.option("--path-prefix", help="Set path prefix template for this simulation-location")
+@click.option("--context", help="JSON string with location context data")
+def update_location_association(sim_id: str = None, location_name: str = None, 
+                               path_prefix: str = None, context: str = None):
+    """Update simulation-location association settings.
+    
+    Update location context and path prefix templates for a specific 
+    simulation-location association. If no arguments provided, launches 
+    interactive selection.
+    
+    Examples:
+        tellus simulation location update MIS11.3-B tellus_hsm --path-prefix "/data/{model}/{experiment}"
+        tellus simulation location update                 # Interactive mode
+    """
+    try:
+        import json
+        
+        service = _get_simulation_service()
+        
+        # Interactive mode when arguments missing
+        if not sim_id or not location_name:
+            import questionary
+            
+            # Get simulation ID if not provided
+            if not sim_id:
+                simulations = service.list_simulations()
+                if not simulations.simulations:
+                    console.print("[yellow]No simulations found[/yellow]")
+                    return
+                
+                sim_choices = [sim.simulation_id for sim in simulations.simulations]
+                sim_id = questionary.select(
+                    "Select simulation:",
+                    choices=sim_choices,
+                    style=questionary.Style([
+                        ('question', 'bold'),
+                        ('selected', 'fg:#cc5454'),
+                        ('pointer', 'fg:#ff0066 bold'),
+                    ])
+                ).ask()
+                
+                if not sim_id:
+                    console.print("[yellow]No simulation selected[/yellow]")
+                    return
+            
+            # Get location name if not provided
+            if not location_name:
+                # Get simulation to check associated locations
+                sim = service.get_simulation(sim_id)
+                if sim is None:
+                    console.print(f"[red]Error:[/red] Simulation '{sim_id}' not found")
+                    return
+                
+                if not sim.associated_locations:
+                    console.print(f"[yellow]No locations associated with simulation '{sim_id}'[/yellow]")
+                    return
+                
+                location_name = questionary.select(
+                    "Select location to update:",
+                    choices=sorted(sim.associated_locations),
+                    style=questionary.Style([
+                        ('question', 'bold'),
+                        ('selected', 'fg:#cc5454'),
+                        ('pointer', 'fg:#ff0066 bold'),
+                    ])
+                ).ask()
+                
+                if not location_name:
+                    console.print("[yellow]No location selected[/yellow]")
+                    return
+        
+        # Get current simulation entity and verify location association  
+        sim_entity = service._simulation_repo.get_by_id(sim_id)
+        if sim_entity is None:
+            console.print(f"[red]Error:[/red] Simulation '{sim_id}' not found")
+            return
+        
+        if not sim_entity.is_location_associated(location_name):
+            console.print(f"[red]Error:[/red] Location '{location_name}' is not associated with simulation '{sim_id}'")
+            return
+        
+        # Show current context
+        current_context = sim_entity.get_location_context(location_name)
+        console.print(f"\n[cyan]Current context for {sim_id} -> {location_name}:[/cyan]")
+        if current_context:
+            for key, value in current_context.items():
+                console.print(f"  {key}: {value}")
+        else:
+            console.print("  (no context set)")
+        
+        # Build updated context
+        updated_context = current_context.copy() if current_context else {}
+        
+        # Handle path prefix
+        if path_prefix is not None:
+            updated_context['path_prefix'] = path_prefix
+        
+        # Handle JSON context
+        if context:
+            try:
+                context_data = json.loads(context)
+                updated_context.update(context_data)
+            except json.JSONDecodeError:
+                console.print(f"[red]Error:[/red] Invalid JSON in context: {context}")
+                return
+        
+        # Interactive updates if no options provided
+        if not any([path_prefix, context]):
+            import questionary
+            
+            console.print("\n[cyan]Select what you'd like to update:[/cyan]")
+            
+            # Ask what to update
+            update_options = questionary.checkbox(
+                "What would you like to update?",
+                choices=[
+                    "Path Prefix Template",
+                    "Custom Context Data"
+                ],
+                style=questionary.Style([
+                    ('question', 'bold'),
+                    ('selected', 'fg:#cc5454'),
+                    ('pointer', 'fg:#ff0066 bold'),
+                ])
+            ).ask()
+            
+            if not update_options:
+                console.print("[yellow]No updates selected[/yellow]")
+                return
+            
+            # Handle path prefix update
+            if "Path Prefix Template" in update_options:
+                current_prefix = updated_context.get('path_prefix', '')
+                new_prefix = questionary.text(
+                    "Path prefix template:",
+                    default=current_prefix,
+                    instruction="Use {model}, {experiment}, etc. for templates"
+                ).ask()
+                
+                if new_prefix is not None:
+                    updated_context['path_prefix'] = new_prefix
+            
+            # Handle custom context
+            if "Custom Context Data" in update_options:
+                context_json = questionary.text(
+                    "Additional context (JSON):",
+                    default="{}",
+                    instruction="e.g., {\"custom_field\": \"value\"}"
+                ).ask()
+                
+                if context_json:
+                    try:
+                        context_data = json.loads(context_json)
+                        updated_context.update(context_data)
+                    except json.JSONDecodeError:
+                        console.print("[red]Error:[/red] Invalid JSON format")
+                        return
+        
+        # Apply the updates
+        if updated_context != current_context:
+            sim_entity.update_location_context(location_name, updated_context)
+            
+            # Save the updated simulation entity
+            service._simulation_repo.save(sim_entity)
+            
+            console.print(f"[green]✓[/green] Updated location context for '{location_name}' in simulation '{sim_id}'")
+            
+            # Show updated context
+            console.print("\n[cyan]New context:[/cyan]")
+            for key, value in updated_context.items():
+                console.print(f"  {key}: {value}")
+        else:
+            console.print("[yellow]No changes to apply[/yellow]")
+            
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")
 
