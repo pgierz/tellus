@@ -8,7 +8,7 @@ import threading
 from pathlib import Path
 from typing import List, Optional
 
-from ...domain.entities.location import LocationEntity, LocationKind
+from ...domain.entities.location import LocationEntity, LocationKind, PathTemplate
 from ...domain.repositories.location_repository import ILocationRepository
 from ...domain.repositories.exceptions import (
     RepositoryError, 
@@ -49,9 +49,20 @@ class JsonLocationRepository(ILocationRepository):
                 data = self._load_data()
                 
                 # Convert entity to dictionary format
+                path_templates_data = []
+                for template in location.path_templates:
+                    template_dict = {
+                        "name": template.name,
+                        "pattern": template.pattern,
+                        "description": template.description,
+                        "required_attributes": template.required_attributes
+                    }
+                    path_templates_data.append(template_dict)
+                
                 location_dict = {
                     "kinds": [kind.name for kind in location.kinds],
-                    "config": location.config
+                    "config": location.config,
+                    "path_templates": path_templates_data
                 }
                 
                 data[location.name] = location_dict
@@ -214,11 +225,26 @@ class JsonLocationRepository(ILocationRepository):
                     # Skip invalid kinds but log warning
                     print(f"Warning: Invalid location kind '{kind_str}' for location '{name}'")
             
+            # Parse path templates
+            path_templates = []
+            for template_data in data.get("path_templates", []):
+                try:
+                    path_template = PathTemplate(
+                        name=template_data["name"],
+                        pattern=template_data["pattern"],
+                        description=template_data.get("description", ""),
+                        required_attributes=template_data.get("required_attributes", [])
+                    )
+                    path_templates.append(path_template)
+                except (KeyError, ValueError) as e:
+                    print(f"Warning: Invalid path template in location '{name}': {e}")
+            
             # Create entity
             entity = LocationEntity(
                 name=name,
                 kinds=kinds,
-                config=data.get("config", {})
+                config=data.get("config", {}),
+                path_templates=path_templates
             )
             
             return entity

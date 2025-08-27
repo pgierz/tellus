@@ -486,41 +486,26 @@ def ls_location(sim_id: str, location_name: str, path: str = ".",
             console.print(f"[yellow]Note:[/yellow] This appears to be a simulation-specific location context only.")
             console.print(f"The simulation knows about this location, but it's not registered in the global location registry.")
         
-        # Get the location context for path resolution and resolve templates
-        context = sim_entity.get_location_context(location_name) or {}
-        path_prefix = context.get('path_prefix', '') if context else ''
+        # Use PathResolutionService for clean template resolution
+        path_service = container.service_factory.path_resolution_service
         
-        # Resolve template variables in path_prefix
-        if path_prefix:
-            template_context = service.get_simulation_context(sim_id)
-            for key, value in template_context.items():
-                path_prefix = path_prefix.replace(f'{{{key}}}', str(value))
-        
-        # Resolve the actual path
-        if path.startswith('/'):
-            # Absolute path - use as-is, ignore path_prefix
-            resolved_path = path
-        elif path_prefix and path == ".":
-            # Use the path prefix as the base path
-            resolved_path = path_prefix.rstrip('/ ')
-        elif path_prefix:
-            # Combine path prefix with requested path
-            resolved_path = f"{path_prefix.rstrip('/ ')}/{path.lstrip('/')}"
-        else:
-            resolved_path = path
-        
-        # Show full path context if we have location information
-        if location is not None and hasattr(location, 'get_base_path'):
-            base_path = location.get_base_path() or "/"
+        try:
+            # Resolve the full path using the path resolution service
+            if path.startswith('/'):
+                # Absolute path - use as-is
+                full_path = path
+                console.print(f"[dim]Listing: {location_name}:{full_path}[/dim]")
+            else:
+                # Use path resolution service for template-based paths
+                full_path = path_service.resolve_simulation_location_path(sim_id, location_name, path)
+                console.print(f"[dim]Listing: {location_name}:{full_path}[/dim]")
             
-            # Resolve templates in base path as well
-            template_context = service.get_simulation_context(sim_id)
-            for key, value in template_context.items():
-                base_path = base_path.replace(f'{{{key}}}', str(value))
+            resolved_path = path  # Keep for filesystem access
             
-            full_path = f"{base_path.rstrip('/')}/{resolved_path.lstrip('/')}" if resolved_path else base_path
-            console.print(f"[dim]Listing: {location_name}:{full_path}[/dim]")
-        else:
+        except Exception as e:
+            console.print(f"[yellow]Warning:[/yellow] Path resolution failed: {str(e)}")
+            # Fallback to simple path
+            resolved_path = path
             console.print(f"[dim]Listing: {location_name}:{resolved_path}[/dim]")
         
         # Try to get actual filesystem access
