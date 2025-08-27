@@ -260,10 +260,12 @@ def list_locations(sim_id: str):
 @click.option("-R", "--recursive", is_flag=True, help="List subdirectories recursively")
 @click.option("--color", is_flag=True, default=True, help="Colorize output")
 @click.option("-T", "--tape-status", is_flag=True, help="Show tape staging status (ScoutFS only)")
+@click.option("--async-status", is_flag=True, help="Use async batch status checking for better performance")
 def ls_location(sim_id: str, location_name: str, path: str = ".", 
                 long: bool = False, all: bool = False, human_readable: bool = False,
                 time: bool = False, size: bool = False, reverse: bool = False,
-                recursive: bool = False, color: bool = True, tape_status: bool = False):
+                recursive: bool = False, color: bool = True, tape_status: bool = False,
+                async_status: bool = False):
     """List directory contents at a simulation location.
     
     Performs remote directory listing similar to Unix ls command.
@@ -332,7 +334,7 @@ def ls_location(sim_id: str, location_name: str, path: str = ".",
                 # Use the clean architecture approach like location test does
                 fs = location_service._create_location_filesystem(location)
                 _perform_real_listing(fs, resolved_path, long, all, human_readable, 
-                                    time, size, reverse, recursive, color, tape_status, location)
+                                    time, size, reverse, recursive, color, tape_status, location, async_status)
             except Exception as e:
                 console.print(f"[yellow]Warning:[/yellow] Could not access registered location filesystem: {str(e)}")
                 console.print(f"[dim]Location '{location_name}' is registered but filesystem access failed[/dim]")
@@ -564,7 +566,7 @@ def _get_filesystem_for_location(location):
 def _perform_real_listing(fs, path: str, long_format: bool, show_all: bool, 
                         human_readable: bool, sort_time: bool, sort_size: bool, 
                         reverse_sort: bool, recursive: bool, use_color: bool, 
-                        tape_status: bool = False, location=None):
+                        tape_status: bool = False, location=None, async_status: bool = False):
     """Perform actual filesystem listing."""
     try:
         # Check if path is a file or directory
@@ -614,7 +616,7 @@ def _perform_real_listing(fs, path: str, long_format: bool, show_all: bool,
                     console.print(f"\n[bold]{entry['name']}:[/bold]")
                     _perform_real_listing(fs, entry['name'], long_format, show_all,
                                         human_readable, sort_time, sort_size, 
-                                        reverse_sort, False, use_color, tape_status, location)
+                                        reverse_sort, False, use_color, tape_status, location, async_status)
     
     except Exception as e:
         console.print(f"[red]Error accessing filesystem:[/red] {str(e)}")
@@ -669,6 +671,10 @@ def _show_long_format(entries, human_readable: bool, use_color: bool, tape_statu
             table.add_row(perms, size_str, mod_time, tape_status_str, name)
         else:
             table.add_row(perms, size_str, mod_time, name)
+    
+    # Show performance note for large directories
+    if tape_status and fs and hasattr(fs, 'check_online_status_batch') and len(entries) > 5:
+        console.print("[dim]Note: For better performance with large directories, use --async-status flag[/dim]")
     
     console.print(table)
 
@@ -734,6 +740,92 @@ def _get_tape_status(fs, path: str, file_type: str) -> str:
     except Exception as e:
         # Other errors in staging status determination
         return "[yellow]?[/yellow]"
+
+
+async def _get_tape_status_async(fs, path: str, file_type: str) -> str:
+    """Asynchronously get tape staging status for ScoutFS filesystems."""
+    # Skip directories
+    if file_type == 'directory':
+        return "-"
+    
+    # Check if this is a ScoutFS filesystem
+    if not hasattr(fs, 'is_online_async'):
+        return "-"
+    
+    try:
+        # Use async ScoutFS methods to check staging status
+        is_online = await fs.is_online_async(path)
+        if is_online:
+            return "[green]●[/green]"  # Online (green filled circle)
+        else:
+            return "[red]○[/red]"      # Offline (red empty circle)
+    except ValueError as e:
+        # Filesystem detection errors (no ScoutFS mount for path)
+        if "No ScoutFS filesystem found" in str(e):
+            return "-"  # Not a ScoutFS path, no status available
+        return "[yellow]?[/yellow]"  # Other filesystem errors
+    except Exception as e:
+        # Other errors in staging status determination
+        return "[yellow]?[/yellow]"
+
+
+async def _get_tape_status_batch(fs, entries, show_progress=True) -> dict:
+    """Batch check tape staging status for multiple files asynchronously.
+    
+    Args:
+        fs: Filesystem instance
+        entries: List of file entries with 'name' and 'type' keys
+        show_progress: Whether to show progress during checking
+        
+    Returns:
+        dict: Dictionary mapping file paths to their status strings
+    """
+    # Filter to only files that need status checking
+    files_to_check = [
+        entry['name'] for entry in entries 
+        if entry['type'] != 'directory' and hasattr(fs, 'check_online_status_batch')
+    ]
+    
+    if not files_to_check:
+        # No files to check, return empty dict
+        return {}
+    
+    # Show progress if requested
+    if show_progress:
+        from rich.progress import Progress, TextColumn, SpinnerColumn
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            task = progress.add_task(f"Checking tape status for {len(files_to_check)} files...", total=None)
+            
+            try:
+                # Use the batch status checking method
+                status_results = await fs.check_online_status_batch(files_to_check)
+            except Exception as e:
+                console.print(f"[yellow]Warning: Batch status check failed, using fallback: {e}[/yellow]")
+                status_results = {}
+    else:
+        try:
+            status_results = await fs.check_online_status_batch(files_to_check)
+        except Exception as e:
+            status_results = {}
+    
+    # Convert boolean status to display strings
+    display_status = {}
+    for path, is_online in status_results.items():
+        if is_online:
+            display_status[path] = "[green]●[/green]"
+        else:
+            display_status[path] = "[red]○[/red]"
+    
+    # Handle files that weren't in the batch result (errors, etc.)
+    for path in files_to_check:
+        if path not in display_status:
+            display_status[path] = "[yellow]?[/yellow]"
+    
+    return display_status
 
 
 def _show_filesystem_listing(location_name: str, path: str, long_format: bool, 

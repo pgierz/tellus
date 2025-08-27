@@ -270,6 +270,55 @@ class ScoutFSFileSystem(fsspec.implementations.sftp.SFTPFileSystem):
             # If we can't determine the status, assume the file is online
             # to avoid unnecessary staging attempts
             return True
+    
+    async def is_online_async(self, path):
+        """Asynchronously check if a file is online (not on tape).
+        
+        Args:
+            path: Path to the file to check
+            
+        Returns:
+            bool: True if the file is online, False otherwise
+        """
+        import asyncio
+        
+        # Run the synchronous is_online method in a thread pool to avoid blocking
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.is_online, path)
+    
+    async def check_online_status_batch(self, paths, max_concurrent=10):
+        """Asynchronously check online status for multiple files concurrently.
+        
+        Args:
+            paths: List of file paths to check
+            max_concurrent: Maximum number of concurrent status checks
+            
+        Returns:
+            dict: Dictionary mapping paths to their online status (True/False)
+        """
+        import asyncio
+        
+        # Create semaphore to limit concurrent operations
+        semaphore = asyncio.Semaphore(max_concurrent)
+        
+        async def check_with_semaphore(path):
+            async with semaphore:
+                return path, await self.is_online_async(path)
+        
+        # Launch all status checks concurrently
+        tasks = [check_with_semaphore(path) for path in paths]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Build result dictionary, handling exceptions
+        status_dict = {}
+        for result in results:
+            if isinstance(result, Exception):
+                logger.error(f"Error in batch status check: {result}")
+                continue
+            path, is_online = result
+            status_dict[path] = is_online
+            
+        return status_dict
 
     def _scoutfs_online_status(self, path):
         """Get a formatted string showing the online/offline status of a file."""
