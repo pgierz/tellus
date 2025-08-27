@@ -495,12 +495,21 @@ def ls_location(sim_id: str, location_name: str, path: str = ".",
                 # Absolute path - use as-is
                 full_path = path
                 console.print(f"[dim]Listing: {location_name}:{full_path}[/dim]")
+                resolved_path = path  # Keep for filesystem access
             else:
                 # Use path resolution service for template-based paths
                 full_path = path_service.resolve_simulation_location_path(sim_id, location_name, path)
                 console.print(f"[dim]Listing: {location_name}:{full_path}[/dim]")
-            
-            resolved_path = path  # Keep for filesystem access
+                
+                # Calculate the relative path for filesystem access
+                if location is not None:
+                    base_path = location.get_base_path().rstrip('/')
+                    if full_path.startswith(base_path):
+                        resolved_path = full_path[len(base_path):].lstrip('/')
+                    else:
+                        resolved_path = full_path
+                else:
+                    resolved_path = path
             
         except Exception as e:
             console.print(f"[yellow]Warning:[/yellow] Path resolution failed: {str(e)}")
