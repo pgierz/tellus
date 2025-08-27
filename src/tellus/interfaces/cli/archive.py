@@ -66,19 +66,26 @@ def list_archives():
 @click.argument("source_path")
 @click.option("--simulation", help="Associated simulation ID")
 @click.option("--type", "archive_type", default="compressed", help="Archive type (compressed, uncompressed)")
-def create_archive(archive_id: str, source_path: str, simulation: str = None, archive_type: str = "compressed"):
-    """Create a new archive from location:path format.
+@click.option("--from-location", "from_location", help="Explicitly specify source location (overrides location:path format)")
+def create_archive(archive_id: str, source_path: str, simulation: str = None, archive_type: str = "compressed", from_location: str = None):
+    """Create a new archive from local or remote sources.
     
     Examples:
-        tellus archive create my_archive.tgz /local/path                    # Auto-creates localhost
-        tellus archive create my_archive.tgz location_name:/remote/path     # Remote location
+        tellus archive create my_archive.tgz /local/path                           # Auto-creates localhost
+        tellus archive create my_archive.tgz location_name:/remote/path            # Remote location:path format
+        tellus archive create my_archive.tgz /remote/path --from-location hsm      # Explicit --from-location
     """
     import asyncio
     import os
     
-    # Parse source_path to detect location:path format
-    if ':' in source_path:
-        # Explicit location:path format
+    # Determine location and path based on arguments
+    if from_location:
+        # --from-location specified - use it explicitly
+        actual_location = from_location
+        actual_source_path = source_path
+        remote_mode = True
+    elif ':' in source_path:
+        # location:path format detected
         parsed_location, parsed_path = source_path.split(':', 1)
         actual_location = parsed_location
         actual_source_path = parsed_path
