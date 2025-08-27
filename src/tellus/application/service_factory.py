@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from .services import (
     SimulationApplicationService, LocationApplicationService, ArchiveApplicationService,
-    WorkflowApplicationService, WorkflowExecutionService
+    WorkflowApplicationService, WorkflowExecutionService, PathResolutionService
 )
 from .services.file_transfer_service import FileTransferApplicationService
 from .services.operation_queue_service import OperationQueueService
@@ -87,6 +87,7 @@ class ApplicationServiceFactory:
         self._workflow_execution_service: Optional[WorkflowExecutionService] = None
         self._file_transfer_service: Optional[FileTransferApplicationService] = None
         self._operation_queue_service: Optional[OperationQueueService] = None
+        self._path_resolution_service: Optional[PathResolutionService] = None
     
     @property
     def simulation_service(self) -> SimulationApplicationService:
@@ -185,6 +186,17 @@ class ApplicationServiceFactory:
                 max_concurrent=3  # Can be made configurable
             )
         return self._operation_queue_service
+    
+    @property
+    def path_resolution_service(self) -> PathResolutionService:
+        """Get or create path resolution service."""
+        if self._path_resolution_service is None:
+            self._logger.debug("Creating PathResolutionService")
+            self._path_resolution_service = PathResolutionService(
+                simulation_service=self.simulation_service,
+                location_service=self.location_service
+            )
+        return self._path_resolution_service
     
     @property
     def progress_tracking_service(self) -> IProgressTrackingService:

@@ -5,11 +5,13 @@ from .location_service import LocationApplicationService
 from .archive_service import ArchiveApplicationService
 from .workflow_service import WorkflowApplicationService
 from .workflow_execution_service import WorkflowExecutionService
+from .path_resolution_service import PathResolutionService
 
 __all__ = [
     "SimulationApplicationService",
     "LocationApplicationService", 
     "ArchiveApplicationService",
     "WorkflowApplicationService",
-    "WorkflowExecutionService"
+    "WorkflowExecutionService",
+    "PathResolutionService"
 ]

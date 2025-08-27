@@ -2,9 +2,9 @@
 Core Location domain entity - pure business logic without infrastructure dependencies.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
 class LocationKind(Enum):
@@ -25,6 +25,37 @@ class LocationKind(Enum):
 
 
 @dataclass
+class PathTemplate:
+    """
+    Value object representing a path template pattern for a location.
+    """
+    name: str
+    pattern: str
+    description: str
+    required_attributes: List[str] = field(default_factory=list)
+    
+    def __post_init__(self):
+        """Extract required attributes from pattern."""
+        if not self.required_attributes:
+            self.required_attributes = self._extract_attributes()
+    
+    def _extract_attributes(self) -> List[str]:
+        """Extract template variable names from the pattern."""
+        import re
+        # Find all {variable_name} patterns
+        matches = re.findall(r'\{([a-zA-Z_][a-zA-Z0-9_]*)\}', self.pattern)
+        return list(set(matches))
+    
+    def has_all_required_attributes(self, available_attributes: Dict[str, str]) -> bool:
+        """Check if all required attributes are available."""
+        return all(attr in available_attributes for attr in self.required_attributes)
+    
+    def get_complexity_score(self) -> int:
+        """Get complexity score for template selection (lower is simpler)."""
+        return len(self.required_attributes)
+
+
+@dataclass
 class LocationEntity:
     """
     Pure domain entity representing a storage location.
@@ -35,6 +66,8 @@ class LocationEntity:
     name: str
     kinds: List[LocationKind]
     config: Dict[str, Any]
+    path_templates: List[PathTemplate] = field(default_factory=list)
+    optional: bool = False
     
     def __post_init__(self):
         """Validate the entity after initialization."""
@@ -70,6 +103,12 @@ class LocationEntity:
         if not isinstance(self.config, dict):
             errors.append("Config must be a dictionary")
         
+        if not isinstance(self.path_templates, list):
+            errors.append("Path templates must be a list")
+        
+        for template in self.path_templates:
+            if not isinstance(template, PathTemplate):
+                errors.append(f"Invalid path template: {template}. Must be PathTemplate instance")
         
         # Validate required config fields based on location kinds
         config_errors = self._validate_config()
@@ -224,3 +263,221 @@ class LocationEntity:
         return (f"LocationEntity(name='{self.name}', "
                 f"kinds={[k.name for k in self.kinds]}, "
                 f"protocol='{self.get_protocol()}')")
+    
+    # Path Template Management Methods
+    
+    def add_path_template(self, template: PathTemplate) -> None:
+        """
+        Add a path template to this location.
+        
+        Args:
+            template: PathTemplate to add
+            
+        Raises:
+            ValueError: If template name already exists
+        """
+        if not isinstance(template, PathTemplate):
+            raise ValueError("Template must be a PathTemplate instance")
+            
+        if any(t.name == template.name for t in self.path_templates):
+            raise ValueError(f"Template '{template.name}' already exists")
+            
+        self.path_templates.append(template)
+    
+    def remove_path_template(self, template_name: str) -> bool:
+        """
+        Remove a path template by name.
+        
+        Args:
+            template_name: Name of template to remove
+            
+        Returns:
+            True if template was removed, False if not found
+        """
+        for i, template in enumerate(self.path_templates):
+            if template.name == template_name:
+                del self.path_templates[i]
+                return True
+        return False
+    
+    def get_path_template(self, template_name: str) -> Optional[PathTemplate]:
+        """
+        Get a path template by name.
+        
+        Args:
+            template_name: Name of template to retrieve
+            
+        Returns:
+            PathTemplate if found, None otherwise
+        """
+        for template in self.path_templates:
+            if template.name == template_name:
+                return template
+        return None
+    
+    def list_path_templates(self) -> List[PathTemplate]:
+        """
+        Get all path templates for this location.
+        
+        Returns:
+            List of PathTemplate objects
+        """
+        return self.path_templates.copy()
+    
+    # Path Suggestion Methods
+    
+    def suggest_path_template(self, simulation_attributes: Dict[str, str]) -> Optional[PathTemplate]:
+        """
+        Suggest the best path template based on available simulation attributes.
+        
+        Selects the template that:
+        1. Has all required attributes available
+        2. Uses the most attributes (most specific)
+        3. Has lowest complexity score for ties
+        
+        Args:
+            simulation_attributes: Dictionary of simulation attribute key-value pairs
+            
+        Returns:
+            Best matching PathTemplate, or None if no templates match
+        """
+        if not self.path_templates:
+            return None
+        
+        # Filter to templates that have all required attributes
+        compatible_templates = [
+            template for template in self.path_templates
+            if template.has_all_required_attributes(simulation_attributes)
+        ]
+        
+        if not compatible_templates:
+            return None
+        
+        # Sort by number of attributes used (descending) then by complexity (ascending)
+        compatible_templates.sort(
+            key=lambda t: (-len(t.required_attributes), t.get_complexity_score())
+        )
+        
+        return compatible_templates[0]
+    
+    def suggest_path(self, simulation_attributes: Dict[str, str], template_name: Optional[str] = None) -> Optional[str]:
+        """
+        Suggest a complete path based on simulation attributes.
+        
+        Args:
+            simulation_attributes: Dictionary of simulation attribute key-value pairs
+            template_name: Specific template to use, or None for auto-selection
+            
+        Returns:
+            Resolved path string, or None if no suitable template found
+        """
+        if template_name:
+            template = self.get_path_template(template_name)
+            if not template:
+                return None
+            if not template.has_all_required_attributes(simulation_attributes):
+                return None
+        else:
+            template = self.suggest_path_template(simulation_attributes)
+            if not template:
+                return None
+        
+        # Resolve the template pattern
+        resolved_path = template.pattern
+        for attr_name, attr_value in simulation_attributes.items():
+            placeholder = f"{{{attr_name}}}"
+            resolved_path = resolved_path.replace(placeholder, str(attr_value))
+        
+        return resolved_path
+    
+    def get_template_suggestions(self, simulation_attributes: Dict[str, str]) -> List[Dict[str, Any]]:
+        """
+        Get all compatible templates with their resolved paths as suggestions.
+        
+        Args:
+            simulation_attributes: Dictionary of simulation attribute key-value pairs
+            
+        Returns:
+            List of dictionaries containing template info and resolved paths
+        """
+        suggestions = []
+        
+        for template in self.path_templates:
+            if template.has_all_required_attributes(simulation_attributes):
+                resolved_path = self.suggest_path(simulation_attributes, template.name)
+                suggestions.append({
+                    'template_name': template.name,
+                    'template_pattern': template.pattern,
+                    'description': template.description,
+                    'resolved_path': resolved_path,
+                    'complexity_score': template.get_complexity_score(),
+                    'required_attributes': template.required_attributes.copy()
+                })
+        
+        # Sort by complexity score (simpler first)
+        suggestions.sort(key=lambda s: s['complexity_score'])
+        
+        return suggestions
+    
+    def create_default_templates(self) -> None:
+        """
+        Create default path templates based on location kind and common patterns.
+        
+        This method creates sensible defaults for Earth System Model workflows
+        based on the location's kinds and intended usage patterns.
+        """
+        if self.has_kind(LocationKind.COMPUTE):
+            self.path_templates.extend([
+                PathTemplate(
+                    name="simple",
+                    pattern="{simulation_id}",
+                    description="Simple simulation ID only"
+                ),
+                PathTemplate(
+                    name="model_experiment",
+                    pattern="{model}/{experiment}",
+                    description="Model and experiment grouping"
+                ),
+                PathTemplate(
+                    name="detailed",
+                    pattern="{model}/{experiment}/{simulation_id}",
+                    description="Hierarchical with model, experiment, and simulation"
+                )
+            ])
+        
+        if self.has_kind(LocationKind.DISK) or self.has_kind(LocationKind.FILESERVER):
+            self.path_templates.extend([
+                PathTemplate(
+                    name="project_organized",
+                    pattern="{project}/{model}/{experiment}",
+                    description="Project-based organization"
+                ),
+                PathTemplate(
+                    name="timestamped",
+                    pattern="{model}/{experiment}/{run_date}",
+                    description="Date-based organization for runs"
+                )
+            ])
+        
+        if self.has_kind(LocationKind.TAPE):
+            self.path_templates.extend([
+                PathTemplate(
+                    name="archive_basic",
+                    pattern="archives/{model}/{experiment}",
+                    description="Basic archive organization"
+                ),
+                PathTemplate(
+                    name="archive_dated",
+                    pattern="archives/{model}/{experiment}/{year}",
+                    description="Year-based archive organization"
+                )
+            ])
+        
+        # Remove duplicates by name
+        seen_names = set()
+        unique_templates = []
+        for template in self.path_templates:
+            if template.name not in seen_names:
+                unique_templates.append(template)
+                seen_names.add(template.name)
+        self.path_templates = unique_templates

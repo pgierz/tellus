@@ -173,3 +173,12 @@ class WorkflowExecutionError(ApplicationError):
             super().__init__(f"Workflow '{workflow_id}' failed at step '{step_id}': {error}")
         else:
             super().__init__(f"Workflow '{workflow_id}' execution failed: {error}")
+
+
+class PathResolutionError(ApplicationError):
+    """Raised when path resolution fails."""
+    
+    def __init__(self, message: str, simulation_id: Optional[str] = None, location_name: Optional[str] = None):
+        self.simulation_id = simulation_id
+        self.location_name = location_name
+        super().__init__(message)

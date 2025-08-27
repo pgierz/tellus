@@ -44,6 +44,31 @@ Application services provide high-level orchestration of business operations, co
 - `delete_location()` - Remove location record
 - `test_connection()` - Test location accessibility
 
+### Path Resolution Service
+
+```{eval-rst}
+.. currentmodule:: tellus.application.services.path_resolution_service
+
+.. autoclass:: PathResolutionService
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+```
+
+**Key Methods:**
+- `resolve_simulation_location_path()` - Resolve complete absolute paths for filesystem operations
+- `resolve_path_with_template()` - Resolve paths using specific templates
+- `get_available_templates()` - List available templates for a simulation at a location  
+- `validate_path_resolution()` - Validate and debug path resolution process
+- `get_simulation_context_preview()` - Preview simulation context for template resolution
+
+The Path Resolution Service coordinates between simulation and location domains to provide complete path resolution without coupling them directly. It handles:
+- Template-based path resolution using simulation attributes
+- Base path concatenation from storage locations
+- Full absolute path generation for filesystem operations
+- Template compatibility validation and suggestions
+
 ### Archive Service
 
 ```{eval-rst}
@@ -168,9 +193,48 @@ container = ServiceContainer()
 simulation_service = container.get_simulation_service()
 location_service = container.get_location_service()
 archive_service = container.get_archive_service()
+path_resolution_service = container.get_path_resolution_service()
 
 # Services are ready to use
 simulations = simulation_service.list_simulations()
+```
+
+### Path Resolution Examples
+
+```python
+from tellus.application.service_factory import ApplicationServiceFactory
+
+# Get path resolution service
+path_service = container.service_factory.path_resolution_service
+
+# Resolve complete path for filesystem operations
+resolved_path = path_service.resolve_simulation_location_path(
+    simulation_id="climate-run-001",
+    location_name="compute-cluster", 
+    requested_path="output/monthly"
+)
+# Returns: "/scratch/projects/CESM2/historical/climate-run-001/output/monthly"
+
+# Get available templates for a simulation
+templates = path_service.get_available_templates(
+    simulation_id="climate-run-001",
+    location_name="archive-storage"
+)
+# Returns list of template dictionaries with resolution info
+
+# Validate path resolution with debugging information
+validation = path_service.validate_path_resolution(
+    simulation_id="climate-run-001", 
+    location_name="compute-cluster",
+    template_name="model_experiment"
+)
+print(f"Can resolve: {validation['can_resolve']}")
+print(f"Resolved path: {validation['resolved_path']}")
+print(f"Template used: {validation['template_used']}")
+
+# Preview simulation context for template debugging
+context = path_service.get_simulation_context_preview("climate-run-001")
+# Returns: {"model": "CESM2", "experiment": "historical", "simulation_id": "climate-run-001"}
 ```
 
 ### Creating a Complete Workflow
