@@ -141,7 +141,6 @@ class CreateLocationDto:
     protocol: str
     path: Optional[str] = None
     storage_options: Dict[str, Any] = field(default_factory=dict)
-    optional: bool = False
     additional_config: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -152,7 +151,6 @@ class UpdateLocationDto:
     protocol: Optional[str] = None
     path: Optional[str] = None
     storage_options: Optional[Dict[str, Any]] = None
-    optional: Optional[bool] = None
     additional_config: Optional[Dict[str, Any]] = None
 
 
@@ -164,7 +162,6 @@ class LocationDto:
     protocol: str
     path: Optional[str] = None
     storage_options: Dict[str, Any] = field(default_factory=dict)
-    optional: bool = False
     additional_config: Dict[str, Any] = field(default_factory=dict)
     is_remote: bool = False
     is_accessible: Optional[bool] = None

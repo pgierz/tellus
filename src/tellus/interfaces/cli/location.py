@@ -188,10 +188,8 @@ def delete_location(names: tuple = (), force: bool = False):
 @click.option("--remove-kind", multiple=True, type=click.Choice([k.name.lower() for k in LocationKind]), help="Remove location kind")
 @click.option("--host", help="Update host (for remote locations)")
 @click.option("--path", help="Update path on the location", shell_complete=_complete_location_path)
-@click.option("--set-optional", is_flag=True, help="Mark location as optional")
-@click.option("--set-required", is_flag=True, help="Mark location as required (not optional)")
 def update_location(name: str = None, protocol: str = None, add_kind: tuple = (), remove_kind: tuple = (), 
-                   host: str = None, path: str = None, set_optional: bool = False, set_required: bool = False):
+                   host: str = None, path: str = None):
     """Update an existing location.
     
     If no name is provided, launches an interactive wizard to select and update a location.
@@ -242,10 +240,9 @@ def update_location(name: str = None, protocol: str = None, add_kind: tuple = ()
         if existing_loc.storage_options:
             for key, value in existing_loc.storage_options.items():
                 console.print(f"  Storage.{key}: {value}")
-        console.print(f"  Optional: {'Yes' if existing_loc.optional else 'No'}")
         
         # Interactive updates if no options provided
-        if not any([protocol, add_kind, remove_kind, host, path, set_optional, set_required]):
+        if not any([protocol, add_kind, remove_kind, host, path]):
             import questionary
             
             console.print("\n[cyan]Select what you'd like to update:[/cyan]")
@@ -358,14 +355,6 @@ def update_location(name: str = None, protocol: str = None, add_kind: tuple = ()
         if add_kind or remove_kind:
             updates['kinds'] = list(current_kinds)
         
-        # Handle optional flag
-        if set_optional and set_required:
-            console.print("[red]Error:[/red] Cannot set both --set-optional and --set-required")
-            return
-        elif set_optional and not existing_loc.optional:
-            updates['optional'] = True
-        elif set_required and existing_loc.optional:
-            updates['optional'] = False
         
         if not updates:
             console.print("[yellow]No changes to make.[/yellow]")
@@ -412,8 +401,7 @@ def update_location(name: str = None, protocol: str = None, add_kind: tuple = ()
 @click.option("--kind", multiple=True, type=click.Choice([k.name.lower() for k in LocationKind]), help="Location kind")
 @click.option("--host", help="Host (for remote locations)")
 @click.option("--path", help="Path on the location")
-@click.option("--optional", is_flag=True, help="Mark location as optional")
-def create_location(name: str = None, protocol: str = None, kind: tuple = (), host: str = None, path: str = None, optional: bool = False):
+def create_location(name: str = None, protocol: str = None, kind: tuple = (), host: str = None, path: str = None):
     """Create a new location.
     
     If no name is provided, launches an interactive wizard to gather all required information.
@@ -603,7 +591,6 @@ def create_location(name: str = None, protocol: str = None, kind: tuple = (), ho
         if result.storage_options:
             for key, value in result.storage_options.items():
                 table.add_row(f"Storage.{key}", str(value))
-        table.add_row("Optional", "Yes" if result.optional else "No")
         
         console.print(Panel.fit(table))
         
@@ -659,7 +646,6 @@ def show_location(name: str = None):
         table.add_row("Kinds", ", ".join([k.lower() if isinstance(k, str) else k.name.lower() for k in loc.kinds]) if loc.kinds else "-")
         table.add_row("Protocol", loc.protocol or "-")
         table.add_row("Path", loc.path or "-")
-        table.add_row("Optional", "Yes" if loc.optional else "No")
         
         if loc.storage_options:
             for key, value in loc.storage_options.items():

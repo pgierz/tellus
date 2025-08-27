@@ -35,7 +35,6 @@ class LocationEntity:
     name: str
     kinds: List[LocationKind]
     config: Dict[str, Any]
-    optional: bool = False
     
     def __post_init__(self):
         """Validate the entity after initialization."""
@@ -71,8 +70,6 @@ class LocationEntity:
         if not isinstance(self.config, dict):
             errors.append("Config must be a dictionary")
         
-        if not isinstance(self.optional, bool):
-            errors.append("Optional must be a boolean")
         
         # Validate required config fields based on location kinds
         config_errors = self._validate_config()
@@ -220,12 +217,10 @@ class LocationEntity:
         """String representation of the location."""
         kinds_str = ', '.join(kind.name for kind in self.kinds)
         protocol = self.get_protocol()
-        optional_str = " (optional)" if self.optional else ""
-        return f"Location[{self.name}] ({protocol}, {kinds_str}){optional_str}"
+        return f"Location[{self.name}] ({protocol}, {kinds_str})"
     
     def __repr__(self) -> str:
         """Detailed representation for debugging."""
         return (f"LocationEntity(name='{self.name}', "
                 f"kinds={[k.name for k in self.kinds]}, "
-                f"protocol='{self.get_protocol()}', "
-                f"optional={self.optional})")
+                f"protocol='{self.get_protocol()}')")

@@ -396,12 +396,13 @@ class SimulationApplicationService:
             # Business rule validation
             self._validate_location_associations(simulation, valid_locations)
             
-            # Store the association (this would typically be in a separate association table/repository)
-            # For now, we'll add location names as attributes
-            simulation.add_attribute("associated_locations", dto.location_names)
-            
-            if dto.context_overrides:
-                simulation.add_attribute("location_context_overrides", dto.context_overrides)
+            # Store the association using the proper entity methods
+            for location_name in dto.location_names:
+                # Get context for this location if provided
+                location_context = dto.context_overrides.get(location_name, {}) if dto.context_overrides else {}
+                
+                # Use the entity's associate_location method
+                simulation.associate_location(location_name, location_context if location_context else None)
             
             self._simulation_repo.save(simulation)
             
@@ -732,12 +733,11 @@ class SimulationApplicationService:
         Raises:
             BusinessRuleViolationError: If validation fails
         """
-        # Business rule: Must have at least one non-optional location
-        required_locations = [loc for loc in locations if not loc.optional]
-        if not required_locations:
+        # Business rule: Must have at least one location
+        if not locations:
             raise BusinessRuleViolationError(
                 "required_location",
-                "At least one non-optional location is required"
+                "At least one location is required"
             )
         
         # Business rule: Cannot have conflicting protocols for same location kind

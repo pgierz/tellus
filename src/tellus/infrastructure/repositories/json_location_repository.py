@@ -51,8 +51,7 @@ class JsonLocationRepository(ILocationRepository):
                 # Convert entity to dictionary format
                 location_dict = {
                     "kinds": [kind.name for kind in location.kinds],
-                    "config": location.config,
-                    "optional": location.optional
+                    "config": location.config
                 }
                 
                 data[location.name] = location_dict
@@ -219,8 +218,7 @@ class JsonLocationRepository(ILocationRepository):
             entity = LocationEntity(
                 name=name,
                 kinds=kinds,
-                config=data.get("config", {}),
-                optional=data.get("optional", False)
+                config=data.get("config", {})
             )
             
             return entity

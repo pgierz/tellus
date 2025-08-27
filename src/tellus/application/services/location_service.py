@@ -95,8 +95,7 @@ class LocationApplicationService:
             location = LocationEntity(
                 name=dto.name,
                 kinds=kinds,
-                config=config,
-                optional=dto.optional
+                config=config
             )
             
             # Persist the location
@@ -196,8 +195,6 @@ class LocationApplicationService:
                     # Remove storage_options if empty dict provided
                     location.config.pop("storage_options", None)
             
-            if dto.optional is not None:
-                location.optional = dto.optional
             
             if dto.additional_config is not None:
                 for key, value in dto.additional_config.items():
@@ -577,7 +574,6 @@ class LocationApplicationService:
             protocol=location.get_protocol(),
             path=location.get_base_path(),
             storage_options=location.get_storage_options(),
-            optional=location.optional,
             additional_config={
                 k: v for k, v in location.config.items()
                 if k not in ("protocol", "path", "storage_options")
