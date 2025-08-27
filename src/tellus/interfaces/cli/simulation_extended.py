@@ -512,6 +512,12 @@ def ls_location(sim_id: str, location_name: str, path: str = ".",
         # Show full path context if we have location information
         if location is not None and hasattr(location, 'get_base_path'):
             base_path = location.get_base_path() or "/"
+            
+            # Resolve templates in base path as well
+            template_context = service.get_simulation_context(sim_id)
+            for key, value in template_context.items():
+                base_path = base_path.replace(f'{{{key}}}', str(value))
+            
             full_path = f"{base_path.rstrip('/')}/{resolved_path.lstrip('/')}" if resolved_path else base_path
             console.print(f"[dim]Listing: {location_name}:{full_path}[/dim]")
         else:
