@@ -14,8 +14,6 @@ from ..application.dtos import CacheConfigurationDto
 from ..application.service_factory import ApplicationServiceFactory
 from ..application.services.progress_tracking_service import \
     ProgressTrackingService
-from ..infrastructure.repositories.json_archive_repository import \
-    JsonArchiveRepository
 from ..infrastructure.repositories.json_location_repository import \
     JsonLocationRepository
 from ..infrastructure.repositories.json_progress_tracking_repository import \
@@ -82,9 +80,6 @@ class ServiceContainer:
             location_repo = JsonLocationRepository(
                 file_path=self._global_data_path / "locations.json"
             )
-            archive_repo = JsonArchiveRepository(
-                file_path=self._global_data_path / "archives.json"
-            )
             progress_tracking_repo = JsonProgressTrackingRepository(
                 storage_path=str(self._global_data_path / "progress_tracking.json")
             )
@@ -116,7 +111,6 @@ class ServiceContainer:
             self._service_factory = ApplicationServiceFactory(
                 simulation_repository=simulation_repo,
                 location_repository=location_repo,
-                archive_repository=archive_repo,
                 simulation_file_repository=simulation_file_repo,
                 progress_tracking_service=self._progress_tracking_service,
                 cache_config=cache_config

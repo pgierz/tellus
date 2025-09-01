@@ -1,7 +1,7 @@
 """
 Unified File Application Service.
 
-This service replaces both ArchiveApplicationService and file tracking services,
+This service provides unified file operations,
 providing a single interface for all file operations in the unified architecture.
 """
 
@@ -458,21 +458,3 @@ class UnifiedFileService:
     
     # === Migration Support ===
     
-    def migrate_from_legacy_services(self, archive_service: Optional['ArchiveApplicationService'] = None) -> Dict[str, int]:
-        """
-        Migrate data from legacy archive service.
-        
-        Args:
-            archive_service: Legacy archive service to migrate from
-            
-        Returns:
-            Migration statistics
-        """
-        migration_stats = {'archives_migrated': 0, 'files_migrated': 0}
-        
-        if archive_service:
-            # This would be implemented to migrate existing archives
-            # For now, return empty stats
-            pass
-        
-        return migration_stats

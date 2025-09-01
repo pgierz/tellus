@@ -11,7 +11,12 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set
 
-from ..domain.entities.archive import ArchiveType, CacheCleanupPolicy
+# Local enums for DTOs (formerly from archive entity)
+class CacheCleanupPolicy(str, Enum):
+    """Cache cleanup policies."""
+    LRU = "lru"
+    SIZE_ONLY = "size_only"
+    MANUAL = "manual"
 from ..domain.entities.file_tracking import FileChangeType, TrackingStatus
 from ..domain.entities.location import LocationKind
 from ..domain.entities.simulation_file import FileContentType, FileImportance

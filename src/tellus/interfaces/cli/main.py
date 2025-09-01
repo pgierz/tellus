@@ -20,7 +20,6 @@ def create_main_cli():
     # TUI functionality now fixed - using clean architecture
     # Import extended simulation commands
     from . import simulation_extended  # This registers the additional commands
-    from .archive import archive
     # Configuration management
     from .config import config, init_command
     # File tracking - using clean architecture
@@ -35,7 +34,6 @@ def create_main_cli():
     cli.add_command(init_command)
     cli.add_command(simulation)
     cli.add_command(location)
-    cli.add_command(archive)
     cli.add_command(workflow_cli)
     cli.add_command(config)
     cli.add_command(files)  # Add file tracking commands

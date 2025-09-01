@@ -3,7 +3,6 @@ Tellus - A tool for managing Earth System Model simulations and their data.
 """
 
 from .application.container import get_service_container
-from .application.services.archive_service import ArchiveApplicationService
 from .application.services.location_service import LocationApplicationService
 from .application.services.simulation_service import \
     SimulationApplicationService
@@ -18,7 +17,6 @@ __all__ = [
     "LocationKind",
     "SimulationApplicationService",
     "LocationApplicationService",
-    "ArchiveApplicationService",
     "get_service_container",
     "ScoutFSFileSystem",
 ]

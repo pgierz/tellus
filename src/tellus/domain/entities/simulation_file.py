@@ -12,7 +12,12 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Optional, Set
 
-from .archive import Checksum
+# Checksum value object (formerly from archive entity)
+@dataclass(frozen=True)
+class Checksum:
+    """File checksum with algorithm information."""
+    value: str
+    algorithm: str = "sha256"
 
 
 class FileType(Enum):
