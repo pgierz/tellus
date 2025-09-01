@@ -1,20 +1,18 @@
 """Clean architecture CLI for archive management."""
 
-import rich_click as click
-from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
 from pathlib import Path
 from typing import Optional
 
-from .main import cli, console
+import rich_click as click
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+
 from ...application.container import get_service_container
-from ...application.dtos import (
-    CreateArchiveDto, 
-    ArchiveOperationDto,
-    ArchiveExtractionDto,
-    ArchiveCopyOperationDto
-)
+from ...application.dtos import (ArchiveCopyOperationDto, ArchiveExtractionDto,
+                                 ArchiveOperationDto, CreateArchiveDto)
+from .main import cli, console
+
 
 def _get_archive_service():
     """Get archive service from the service container."""
@@ -77,7 +75,7 @@ def create_archive(archive_id: str, source_path: str, simulation: str = None, ar
     """
     import asyncio
     import os
-    
+
     # Determine location and path based on arguments
     if from_location:
         # --from-location specified - use it explicitly
@@ -162,7 +160,7 @@ def show_archive(archive_id: str = None):
         # If no archive_id provided, launch interactive selection
         if not archive_id:
             import questionary
-            
+
             # Get all archives for selection
             archives_result = service.list_archives()
             if not archives_result.archives:
@@ -199,6 +197,8 @@ def show_archive(archive_id: str = None):
         table.add_row("Location", archive.location)
         table.add_row("Type", archive.archive_type)
         table.add_row("Simulation", archive.simulation_id or "-")
+        if hasattr(archive, 'archive_path') and archive.archive_path:
+            table.add_row("Archive Path", archive.archive_path)
         
         # Additional metadata if available
         if hasattr(archive, 'size') and archive.size:
@@ -236,7 +236,7 @@ def list_files(archive_id: str = None, content_type: str = None, pattern: str = 
         # If no archive_id provided, launch interactive selection
         if not archive_id:
             import questionary
-            
+
             # Get all archives for selection
             archives_result = service.list_archives()
             if not archives_result.archives:
@@ -354,10 +354,12 @@ def extract_archive(archive_id: str, destination_location: str, simulation: str 
 @click.option("--simulation-date", help="Update simulation date")  
 @click.option("--version", help="Update version")
 @click.option("--description", help="Update description")
+@click.option("--archive-path", help="Update archive path/filename in location")
+@click.option("--path-prefix-to-strip", help="Set path prefix to strip from file paths when listing/extracting")
 @click.option("--add-tag", multiple=True, help="Add tags to archive")
 @click.option("--remove-tag", multiple=True, help="Remove tags from archive")
 def update_archive(archive_id: str = None, simulation_date: str = None, version: str = None, 
-                  description: str = None, add_tag: tuple = (), remove_tag: tuple = ()):
+                  description: str = None, archive_path: str = None, path_prefix_to_strip: str = None, add_tag: tuple = (), remove_tag: tuple = ()):
     """Update an existing archive's metadata.
     
     If no archive ID is provided, launches an interactive wizard to select and update an archive.
@@ -368,7 +370,7 @@ def update_archive(archive_id: str = None, simulation_date: str = None, version:
         # If no archive_id provided, launch interactive wizard
         if not archive_id:
             import questionary
-            
+
             # Get all archives for selection
             archives_result = service.list_archives()
             if not archives_result.archives:
@@ -410,6 +412,7 @@ def update_archive(archive_id: str = None, simulation_date: str = None, version:
             console.print(f"\n[bold]Current archive details:[/bold]")
             console.print(f"Archive ID: {current_archive.archive_id}")
             console.print(f"Location: {current_archive.location}")
+            console.print(f"Archive Path: {current_archive.archive_path or 'Not set'}")
             console.print(f"Simulation Date: {current_archive.simulation_date or 'Not set'}")
             console.print(f"Version: {current_archive.version or 'Not set'}")
             console.print(f"Description: {current_archive.description or 'Not set'}")
@@ -422,6 +425,7 @@ def update_archive(archive_id: str = None, simulation_date: str = None, version:
                     "Simulation Date",
                     "Version", 
                     "Description",
+                    "Archive Path",
                     "Tags"
                 ],
                 style=questionary.Style([
@@ -454,6 +458,30 @@ def update_archive(archive_id: str = None, simulation_date: str = None, version:
                     "New description:",
                     default=current_archive.description or ""
                 ).ask()
+                
+            if "Archive Path" in update_fields:
+                # Get location service and filesystem for tab completion
+                from ...application.container import get_service_container
+                from .completion import SmartPathCompleter
+                
+                try:
+                    service_container = get_service_container()
+                    location_service = service_container.service_factory.location_service
+                    filesystem_wrapper = location_service.get_location_filesystem(current_archive.location)
+                    completer = SmartPathCompleter(filesystem_wrapper, only_directories=False)
+                    
+                    archive_path = questionary.text(
+                        f"Archive path on {current_archive.location}:",
+                        default=current_archive.archive_path or "",
+                        completer=completer
+                    ).ask()
+                except Exception as e:
+                    # Fallback to simple text input if completion fails
+                    console.print(f"[yellow]Warning:[/yellow] Tab completion unavailable: {e}")
+                    archive_path = questionary.text(
+                        f"Archive path on {current_archive.location}:",
+                        default=current_archive.archive_path or ""
+                    ).ask()
                 
             if "Tags" in update_fields:
                 current_tags_str = ", ".join(current_archive.tags) if current_archive.tags else ""
@@ -495,6 +523,8 @@ def update_archive(archive_id: str = None, simulation_date: str = None, version:
             simulation_date=simulation_date if simulation_date else None,
             version=version if version else None,
             description=description if description else None,
+            archive_path=archive_path if archive_path else None,
+            path_prefix_to_strip=path_prefix_to_strip if path_prefix_to_strip else None,
             tags=new_tags if new_tags is not None else None
         )
         
@@ -532,7 +562,7 @@ def delete_archives(archive_ids: tuple, force: bool = False):
         # If no archive_ids provided, launch interactive selection
         if not archive_ids:
             import questionary
-            
+
             # Get all archives for selection
             archives_result = service.list_archives()
             if not archives_result.archives:
@@ -649,6 +679,7 @@ def add_archive(archive_id: str, remote_path: str, simulation: str = None, archi
             location_name=location_name,
             archive_type=archive_type,
             source_path=None,  # No source path for metadata-only
+            archive_path=archive_path,  # Store the actual filename from remote_path
             simulation_id=simulation,
             description=description
         )
@@ -664,5 +695,172 @@ def add_archive(archive_id: str, remote_path: str, simulation: str = None, archi
         if description:
             console.print(f"   Description: [dim]{description}[/dim]")
             
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@archive.command(name="edit")
+@click.argument("archive_id", required=False)
+@click.option("--dry-run", is_flag=True, help="Show metadata JSON without opening editor")
+def edit_archive(archive_id: str = None, dry_run: bool = False):
+    """Edit archive metadata in vim.
+    
+    Opens the archive metadata in vim for direct editing. Supports all metadata fields
+    including description, version, tags, simulation_id, and archive_path.
+    
+    If no archive_id is provided, launches an interactive archive selection.
+    
+    Examples:
+        tellus archive edit my-archive          # Edit specific archive
+        tellus archive edit                     # Interactive selection
+    """
+    import json
+    import os
+    import subprocess
+    import tempfile
+    from pathlib import Path
+    
+    try:
+        service = _get_archive_service()
+        
+        # If no archive_id provided, launch interactive selection
+        if not archive_id:
+            import questionary
+
+            # Get all archives for selection
+            archives_result = service.list_archives()
+            if not archives_result.archives:
+                console.print("[yellow]No archives found[/yellow]")
+                return
+
+            archive_choices = [
+                f"{archive.archive_id} ({archive.location}) - {archive.description or 'No description'}"
+                for archive in archives_result.archives
+            ]
+
+            selected = questionary.select(
+                "Select archive to edit:",
+                choices=archive_choices,
+                style=questionary.Style([
+                    ('question', 'bold'),
+                    ('selected', 'fg:#cc5454'),
+                    ('pointer', 'fg:#ff0066 bold'),
+                ])
+            ).ask()
+
+            if not selected:
+                console.print("[yellow]No archive selected[/yellow]")
+                return
+
+            # Extract archive_id from selection
+            archive_id = selected.split(' ')[0]
+        
+        # Get current archive metadata
+        try:
+            metadata_result = service.get_archive_metadata(archive_id)
+        except Exception as e:
+            console.print(f"[red]Error:[/red] Archive '{archive_id}' not found: {str(e)}")
+            return
+        
+        # Convert metadata to editable format
+        editable_data = {
+            "archive_id": metadata_result.archive_id,
+            "location": metadata_result.location,
+            "archive_type": metadata_result.archive_type,
+            "simulation_id": metadata_result.simulation_id,
+            "archive_path": metadata_result.archive_path,
+            "description": metadata_result.description,
+            "version": metadata_result.version,
+            "tags": list(metadata_result.tags) if metadata_result.tags else [],
+            "simulation_date": metadata_result.simulation_date,
+            "path_prefix_to_strip": metadata_result.path_prefix_to_strip,
+            # Read-only fields for reference
+            "_readonly": {
+                "created_time": metadata_result.created_time,
+                "size": metadata_result.size
+            }
+        }
+        
+        # Handle dry-run mode
+        if dry_run:
+            console.print(f"[dim]Archive metadata for '{archive_id}' (editable format):[/dim]\n")
+            console.print(json.dumps(editable_data, indent=2, default=str))
+            return
+        
+        # Create temporary file with JSON content
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp_file:
+            json.dump(editable_data, tmp_file, indent=2, default=str)
+            tmp_file_path = tmp_file.name
+        
+        try:
+            # Get editor from environment or default to vim
+            editor = os.environ.get('EDITOR', 'vim')
+            
+            console.print(f"[dim]Opening {archive_id} metadata in {editor}...[/dim]")
+            console.print("[dim]Edit the metadata and save/quit to apply changes[/dim]")
+            
+            # Open editor
+            result = subprocess.run([editor, tmp_file_path])
+            
+            if result.returncode != 0:
+                console.print(f"[yellow]Editor exited with code {result.returncode}, changes not saved[/yellow]")
+                return
+            
+            # Read back the modified content
+            with open(tmp_file_path, 'r') as tmp_file:
+                try:
+                    modified_data = json.load(tmp_file)
+                except json.JSONDecodeError as e:
+                    console.print(f"[red]Error:[/red] Invalid JSON format: {str(e)}")
+                    console.print("[yellow]Changes not saved[/yellow]")
+                    return
+            
+            # Validate that required fields haven't been removed
+            required_fields = ["archive_id", "location", "archive_type"]
+            missing_fields = [field for field in required_fields if field not in modified_data]
+            if missing_fields:
+                console.print(f"[red]Error:[/red] Required fields missing: {', '.join(missing_fields)}")
+                console.print("[yellow]Changes not saved[/yellow]")
+                return
+            
+            # Check if archive_id was changed (not allowed)
+            if modified_data["archive_id"] != metadata_result.archive_id:
+                console.print("[red]Error:[/red] Archive ID cannot be changed")
+                console.print("[yellow]Changes not saved[/yellow]")
+                return
+                
+            # Check if location was changed (not allowed)
+            if modified_data["location"] != metadata_result.location:
+                console.print("[red]Error:[/red] Location cannot be changed")
+                console.print("[yellow]Changes not saved[/yellow]")
+                return
+            
+            # Apply updates using the update service
+            from ...application.dtos import UpdateArchiveDto
+            
+            update_dto = UpdateArchiveDto(
+                simulation_id=modified_data.get("simulation_id"),
+                simulation_date=modified_data.get("simulation_date"),
+                version=modified_data.get("version"),
+                description=modified_data.get("description"),
+                archive_path=modified_data.get("archive_path"),
+                path_prefix_to_strip=modified_data.get("path_prefix_to_strip"),
+                tags=set(modified_data.get("tags", [])) if modified_data.get("tags") else None
+            )
+            
+            # Update the archive
+            service.update_archive(archive_id, update_dto)
+            
+            console.print(f"[green]✓[/green] Successfully updated archive: [cyan]{archive_id}[/cyan]")
+            
+        finally:
+            # Clean up temporary file
+            try:
+                os.unlink(tmp_file_path)
+            except:
+                pass
+                
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Edit cancelled by user[/yellow]")
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")

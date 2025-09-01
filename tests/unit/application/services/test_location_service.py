@@ -5,23 +5,27 @@ Tests the application service layer for location management,
 including CRUD operations, protocol validation, and connectivity testing.
 """
 
-import pytest
-from unittest.mock import Mock, MagicMock, patch
-from typing import Dict, Any, List
+from typing import Any, Dict, List
+from unittest.mock import MagicMock, Mock, patch
 
-from tellus.application.services.location_service import LocationApplicationService
-from tellus.application.dtos import (
-    CreateLocationDto, UpdateLocationDto, LocationDto, LocationListDto,
-    LocationTestResult, PaginationInfo, FilterOptions
-)
-from tellus.application.exceptions import (
-    EntityNotFoundError, EntityAlreadyExistsError, ValidationError,
-    LocationAccessError, ConfigurationError, ExternalServiceError
-)
+import pytest
+
+from tellus.application.dtos import (CreateLocationDto, FilterOptions,
+                                     LocationDto, LocationListDto,
+                                     LocationTestResult, PaginationInfo,
+                                     UpdateLocationDto)
+from tellus.application.exceptions import (ConfigurationError,
+                                           EntityAlreadyExistsError,
+                                           EntityNotFoundError,
+                                           ExternalServiceError,
+                                           LocationAccessError,
+                                           ValidationError)
+from tellus.application.services.location_service import \
+    LocationApplicationService
 from tellus.domain.entities.location import LocationEntity, LocationKind
-from tellus.domain.repositories.exceptions import (
-    LocationExistsError, LocationNotFoundError, RepositoryError
-)
+from tellus.domain.repositories.exceptions import (LocationExistsError,
+                                                   LocationNotFoundError,
+                                                   RepositoryError)
 
 
 @pytest.fixture

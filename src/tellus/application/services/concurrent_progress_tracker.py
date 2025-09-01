@@ -10,29 +10,22 @@ import logging
 import threading
 import time
 import uuid
+import weakref
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from threading import Lock, RLock, Event
+from threading import Event, Lock, RLock
 from typing import Any, Callable, Dict, List, Optional, Set, Union
-import weakref
 
-from ..dtos import (
-    ProgressMetricsDto,
-    ThroughputMetricsDto,
-    ProgressUpdateNotificationDto,
-    CreateProgressTrackingDto,
-    UpdateProgressDto
-)
-from ...domain.entities.progress_tracking import (
-    ProgressTrackingEntity,
-    OperationType,
-    OperationStatus,
-    Priority,
-    ProgressMetrics,
-    ThroughputMetrics,
-    OperationContext
-)
+from ...domain.entities.progress_tracking import (OperationContext,
+                                                  OperationStatus,
+                                                  OperationType, Priority,
+                                                  ProgressMetrics,
+                                                  ProgressTrackingEntity,
+                                                  ThroughputMetrics)
+from ..dtos import (CreateProgressTrackingDto, ProgressMetricsDto,
+                    ProgressUpdateNotificationDto, ThroughputMetricsDto,
+                    UpdateProgressDto)
 from .progress_tracking_service import IProgressTrackingService
 
 logger = logging.getLogger(__name__)

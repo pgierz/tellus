@@ -6,17 +6,19 @@ including JSON file operations, thread safety, and error handling.
 """
 
 import json
-import pytest
 import threading
 import time
 from pathlib import Path
-from unittest.mock import patch, mock_open
+from unittest.mock import mock_open, patch
+
+import pytest
 
 from tellus.domain.entities.location import LocationEntity, LocationKind
-from tellus.infrastructure.repositories.json_location_repository import JsonLocationRepository
-from tellus.domain.repositories.exceptions import (
-    RepositoryError, LocationExistsError, LocationNotFoundError
-)
+from tellus.domain.repositories.exceptions import (LocationExistsError,
+                                                   LocationNotFoundError,
+                                                   RepositoryError)
+from tellus.infrastructure.repositories.json_location_repository import \
+    JsonLocationRepository
 
 
 @pytest.fixture

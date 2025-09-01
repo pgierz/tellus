@@ -7,18 +7,18 @@ and monitoring capabilities in the tellus Earth science data archive system.
 
 import json
 import os
+import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from unittest.mock import Mock, patch
+
 import pytest
-import tempfile
 
 from tellus.location import Location, LocationKind
-from tellus.simulation import (
-    Simulation, CacheManager, CompressedArchive, ArchiveRegistry
-)
+from tellus.simulation import (ArchiveRegistry, CacheManager,
+                               CompressedArchive, Simulation)
 
 
 @pytest.mark.integration

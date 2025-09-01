@@ -5,17 +5,14 @@ These tests validate the archive domain model including metadata, checksums,
 file handling, and archive type management.
 """
 
-import pytest
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
-from tellus.domain.entities.archive import (
-    ArchiveId, 
-    ArchiveType, 
-    Checksum, 
-    ArchiveMetadata,
-    FileMetadata
-)
+import pytest
+
+from tellus.domain.entities.archive import (ArchiveId, ArchiveMetadata,
+                                            ArchiveType, Checksum,
+                                            FileMetadata)
 
 
 class TestArchiveId:

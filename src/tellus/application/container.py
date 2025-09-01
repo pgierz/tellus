@@ -6,17 +6,24 @@ Tellus application, wiring together repositories, services, and configuration
 for use by interface layers (CLI, TUI, REST API, etc.).
 """
 
-from typing import Optional
 import logging
 from pathlib import Path
+from typing import Optional
 
-from ..application.service_factory import ApplicationServiceFactory
-from ..infrastructure.repositories.json_simulation_repository import JsonSimulationRepository
-from ..infrastructure.repositories.json_location_repository import JsonLocationRepository
-from ..infrastructure.repositories.json_archive_repository import JsonArchiveRepository
-from ..infrastructure.repositories.json_progress_tracking_repository import JsonProgressTrackingRepository
-from ..application.services.progress_tracking_service import ProgressTrackingService
 from ..application.dtos import CacheConfigurationDto
+from ..application.service_factory import ApplicationServiceFactory
+from ..application.services.progress_tracking_service import \
+    ProgressTrackingService
+from ..infrastructure.repositories.json_archive_repository import \
+    JsonArchiveRepository
+from ..infrastructure.repositories.json_location_repository import \
+    JsonLocationRepository
+from ..infrastructure.repositories.json_progress_tracking_repository import \
+    JsonProgressTrackingRepository
+from ..infrastructure.repositories.json_simulation_repository import \
+    JsonSimulationRepository
+from ..infrastructure.repositories.json_simulation_file_repository import \
+    JsonSimulationFileRepository
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +36,7 @@ class ServiceContainer:
         Initialize the service container with hybrid data persistence paths.
         
         Args:
-            config_path: Legacy parameter for backward compatibility (deprecated)
+            config_path: Configuration path parameter
             project_path: Path to the current project directory (defaults to current working directory)
         """
         # For backward compatibility, config_path overrides project_path if provided
@@ -86,6 +93,9 @@ class ServiceContainer:
             simulation_repo = JsonSimulationRepository(
                 file_path=self._project_data_path / "simulations.json"
             )
+            simulation_file_repo = JsonSimulationFileRepository(
+                storage_dir=str(self._project_data_path)
+            )
             
             # Configure cache settings
             cache_config = CacheConfigurationDto(
@@ -107,6 +117,7 @@ class ServiceContainer:
                 simulation_repository=simulation_repo,
                 location_repository=location_repo,
                 archive_repository=archive_repo,
+                simulation_file_repository=simulation_file_repo,
                 progress_tracking_service=self._progress_tracking_service,
                 cache_config=cache_config
             )

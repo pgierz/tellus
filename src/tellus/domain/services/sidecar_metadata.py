@@ -8,11 +8,12 @@ archive contents and extraction capabilities.
 
 import json
 import time
-from pathlib import Path
-from typing import Any, Dict, Optional, List
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from ..entities.archive import ArchiveMetadata, ArchiveId, ArchiveType, Checksum
+from ..entities.archive import (ArchiveId, ArchiveMetadata, ArchiveType,
+                                Checksum)
 from ..entities.simulation_file import FileInventory, SimulationFile
 
 

@@ -21,16 +21,18 @@ import random
 import tempfile
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
+from concurrent.futures import (ProcessPoolExecutor, ThreadPoolExecutor,
+                                as_completed)
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional, Tuple
 from unittest.mock import Mock, patch
 
 import fsspec
-import pytest
 import psutil
+import pytest
 
-from tellus.location.sandboxed_filesystem import PathSandboxedFileSystem, PathValidationError
+from tellus.location.sandboxed_filesystem import (PathSandboxedFileSystem,
+                                                  PathValidationError)
 
 
 class StressTestMonitor:

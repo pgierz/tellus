@@ -6,16 +6,19 @@ including JSON file operations, thread safety, error handling, and search functi
 """
 
 import json
-import pytest
 import threading
 import time
 from pathlib import Path
-from unittest.mock import patch, mock_open
 from typing import Set
+from unittest.mock import mock_open, patch
 
-from tellus.domain.entities.archive import ArchiveMetadata, ArchiveId, ArchiveType, Checksum
-from tellus.infrastructure.repositories.json_archive_repository import JsonArchiveRepository
+import pytest
+
+from tellus.domain.entities.archive import (ArchiveId, ArchiveMetadata,
+                                            ArchiveType, Checksum)
 from tellus.domain.repositories.exceptions import RepositoryError
+from tellus.infrastructure.repositories.json_archive_repository import \
+    JsonArchiveRepository
 
 
 @pytest.fixture

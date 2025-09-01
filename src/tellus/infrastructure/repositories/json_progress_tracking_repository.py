@@ -8,28 +8,22 @@ using JSON for persistence, suitable for single-user scenarios and development.
 import asyncio
 import json
 import logging
-import time
-from pathlib import Path
-from typing import Dict, List, Optional, Set, Any
 import threading
+import time
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Set
 
-from ...domain.entities.progress_tracking import (
-    ProgressTrackingEntity,
-    OperationStatus,
-    OperationType,
-    Priority,
-    ProgressMetrics,
-    ThroughputMetrics,
-    OperationContext,
-    ProgressLogEntry
-)
+from ...domain.entities.progress_tracking import (OperationContext,
+                                                  OperationStatus,
+                                                  OperationType, Priority,
+                                                  ProgressLogEntry,
+                                                  ProgressMetrics,
+                                                  ProgressTrackingEntity,
+                                                  ThroughputMetrics)
 from ...domain.repositories.progress_tracking_repository import (
-    IProgressTrackingRepository,
-    ProgressTrackingRepositoryError,
-    OperationNotFoundError,
-    OperationAlreadyExistsError
-)
+    IProgressTrackingRepository, OperationAlreadyExistsError,
+    OperationNotFoundError, ProgressTrackingRepositoryError)
 
 logger = logging.getLogger(__name__)
 

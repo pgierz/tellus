@@ -7,21 +7,21 @@ and collaborative research scenarios.
 """
 
 import json
-import pytest
 import shutil
 import tarfile
 import tempfile
 import time
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
 
-from tellus import Simulation, Location
+import pytest
+
+from tellus import Location, Simulation
 from tellus.location import LocationKind
-from tellus.simulation.simulation import (
-    CompressedArchive, CacheManager, CacheConfig,
-    ArchiveManifest, ArchiveMetadata
-)
 from tellus.simulation.context import LocationContext
+from tellus.simulation.simulation import (ArchiveManifest, ArchiveMetadata,
+                                          CacheConfig, CacheManager,
+                                          CompressedArchive)
 
 from .fixtures.earth_science import *
 

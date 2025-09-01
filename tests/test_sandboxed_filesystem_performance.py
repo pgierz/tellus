@@ -27,10 +27,11 @@ from typing import Dict, List, Tuple
 from unittest.mock import Mock
 
 import fsspec
-import pytest
 import psutil
+import pytest
 
-from tellus.location.sandboxed_filesystem import PathSandboxedFileSystem, PathValidationError
+from tellus.location.sandboxed_filesystem import (PathSandboxedFileSystem,
+                                                  PathValidationError)
 
 
 class PerformanceProfiler:

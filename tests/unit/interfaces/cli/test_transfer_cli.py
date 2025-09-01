@@ -6,21 +6,23 @@ including file transfers, batch operations, directory transfers,
 queue management, and progress tracking integration.
 """
 
-import pytest
 import asyncio
-from unittest.mock import Mock, patch, AsyncMock, MagicMock
-from click.testing import CliRunner
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
-from tellus.interfaces.cli.transfer import transfer, queue_group
-from tellus.application.services.file_transfer_service import FileTransferApplicationService
-from tellus.application.services.operation_queue_service import OperationQueueService
-from tellus.application.dtos import (
-    FileTransferOperationDto,
-    BatchFileTransferOperationDto,
-    DirectoryTransferOperationDto
-)
-from tellus.application.services.bulk_operation_queue import QueueStatus, QueuePriority
+import pytest
+from click.testing import CliRunner
+
+from tellus.application.dtos import (BatchFileTransferOperationDto,
+                                     DirectoryTransferOperationDto,
+                                     FileTransferOperationDto)
+from tellus.application.services.bulk_operation_queue import (QueuePriority,
+                                                              QueueStatus)
+from tellus.application.services.file_transfer_service import \
+    FileTransferApplicationService
+from tellus.application.services.operation_queue_service import \
+    OperationQueueService
+from tellus.interfaces.cli.transfer import queue_group, transfer
 
 
 class TestFileTransferCommand:

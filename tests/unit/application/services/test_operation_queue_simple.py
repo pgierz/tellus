@@ -5,21 +5,21 @@ Tests cover operation queue management without complex async fixtures.
 """
 
 import asyncio
-import unittest
 import tempfile
+import unittest
 from pathlib import Path
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import AsyncMock, Mock
 
-from tellus.application.services.operation_queue_service import OperationQueueService
-from tellus.application.services.bulk_operation_queue import QueueStatus, QueuePriority
-from tellus.application.dtos import (
-    FileTransferOperationDto,
-    BatchFileTransferOperationDto,
-    BulkArchiveOperationDto,
-    FileTransferResultDto,
-    BatchFileTransferResultDto,
-    BulkOperationResultDto
-)
+from tellus.application.dtos import (BatchFileTransferOperationDto,
+                                     BatchFileTransferResultDto,
+                                     BulkArchiveOperationDto,
+                                     BulkOperationResultDto,
+                                     FileTransferOperationDto,
+                                     FileTransferResultDto)
+from tellus.application.services.bulk_operation_queue import (QueuePriority,
+                                                              QueueStatus)
+from tellus.application.services.operation_queue_service import \
+    OperationQueueService
 
 
 class TestOperationQueueServiceSimple(unittest.TestCase):

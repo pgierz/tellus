@@ -2,8 +2,9 @@
 Tests for SimulationEntity domain entity.
 """
 
-import pytest
 import uuid
+
+import pytest
 
 from src.tellus.domain.entities.simulation import SimulationEntity
 

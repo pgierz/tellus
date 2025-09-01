@@ -9,20 +9,17 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from ...application.services.file_tracking_service import FileTrackingApplicationService
-from ...infrastructure.repositories.json_file_tracking_repository import JsonFileTrackingRepository
-from ...infrastructure.services.filesystem_service import FileSystemService
+from ...application.dtos import (AddFilesDto, CreateFileTrackingRepositoryDto,
+                                 CreateSnapshotDto)
+from ...application.exceptions import (ApplicationError,
+                                       EntityAlreadyExistsError,
+                                       EntityNotFoundError)
+from ...application.services.file_tracking_service import \
+    FileTrackingApplicationService
+from ...infrastructure.repositories.json_file_tracking_repository import \
+    JsonFileTrackingRepository
 from ...infrastructure.services.dvc_service import DVCService
-from ...application.dtos import (
-    CreateFileTrackingRepositoryDto,
-    AddFilesDto,
-    CreateSnapshotDto
-)
-from ...application.exceptions import (
-    EntityNotFoundError,
-    EntityAlreadyExistsError,
-    ApplicationError
-)
+from ...infrastructure.services.filesystem_service import FileSystemService
 
 console = Console()
 

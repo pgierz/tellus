@@ -6,31 +6,26 @@ including command parsing, service integration, error handling,
 and output formatting.
 """
 
-import pytest
-import json
-from unittest.mock import Mock, patch, MagicMock
-from rich.console import Console
 import io
+import json
 import sys
-from click.testing import CliRunner
 from datetime import datetime
+from unittest.mock import MagicMock, Mock, patch
 
-from tellus.interfaces.cli.location import location
-from tellus.application.services.location_service import LocationApplicationService
-from tellus.application.dtos import (
-    CreateLocationDto,
-    UpdateLocationDto,
-    LocationDto,
-    LocationListDto,
-    PaginationInfo,
-    FilterOptions
-)
+import pytest
+from click.testing import CliRunner
+from rich.console import Console
+
+from tellus.application.dtos import (CreateLocationDto, FilterOptions,
+                                     LocationDto, LocationListDto,
+                                     PaginationInfo, UpdateLocationDto)
+from tellus.application.exceptions import (EntityAlreadyExistsError,
+                                           EntityNotFoundError,
+                                           ValidationError)
+from tellus.application.services.location_service import \
+    LocationApplicationService
 from tellus.domain.entities.location import LocationKind
-from tellus.application.exceptions import (
-    EntityNotFoundError,
-    EntityAlreadyExistsError,
-    ValidationError
-)
+from tellus.interfaces.cli.location import location
 
 
 class TestLocationListCommand:

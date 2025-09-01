@@ -7,11 +7,8 @@ ensuring locations can suggest paths without coupling to simulations.
 
 import pytest
 
-from tellus.domain.entities.location import (
-    LocationEntity,
-    LocationKind, 
-    PathTemplate
-)
+from tellus.domain.entities.location import (LocationEntity, LocationKind,
+                                             PathTemplate)
 
 
 class TestPathTemplate:

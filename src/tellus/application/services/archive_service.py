@@ -9,86 +9,50 @@ import asyncio
 import logging
 import os
 import tarfile
-import zipfile
 import time
+import zipfile
 from dataclasses import asdict
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Union
 
-from ...domain.entities.archive import (
-    ArchiveId,
-    ArchiveMetadata,
-    ArchiveType,
-    CacheCleanupPolicy,
-    CacheConfiguration,
-    Checksum,
-    FileMetadata,
-    LocationContext,
-)
+from ...domain.entities.archive import (ArchiveId, ArchiveMetadata,
+                                        ArchiveType, CacheCleanupPolicy,
+                                        CacheConfiguration, Checksum,
+                                        FileMetadata, LocationContext)
+from ...domain.entities.file_type_config import (FileTypeConfiguration,
+                                                 load_file_type_config)
 from ...domain.entities.location import LocationEntity
-from ...domain.entities.simulation_file import (
-    SimulationFile,
-    FileInventory,
-    FileContentType,
-    FileImportance,
-)
-from ...domain.entities.file_type_config import (
-    FileTypeConfiguration,
-    load_file_type_config,
-)
-from ...domain.repositories.exceptions import LocationNotFoundError, RepositoryError
-from ...domain.repositories.location_repository import ILocationRepository
+from ...domain.entities.progress_tracking import (OperationContext,
+                                                  OperationType)
+from ...domain.entities.simulation_file import (FileContentType,
+                                                FileImportance, FileInventory,
+                                                SimulationFile)
 from ...domain.repositories.archive_repository import IArchiveRepository
-from ..dtos import (
-    ArchiveContentsDto,
-    ArchiveDto,
-    ArchiveListDto,
-    ArchiveOperationDto,
-    ArchiveOperationResult,
-    CacheConfigurationDto,
-    CacheEntryDto,
-    CacheOperationResult,
-    CacheStatusDto,
-    CreateArchiveDto,
-    CreateProgressTrackingDto,
-    UpdateProgressDto,
-    ProgressMetricsDto,
-    ThroughputMetricsDto,
-    OperationContextDto,
-    FileMetadataDto,
-    FilterOptions,
-    PaginationInfo,
-    UpdateArchiveDto,
-    WorkflowExecutionDto,
-    SimulationFileDto,
-    FileInventoryDto,
-    ArchiveFileListDto,
-    FileAssociationDto,
-    FileAssociationResultDto,
-    ArchiveCopyOperationDto,
-    ArchiveMoveOperationDto,
-    ArchiveExtractionDto,
-    LocationContextResolutionDto,
-    ArchiveOperationProgressDto,
-    ArchiveOperationResultDto,
-    BulkArchiveOperationDto,
-    BulkOperationResultDto,
-    ExtractionManifestDto,
-)
-from ..exceptions import (
-    ArchiveOperationError,
-    CacheOperationError,
-    DataIntegrityError,
-    EntityAlreadyExistsError,
-    EntityNotFoundError,
-    ExternalServiceError,
-    OperationNotAllowedError,
-    ResourceLimitExceededError,
-    ValidationError,
-)
+from ...domain.repositories.exceptions import (LocationNotFoundError,
+                                               RepositoryError)
+from ...domain.repositories.location_repository import ILocationRepository
+from ..dtos import (ArchiveContentsDto, ArchiveCopyOperationDto, ArchiveDto,
+                    ArchiveExtractionDto, ArchiveFileListDto, ArchiveListDto,
+                    ArchiveMoveOperationDto, ArchiveOperationDto,
+                    ArchiveOperationProgressDto, ArchiveOperationResult,
+                    ArchiveOperationResultDto, BulkArchiveOperationDto,
+                    BulkOperationResultDto, CacheConfigurationDto,
+                    CacheEntryDto, CacheOperationResult, CacheStatusDto,
+                    CreateArchiveDto, CreateProgressTrackingDto,
+                    ExtractionManifestDto, FileAssociationDto,
+                    FileAssociationResultDto, FileInventoryDto,
+                    FileMetadataDto, FileRegistrationDto, FileRegistrationResultDto,
+                    FilterOptions, LocationContextResolutionDto, OperationContextDto,
+                    PaginationInfo, ProgressMetricsDto, SimulationFileDto, SyncResultDto,
+                    ThroughputMetricsDto, UpdateArchiveDto, UpdateProgressDto,
+                    WorkflowExecutionDto)
+from ..exceptions import (ArchiveOperationError, CacheOperationError,
+                          DataIntegrityError, EntityAlreadyExistsError,
+                          EntityNotFoundError, ExternalServiceError,
+                          OperationNotAllowedError, ResourceLimitExceededError,
+                          ValidationError)
 from .progress_tracking_service import IProgressTrackingService
-from ...domain.entities.progress_tracking import OperationType, OperationContext
 
 logger = logging.getLogger(__name__)
 
@@ -530,6 +494,7 @@ class ArchiveApplicationService:
                 location=dto.location_name,
                 archive_type=archive_type,
                 simulation_id=dto.simulation_id,  # Now properly supported
+                archive_path=dto.archive_path,  # Store actual filename - format agnostic
                 simulation_date=dto.simulation_date,
                 version=dto.version,
                 description=dto.description,
@@ -891,6 +856,10 @@ class ArchiveApplicationService:
             # Update only non-None fields from the DTO
             updated = False
             
+            if update_dto.simulation_id is not None:
+                metadata.simulation_id = update_dto.simulation_id
+                updated = True
+                
             if update_dto.simulation_date is not None:
                 metadata.simulation_date = update_dto.simulation_date
                 updated = True
@@ -903,8 +872,16 @@ class ArchiveApplicationService:
                 metadata.description = update_dto.description
                 updated = True
                 
+            if update_dto.archive_path is not None:
+                metadata.add_path(update_dto.archive_path)
+                updated = True
+                
             if update_dto.tags is not None:
                 metadata.tags = set(update_dto.tags)  # Convert to set
+                updated = True
+                
+            if update_dto.path_prefix_to_strip is not None:
+                metadata.path_prefix_to_strip = update_dto.path_prefix_to_strip
                 updated = True
             
             # Save updated metadata if any changes were made
@@ -1344,6 +1321,7 @@ class ArchiveApplicationService:
         content_type: Optional[str] = None,
         pattern: Optional[str] = None,
         limit: int = 50,
+        apply_path_truncation: bool = True,
     ) -> ArchiveFileListDto:
         """
         List files within an archive.
@@ -1397,8 +1375,11 @@ class ArchiveApplicationService:
                 if len(filtered_files) >= limit:
                     break
 
-            # Convert to DTOs
-            file_dtos = [self._simulation_file_to_dto(f) for f in filtered_files]
+            # Convert to DTOs with optional path truncation
+            if apply_path_truncation:
+                file_dtos = [self._simulation_file_to_dto_with_truncation(f, metadata) for f in filtered_files]
+            else:
+                file_dtos = [self._simulation_file_to_dto(f) for f in filtered_files]
 
             # Calculate summary statistics
             total_size = sum(f.size or 0 for f in filtered_files)
@@ -1585,7 +1566,15 @@ class ArchiveApplicationService:
             dest_fs = self._create_location_filesystem(dest_location_entity)
 
             # Perform real copy operation using fsspec with progress tracking
-            archive_filename = f"{archive_metadata.archive_id.value}.tar.gz"
+            # Use actual archive_path from metadata
+            if not archive_metadata.archive_path:
+                raise ArchiveOperationError(
+                    copy_dto.archive_id,
+                    "copy", 
+                    f"Archive '{archive_metadata.archive_id.value}' has no archive_path - cannot determine filename"
+                )
+            
+            archive_filename = archive_metadata.archive_path
             source_path = archive_filename
             dest_path = archive_filename
 
@@ -1717,6 +1706,10 @@ class ArchiveApplicationService:
             except:
                 bytes_processed = archive_metadata.size or 0
 
+            # Update archive metadata with new path
+            archive_metadata.add_path(dest_path)
+            self._archive_repo.save(archive_metadata)
+            
             # Create successful result
             duration = time.time() - start_time
 
@@ -1834,7 +1827,8 @@ class ArchiveApplicationService:
                 file_list = self.list_archive_files(
                     extract_dto.archive_id,
                     content_type=extract_dto.content_type_filter,
-                    pattern=extract_dto.pattern_filter
+                    pattern=extract_dto.pattern_filter,
+                    apply_path_truncation=False  # Use original paths for extraction
                 )
                 files_to_extract = [f.relative_path for f in file_list.files]
                 total_archive_size = sum(f.size or 0 for f in file_list.files)
@@ -1849,7 +1843,7 @@ class ArchiveApplicationService:
                     )
             else:
                 # Extract all files
-                file_list = self.list_archive_files(extract_dto.archive_id)
+                file_list = self.list_archive_files(extract_dto.archive_id, apply_path_truncation=False)
                 files_to_extract = [f.relative_path for f in file_list.files]
                 total_archive_size = sum(f.size or 0 for f in file_list.files)
 
@@ -1888,7 +1882,13 @@ class ArchiveApplicationService:
                 )
             
             # Use relative path for sandboxed filesystem
-            archive_filename = f"{archive_metadata.archive_id.value}.tar.gz"
+            # Use actual archive_path from metadata - format agnostic
+            if not archive_metadata.archive_path:
+                raise ArchiveOperationError(
+                    "unknown", "extract",
+                    f"Archive '{archive_metadata.archive_id.value}' has no archive_path - cannot determine filename"
+                )
+            archive_filename = archive_metadata.archive_path
             archive_path = archive_filename
             
             # Check if archive exists
@@ -1925,7 +1925,7 @@ class ArchiveApplicationService:
                     extracted_count, bytes_extracted = await self._extract_tar_files_with_progress(
                         source_fs, dest_fs, archive_path, resolved_path, 
                         files_to_extract, extract_dto.preserve_directory_structure,
-                        progress_tracker_id, total_archive_size
+                        progress_tracker_id, total_archive_size, archive_metadata
                     )
                 elif archive_metadata.archive_type == ArchiveType.ZIP:
                     extracted_count, bytes_extracted = await self._extract_zip_files_with_progress(
@@ -2063,11 +2063,20 @@ class ArchiveApplicationService:
 
             # Perform real copy operation using fsspec
             # Get archive filename for relative path in source location
-            archive_filename = f"{archive_metadata.archive_id.value}.tar.gz"
+            # Use actual archive_path from metadata - format agnostic
+            if not archive_metadata.archive_path:
+                raise ArchiveOperationError(
+                    "unknown", "extract",
+                    f"Archive '{archive_metadata.archive_id.value}' has no archive_path - cannot determine filename"
+                )
+            archive_filename = archive_metadata.archive_path
             source_path = archive_filename
 
-            # For destination, use just the filename too since resolved_path would be absolute
-            dest_path = archive_filename
+            # Create structured destination path: archive/{source_hostname}/{filename}
+            from pathlib import Path
+            actual_filename = Path(archive_filename).name
+            source_hostname = copy_dto.source_location  # Use location name as hostname identifier
+            dest_path = f"archive/{source_hostname}/{actual_filename}"
 
             # Filesystems already created above
             try:
@@ -2139,6 +2148,10 @@ class ArchiveApplicationService:
             except:
                 bytes_processed = archive_metadata.size or 0
 
+            # Update archive metadata with new path
+            archive_metadata.add_path(dest_path)
+            self._archive_repo.save(archive_metadata)
+            
             # Create successful result
             duration = time.time() - start_time
 
@@ -2414,6 +2427,7 @@ class ArchiveApplicationService:
                     resolved_path,
                     files_to_extract,
                     extract_dto.preserve_directory_structure,
+                    archive_metadata,
                 )
             elif archive_metadata.archive_type == ArchiveType.ZIP:
                 extracted_count = self._extract_zip_files(
@@ -2510,7 +2524,8 @@ class ArchiveApplicationService:
                 file_list = self.list_archive_files(
                     extract_dto.archive_id,
                     content_type=extract_dto.content_type_filter,
-                    pattern=extract_dto.pattern_filter
+                    pattern=extract_dto.pattern_filter,
+                    apply_path_truncation=False  # Use original paths for extraction
                 )
                 files_to_extract = [f.relative_path for f in file_list.files]
                 
@@ -2519,7 +2534,7 @@ class ArchiveApplicationService:
                     files_to_extract = [f for f in files_to_extract if f in extract_dto.file_filters]
             else:
                 # Extract all files
-                file_list = self.list_archive_files(extract_dto.archive_id)
+                file_list = self.list_archive_files(extract_dto.archive_id, apply_path_truncation=False)
                 files_to_extract = [f.relative_path for f in file_list.files]
 
             # Perform real extraction using fsspec
@@ -2546,7 +2561,13 @@ class ArchiveApplicationService:
                 )
             
             # Use relative path for sandboxed filesystem
-            archive_filename = f"{archive_metadata.archive_id.value}.tar.gz"
+            # Use actual archive_path from metadata - format agnostic
+            if not archive_metadata.archive_path:
+                raise ArchiveOperationError(
+                    "unknown", "extract",
+                    f"Archive '{archive_metadata.archive_id.value}' has no archive_path - cannot determine filename"
+                )
+            archive_filename = archive_metadata.archive_path
             archive_path = archive_filename
             
             # Check if archive exists
@@ -2569,7 +2590,8 @@ class ArchiveApplicationService:
                 if archive_metadata.archive_type == ArchiveType.COMPRESSED:
                     extracted_count = self._extract_tar_files(
                         source_fs, dest_fs, archive_path, resolved_path, 
-                        files_to_extract, extract_dto.preserve_directory_structure
+                        files_to_extract, extract_dto.preserve_directory_structure,
+                        archive_metadata
                     )
                 elif archive_metadata.archive_type == ArchiveType.ZIP:
                     extracted_count = self._extract_zip_files(
@@ -2802,6 +2824,7 @@ class ArchiveApplicationService:
             location=metadata.location,
             archive_type=metadata.archive_type.value,
             simulation_id=metadata.simulation_id,  # Now properly included
+            archive_path=metadata.archive_path,  # Format-agnostic filename
             checksum=checksum_str,
             checksum_algorithm=checksum_algorithm,
             size=metadata.size,
@@ -2812,6 +2835,7 @@ class ArchiveApplicationService:
             tags=metadata.tags.copy(),
             is_cached=is_cached,
             cache_path=cache_path,
+            path_prefix_to_strip=metadata.path_prefix_to_strip,
         )
 
     def _get_cache_size(self) -> int:
@@ -3131,6 +3155,7 @@ class ArchiveApplicationService:
     def _create_mock_files(self, metadata: ArchiveMetadata) -> List[SimulationFile]:
         """Create mock files for demonstration purposes."""
         import time
+
         from ...domain.entities.archive import Checksum
 
         mock_files = [
@@ -3204,6 +3229,7 @@ class ArchiveApplicationService:
         dest_path: str,
         files_to_extract: List[str],
         preserve_structure: bool,
+        archive_metadata: Optional[ArchiveMetadata] = None,
     ) -> int:
         """Extract specific files from a tar archive."""
         extracted_count = 0
@@ -3222,11 +3248,16 @@ class ArchiveApplicationService:
             with tarfile.open(fileobj=archive_file, mode=tar_mode) as tar:
                 for member in tar.getmembers():
                     if member.isfile() and member.name in files_to_extract:
-                        # Determine output path
+                        # Apply path truncation if configured
+                        display_path = member.name
+                        if archive_metadata and archive_metadata.path_prefix_to_strip:
+                            display_path = archive_metadata.truncate_path(member.name)
+                        
+                        # Determine output path using truncated path
                         if preserve_structure:
-                            output_path = f"{dest_path}/{member.name}"
+                            output_path = f"{dest_path}/{display_path}"
                         else:
-                            filename = member.name.split("/")[-1]  # Just the filename
+                            filename = display_path.split("/")[-1]  # Just the filename from truncated path
                             output_path = f"{dest_path}/{filename}"
 
                         # Ensure output directory exists
@@ -3287,7 +3318,15 @@ class ArchiveApplicationService:
         """Get the full path to the archive file."""
         # Use archive_path instead of path
         if hasattr(metadata, "archive_path") and metadata.archive_path:
-            return metadata.archive_path
+            archive_path = metadata.archive_path
+            
+            # If path doesn't start with 'archive/' it's likely the original location
+            # If it does start with 'archive/', it's been organized with our new structure
+            if not archive_path.startswith('archive/'):
+                return archive_path
+            else:
+                # Path is already in structured format: archive/{hostname}/{filename}
+                return archive_path
 
         # Fallback to constructing path from location and archive ID
         location_path = location.config.get("path", "")
@@ -3401,6 +3440,31 @@ class ArchiveApplicationService:
         """Convert SimulationFile entity to DTO."""
         return SimulationFileDto(
             relative_path=file.relative_path,
+            size=file.size,
+            checksum=str(file.checksum) if file.checksum else None,
+            content_type=file.content_type.value,
+            importance=file.importance.value,
+            file_role=file.file_role,
+            simulation_date=file.get_simulation_date_string()
+            if file.simulation_date
+            else None,
+            created_time=file.created_time,
+            modified_time=file.modified_time,
+            source_archive=file.source_archive,
+            extraction_time=file.extraction_time,
+            tags=file.tags.copy(),
+            attributes=file.attributes.copy(),
+        )
+    
+    def _simulation_file_to_dto_with_truncation(self, file: SimulationFile, metadata: ArchiveMetadata) -> SimulationFileDto:
+        """Convert SimulationFile entity to DTO with path truncation applied for display."""
+        # Apply path truncation if configured
+        display_path = file.relative_path
+        if metadata.path_prefix_to_strip:
+            display_path = metadata.truncate_path(file.relative_path)
+        
+        return SimulationFileDto(
+            relative_path=display_path,
             size=file.size,
             checksum=str(file.checksum) if file.checksum else None,
             content_type=file.content_type.value,
@@ -3606,7 +3670,8 @@ class ArchiveApplicationService:
         files_to_extract: List[str],
         preserve_structure: bool,
         progress_tracker_id: Optional[str],
-        total_archive_size: int
+        total_archive_size: int,
+        archive_metadata: Optional[ArchiveMetadata] = None,
     ) -> tuple[int, int]:
         """Extract specific files from a tar archive with progress tracking."""
         import tarfile
@@ -3631,11 +3696,16 @@ class ArchiveApplicationService:
                 
                 for i, member in enumerate(tar.getmembers()):
                     if member.isfile() and member.name in files_to_extract:
-                        # Determine output path
+                        # Apply path truncation if configured
+                        display_path = member.name
+                        if archive_metadata and archive_metadata.path_prefix_to_strip:
+                            display_path = archive_metadata.truncate_path(member.name)
+                        
+                        # Determine output path using truncated path
                         if preserve_structure:
-                            output_path = f"{dest_path}/{member.name}"
+                            output_path = f"{dest_path}/{display_path}"
                         else:
-                            filename = member.name.split("/")[-1]  # Just the filename
+                            filename = display_path.split("/")[-1]  # Just the filename from truncated path
                             output_path = f"{dest_path}/{filename}"
 
                         # Ensure output directory exists
@@ -4006,16 +4076,20 @@ class ArchiveApplicationService:
         
         if protocol in ('file', 'local'):
             # Local filesystem
-            from ...infrastructure.adapters.sandboxed_filesystem import PathSandboxedFileSystem
             import fsspec
+
+            from ...infrastructure.adapters.sandboxed_filesystem import \
+                PathSandboxedFileSystem
             base_fs = fsspec.filesystem('file')
             return PathSandboxedFileSystem(base_fs, base_path)
             
         elif protocol in ('ssh', 'sftp'):
             # SSH filesystem
-            from ...infrastructure.adapters.sandboxed_filesystem import PathSandboxedFileSystem
             import fsspec
-            
+
+            from ...infrastructure.adapters.sandboxed_filesystem import \
+                PathSandboxedFileSystem
+
             # Extract SSH configuration
             host = storage_options.get('host')
             if not host:
@@ -4040,8 +4114,10 @@ class ArchiveApplicationService:
             
         elif protocol == 'scoutfs':
             # ScoutFS filesystem (extends SFTP)
-            from ...infrastructure.adapters.scoutfs_filesystem import ScoutFSFileSystem
-            from ...infrastructure.adapters.sandboxed_filesystem import PathSandboxedFileSystem
+            from ...infrastructure.adapters.sandboxed_filesystem import \
+                PathSandboxedFileSystem
+            from ...infrastructure.adapters.scoutfs_filesystem import \
+                ScoutFSFileSystem
             
             host = storage_options.get('host')
             if not host:
@@ -4099,3 +4175,157 @@ class ArchiveApplicationService:
         except Exception as e:
             self._logger.error(f"Error deleting archive {archive_id}: {str(e)}")
             raise
+
+    # File Registration Methods
+    
+    def register_archive_files_to_simulation(self, registration_dto: FileRegistrationDto) -> FileRegistrationResultDto:
+        """
+        Register files from an archive to a simulation's file inventory.
+        
+        Args:
+            registration_dto: Parameters for file registration
+            
+        Returns:
+            Result of the registration operation
+        """
+        from ..dtos import FileRegistrationResultDto
+        from ...domain.entities.simulation import SimulationEntity
+        from ...domain.entities.simulation_file import FileInventory, SimulationFile
+        
+        start_time = time.time()
+        self._logger.info(f"Registering files from archive {registration_dto.archive_id} to simulation {registration_dto.simulation_id}")
+        
+        try:
+            # Get archive metadata
+            archive_metadata = self._archive_repo.get_by_id(registration_dto.archive_id)
+            if archive_metadata is None:
+                return FileRegistrationResultDto(
+                    archive_id=registration_dto.archive_id,
+                    simulation_id=registration_dto.simulation_id,
+                    success=False,
+                    error_message=f"Archive '{registration_dto.archive_id}' not found"
+                )
+            
+            # Get simulation entity (assuming we have access to simulation repository)
+            # For now, we'll need to coordinate with SimulationService for this
+            # This would typically be handled through service orchestration
+            
+            # Get files from archive
+            file_list_result = self.list_archive_files(
+                registration_dto.archive_id,
+                content_type=registration_dto.content_type_filter,
+                pattern=registration_dto.pattern_filter,
+                apply_path_truncation=False  # Get original paths for registration
+            )
+            
+            if not file_list_result.files:
+                return FileRegistrationResultDto(
+                    archive_id=registration_dto.archive_id,
+                    simulation_id=registration_dto.simulation_id,
+                    success=True,
+                    files_registered=0,
+                    warnings=["No files found in archive matching the specified filters"],
+                    processing_time=time.time() - start_time
+                )
+            
+            # Convert DTOs back to domain entities for registration
+            simulation_files = []
+            for file_dto in file_list_result.files:
+                # Create SimulationFile entity from DTO
+                simulation_file = SimulationFile(
+                    relative_path=file_dto.relative_path,
+                    size=file_dto.size,
+                    content_type=FileContentType(file_dto.content_type),
+                    importance=FileImportance(file_dto.importance),
+                    file_role=file_dto.file_role,
+                    created_time=file_dto.created_time,
+                    modified_time=file_dto.modified_time,
+                    source_archive=registration_dto.archive_id,
+                    source_archives={registration_dto.archive_id},
+                    extraction_time=file_dto.extraction_time,
+                    tags=set(file_dto.tags or []),
+                    attributes=file_dto.attributes or {}
+                )
+                simulation_files.append(simulation_file)
+            
+            # This method returns the files for processing by SimulationService
+            # The actual registration to simulation would be handled by SimulationService
+            
+            result = FileRegistrationResultDto(
+                archive_id=registration_dto.archive_id,
+                simulation_id=registration_dto.simulation_id,
+                success=True,
+                files_registered=len(simulation_files),
+                processing_time=time.time() - start_time
+            )
+            
+            self._logger.info(f"Successfully prepared {len(simulation_files)} files from archive {registration_dto.archive_id} for registration")
+            return result
+            
+        except Exception as e:
+            error_msg = f"Failed to register archive files: {str(e)}"
+            self._logger.error(error_msg, exc_info=True)
+            return FileRegistrationResultDto(
+                archive_id=registration_dto.archive_id,
+                simulation_id=registration_dto.simulation_id,
+                success=False,
+                error_message=error_msg,
+                processing_time=time.time() - start_time
+            )
+    
+    def get_archive_files_for_simulation(self, archive_id: str, simulation_id: str, 
+                                       content_type_filter: Optional[str] = None,
+                                       pattern_filter: Optional[str] = None) -> List[SimulationFile]:
+        """
+        Get SimulationFile entities from an archive for registration to a simulation.
+        
+        Args:
+            archive_id: ID of the archive
+            simulation_id: ID of the target simulation 
+            content_type_filter: Optional content type filter
+            pattern_filter: Optional glob pattern filter
+            
+        Returns:
+            List of SimulationFile entities ready for registration
+            
+        Raises:
+            EntityNotFoundError: If archive not found
+        """
+        from ...domain.entities.simulation_file import SimulationFile, FileContentType, FileImportance
+        
+        self._logger.debug(f"Getting files from archive {archive_id} for simulation {simulation_id}")
+        
+        # Validate archive exists
+        archive_metadata = self._archive_repo.get_by_id(archive_id)
+        if archive_metadata is None:
+            raise EntityNotFoundError("Archive", archive_id)
+        
+        # Get file list from archive with path truncation applied
+        file_list_result = self.list_archive_files(
+            archive_id,
+            content_type=content_type_filter,
+            pattern=pattern_filter,
+            apply_path_truncation=True  # Apply path truncation for consistent display
+        )
+        
+        # Convert to SimulationFile entities
+        simulation_files = []
+        for file_dto in file_list_result.files:
+            simulation_file = SimulationFile(
+                relative_path=file_dto.relative_path,
+                size=file_dto.size,
+                content_type=FileContentType(file_dto.content_type),
+                importance=FileImportance(file_dto.importance),
+                file_role=file_dto.file_role,
+                created_time=file_dto.created_time,
+                modified_time=file_dto.modified_time,
+                source_archive=archive_id,
+                source_archives={archive_id},
+                extraction_time=file_dto.extraction_time,
+                tags=set(file_dto.tags or []),
+                attributes=file_dto.attributes or {}
+            )
+            simulation_files.append(simulation_file)
+        
+        self._logger.info(f"Retrieved {len(simulation_files)} files from archive {archive_id}")
+        return simulation_files

@@ -5,22 +5,21 @@ This module provides a dependency injection container that manages
 the creation and lifecycle of test dependencies, following SOLID principles.
 """
 
-from typing import Any, Dict, Optional, Type, TypeVar, Callable, Protocol
+import tempfile
 from abc import ABC, abstractmethod
 from pathlib import Path
-import tempfile
+from typing import Any, Callable, Dict, Optional, Protocol, Type, TypeVar
 
-from .interfaces import (
-    FileSystemInterface, NetworkInterface, CacheInterface, 
-    ConfigurationInterface, LocationRepository, SimulationRepository,
-    ProgressTracker, LoggerInterface, EventPublisher, ArchiveHandler,
-    TestEnvironment, TestDataProvider
-)
-from .configuration import TestConfiguration, SimpleConfiguration
-from .filesystem import FileSystemFactory, InMemoryFileSystem
-from .network import NetworkFactory, FakeNetwork
 from .cache import CacheFactory, InMemoryCache
-
+from .configuration import SimpleConfiguration, TestConfiguration
+from .filesystem import FileSystemFactory, InMemoryFileSystem
+from .interfaces import (ArchiveHandler, CacheInterface,
+                         ConfigurationInterface, EventPublisher,
+                         FileSystemInterface, LocationRepository,
+                         LoggerInterface, NetworkInterface, ProgressTracker,
+                         SimulationRepository, TestDataProvider,
+                         TestEnvironment)
+from .network import FakeNetwork, NetworkFactory
 
 T = TypeVar('T')
 

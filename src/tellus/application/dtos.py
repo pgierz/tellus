@@ -8,15 +8,15 @@ providing a stable interface that can evolve independently of the domain model.
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set
 from enum import Enum
+from typing import Any, Dict, List, Optional, Set
 
-from ..domain.entities.location import LocationKind
 from ..domain.entities.archive import ArchiveType, CacheCleanupPolicy
-from ..domain.entities.workflow import WorkflowStatus, WorkflowEngine, ExecutionEnvironment
+from ..domain.entities.file_tracking import FileChangeType, TrackingStatus
+from ..domain.entities.location import LocationKind
 from ..domain.entities.simulation_file import FileContentType, FileImportance
-from ..domain.entities.file_tracking import TrackingStatus, FileChangeType
-
+from ..domain.entities.workflow import (ExecutionEnvironment, WorkflowEngine,
+                                        WorkflowStatus)
 
 # Base DTOs
 
@@ -66,54 +66,52 @@ class UpdateSimulationDto:
 
 @dataclass
 class SimulationDto:
-    """DTO for simulation data."""
+    """DTO for simulation data (new clean format)."""
     simulation_id: str
     uid: str
-    model_id: Optional[str] = None
-    path: Optional[str] = None
-    attrs: Dict[str, Any] = field(default_factory=dict)
+    attributes: Dict[str, Any] = field(default_factory=dict)
+    locations: Dict[str, Dict[str, Any]] = field(default_factory=dict)  # Simplified from contexts
     namelists: Dict[str, Any] = field(default_factory=dict)
-    snakemakes: Dict[str, Any] = field(default_factory=dict)
-    
-    # Type-based contexts system - extensible for different context types
-    contexts: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-    # Example structure:
-    # {
-    #   "LocationContext": {
-    #     "hsm.dmawi.de": {"path_prefix": "/hs/projects/...", "overrides": {...}},
-    #     "albedo": {"path_prefix": "/albedo/work/...", "metadata": {...}}
-    #   },
-    #   "ExecutionContext": {
-    #     "slurm_cluster": {"partition": "compute", "time": "24:00:00"}
-    #   }
-    # }
+    workflows: Dict[str, Any] = field(default_factory=dict)  # Renamed from snakemakes
     
     # Derived properties for backward compatibility
     @property
     def associated_locations(self) -> List[str]:
         """Get list of associated location names."""
-        location_contexts = self.contexts.get("LocationContext", {})
-        return list(location_contexts.keys())
+        return list(self.locations.keys())
     
     def get_location_context(self, location_name: str) -> Optional[Dict[str, Any]]:
-        """Get context data for a specific location."""
-        location_contexts = self.contexts.get("LocationContext", {})
-        return location_contexts.get(location_name)
+        """Get location-specific context/configuration."""
+        return self.locations.get(location_name)
     
-    def set_location_context(self, location_name: str, context_data: Dict[str, Any]):
-        """Set context data for a specific location."""
-        if "LocationContext" not in self.contexts:
-            self.contexts["LocationContext"] = {}
-        self.contexts["LocationContext"][location_name] = context_data
-    
-    def remove_location_context(self, location_name: str) -> bool:
-        """Remove context data for a specific location. Returns True if removed."""
-        location_contexts = self.contexts.get("LocationContext", {})
-        if location_name in location_contexts:
-            del location_contexts[location_name]
-            return True
-        return False
+    # Backward compatibility properties
+    @property
+    def attrs(self) -> Dict[str, Any]:
+        """Attrs property - maps to attributes."""
+        return self.attributes
+        
+    @property
+    def snakemakes(self) -> Dict[str, Any]:
+        """Snakemakes property - maps to workflows."""
+        return self.workflows
+        
+    @property
+    def contexts(self) -> Dict[str, Dict[str, Any]]:
+        """Contexts property - maps locations to nested format."""
+        return {"LocationContext": self.locations}
+        
+    @property
+    def model_id(self) -> Optional[str]:
+        """Model ID property - extracted from attributes."""
+        return self.attributes.get("model")
+        
+    @property
+    def path(self) -> Optional[str]:
+        """Path property - not used in current format, returns None."""
+        return None
 
+
+# Archive DTOs
 
 @dataclass
 class SimulationListDto:
@@ -196,6 +194,7 @@ class CreateArchiveDto:
     location_name: str
     archive_type: str = "compressed"  # Will be converted to ArchiveType enum
     source_path: Optional[str] = None  # Source path to archive
+    archive_path: Optional[str] = None  # Actual filename/path in location (format-agnostic)
     simulation_id: Optional[str] = None  # Which simulation this archive contains parts of
     simulation_date: Optional[str] = None
     version: Optional[str] = None
@@ -206,10 +205,13 @@ class CreateArchiveDto:
 @dataclass
 class UpdateArchiveDto:
     """DTO for updating archive metadata."""
+    simulation_id: Optional[str] = None
     simulation_date: Optional[str] = None
     version: Optional[str] = None
     description: Optional[str] = None
+    archive_path: Optional[str] = None
     tags: Optional[Set[str]] = None
+    path_prefix_to_strip: Optional[str] = None
 
 
 @dataclass
@@ -219,6 +221,7 @@ class ArchiveDto:
     location: str
     archive_type: str
     simulation_id: Optional[str] = None  # Which simulation this archive contains parts of
+    archive_path: Optional[str] = None  # Actual filename/path in location (format-agnostic)
     checksum: Optional[str] = None
     checksum_algorithm: Optional[str] = None
     size: Optional[int] = None
@@ -229,6 +232,7 @@ class ArchiveDto:
     tags: Set[str] = field(default_factory=set)
     is_cached: bool = False
     cache_path: Optional[str] = None
+    path_prefix_to_strip: Optional[str] = None
 
 
 @dataclass
@@ -1199,4 +1203,48 @@ class DVCStatusDto:
     tracked_files: List[str] = field(default_factory=list)
     pending_pushes: List[str] = field(default_factory=list)
     pending_pulls: List[str] = field(default_factory=list)
+
+
+# File Registration DTOs
+
+@dataclass
+class FileRegistrationDto:
+    """DTO for registering archive files to a simulation."""
+    archive_id: str
+    simulation_id: str
+    overwrite_existing: bool = False
+    content_type_filter: Optional[str] = None
+    pattern_filter: Optional[str] = None
+    preserve_archive_references: bool = True
+
+
+@dataclass  
+class FileRegistrationResultDto:
+    """DTO for results of file registration operation."""
+    archive_id: str
+    simulation_id: str
+    success: bool
+    files_registered: int = 0
+    files_updated: int = 0
+    files_skipped: int = 0
+    duplicate_files: List[str] = field(default_factory=list)
+    error_message: Optional[str] = None
+    warnings: List[str] = field(default_factory=list)
+    processing_time: Optional[float] = None
+
+
+@dataclass
+class SyncResultDto:
+    """DTO for results of simulation-archive file synchronization."""
+    simulation_id: str
+    success: bool
+    archives_processed: int = 0
+    files_synced: int = 0
+    files_added: int = 0
+    files_removed: int = 0
+    files_updated: int = 0
+    sync_conflicts: List[str] = field(default_factory=list)
+    error_message: Optional[str] = None
+    warnings: List[str] = field(default_factory=list)
+    processing_time: Optional[float] = None
 

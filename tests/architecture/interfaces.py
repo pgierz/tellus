@@ -5,11 +5,11 @@ This module defines the contracts that enable dependency inversion and
 proper separation of concerns in the test suite architecture.
 """
 
+import io
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
-from contextlib import contextmanager
-import io
 
 
 @runtime_checkable

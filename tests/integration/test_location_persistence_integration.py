@@ -7,18 +7,23 @@ Tests ensure the security fix works end-to-end in realistic Tellus workflows.
 """
 
 import json
-import pytest
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-# Test both legacy and new Location implementations
-from tellus.location import Location as LegacyLocation, LocationKind, PathSandboxedFileSystem
-from tellus.domain.entities.location import LocationEntity, LocationKind as DomainLocationKind
-from tellus.infrastructure.repositories.json_location_repository import JsonLocationRepository
-from tellus.application.services.location_service import LocationApplicationService
+import pytest
+
 from tellus.application.dtos import CreateLocationDto, UpdateLocationDto
+from tellus.application.services.location_service import \
+    LocationApplicationService
+from tellus.domain.entities.location import LocationEntity
+from tellus.domain.entities.location import LocationKind as DomainLocationKind
+from tellus.infrastructure.repositories.json_location_repository import \
+    JsonLocationRepository
+# Test both legacy and new Location implementations
+from tellus.location import Location as LegacyLocation
+from tellus.location import LocationKind, PathSandboxedFileSystem
 from tellus.simulation.context import LocationContext
 
 
@@ -749,7 +754,8 @@ class TestEndToEndLocationWorkflows:
                 assert len(files) == 3
                 
             # Test sandboxing prevents escaping
-            from tellus.location.sandboxed_filesystem import PathValidationError
+            from tellus.location.sandboxed_filesystem import \
+                PathValidationError
             with pytest.raises(PathValidationError):
                 fs.read_text("../../../etc/passwd")
             

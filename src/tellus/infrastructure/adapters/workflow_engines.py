@@ -6,17 +6,18 @@ on different platforms while maintaining a clean interface for the
 application layer.
 """
 
-import os
 import json
+import logging
+import os
 import subprocess
 import tempfile
-import logging
-from pathlib import Path
-from typing import Dict, List, Optional, Any, Callable
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
 
 try:
-    from snakemake.api import SnakemakeApi, ResourceSettings, StorageSettings, WorkflowApi
+    from snakemake.api import (ResourceSettings, SnakemakeApi, StorageSettings,
+                               WorkflowApi)
     SNAKEMAKE_AVAILABLE = True
 except ImportError:
     # Snakemake not available - create stub classes
@@ -26,10 +27,9 @@ except ImportError:
     WorkflowApi = None
     SNAKEMAKE_AVAILABLE = False
 
-from ...domain.entities.workflow import WorkflowEntity, WorkflowRunEntity
 from ...application.dtos import WorkflowExecutionResultDto
 from ...application.services.workflow_execution_service import IWorkflowEngine
-
+from ...domain.entities.workflow import WorkflowEntity, WorkflowRunEntity
 
 logger = logging.getLogger(__name__)
 

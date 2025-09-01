@@ -7,16 +7,16 @@ and circuit breaker patterns in the tellus Earth science data archive system.
 
 import contextlib
 import os
+import tempfile
 import time
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-import tempfile
 
 from tellus.location import Location, LocationKind
-from tellus.simulation import (
-    Simulation, CacheManager, CompressedArchive, ArchiveRegistry
-)
+from tellus.simulation import (ArchiveRegistry, CacheManager,
+                               CompressedArchive, Simulation)
 
 
 @pytest.mark.integration
@@ -221,8 +221,8 @@ class TestStorageFailureRecovery:
         assert archive.manifest is None or len(archive.manifest.files) == 0, "Corrupted archive should have empty manifest"
         
         # Create valid archive to verify system is still functional
-        import tarfile
         import io
+        import tarfile
         
         valid_archive_data = io.BytesIO()
         with tarfile.open(fileobj=valid_archive_data, mode='w:gz') as tar:

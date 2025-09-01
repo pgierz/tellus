@@ -7,14 +7,13 @@ and builds file inventories for archive operations.
 
 import hashlib
 import logging
-from pathlib import Path
-from typing import Dict, List, Optional, Set, Callable, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Set
 
-from ..entities.simulation_file import SimulationFile, FileInventory, Checksum
+from ..entities.simulation_file import Checksum, FileInventory, SimulationFile
 from .file_classifier import FileClassifier
-
 
 logger = logging.getLogger(__name__)
 
@@ -419,6 +418,7 @@ class FileScanner:
             New FileInventory with filtered files
         """
         from fnmatch import fnmatch
+
         from ..entities.simulation_file import FileContentType, FileImportance
         
         filtered = FileInventory()

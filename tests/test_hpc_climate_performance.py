@@ -34,17 +34,18 @@ import tempfile
 import threading
 import time
 import tracemalloc
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+import warnings
+from concurrent.futures import (ProcessPoolExecutor, ThreadPoolExecutor,
+                                as_completed)
 from dataclasses import dataclass, field
 from pathlib import Path
 from statistics import mean, median, stdev
-from typing import Dict, List, Tuple, Optional, Any, Callable, Iterator
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 from unittest.mock import Mock, patch
-import warnings
 
 import fsspec
-import pytest
 import psutil
+import pytest
 
 # Climate science specific imports (optional)
 try:
@@ -55,7 +56,8 @@ try:
 except ImportError:
     HAS_SCIENTIFIC = False
 
-from tellus.location.sandboxed_filesystem import PathSandboxedFileSystem, PathValidationError
+from tellus.location.sandboxed_filesystem import (PathSandboxedFileSystem,
+                                                  PathValidationError)
 
 
 @dataclass

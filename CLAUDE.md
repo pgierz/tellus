@@ -164,3 +164,4 @@ This should be addressed before the new architecture becomes the default.
 - Can you please forget about the old structure entirely before we had the "new" and "old" architecture? Anything that is old is wrong, by definition.
 
 - You do not need to set TELLUS_USE_NEW_ARCHIVE_SERVICE
+- When changing internals and need to modify something on the objects, make a deprecation warning to be easy to remove this later on.

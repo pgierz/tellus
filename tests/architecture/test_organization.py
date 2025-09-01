@@ -5,15 +5,16 @@ This module provides clear separation between unit, integration, and end-to-end
 test concerns, with proper boundaries and responsibilities.
 """
 
-from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Type, Protocol
-from pathlib import Path
 import unittest
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Protocol, Type
 
-from .base_tests import UnitTest, IntegrationTest, EndToEndTest, PerformanceTest
-from .dependency_injection import TestContainer, ContainerFactory
+from .base_tests import (EndToEndTest, IntegrationTest, PerformanceTest,
+                         UnitTest)
 from .configuration import TestConfiguration, TestEnvironmentType
+from .dependency_injection import ContainerFactory, TestContainer
 from .test_doubles import TestDoubleRegistry, create_unit_test_doubles
 
 

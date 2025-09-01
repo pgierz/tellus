@@ -5,22 +5,28 @@ This module tests the fragment assembly functionality for reconstructing
 complete simulations from multiple archive fragments.
 """
 
-import pytest
 import tempfile
 import time
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from tellus.domain.services.fragment_assembly import (
-    FragmentAssemblyService, FragmentConflictStrategy, AssemblyMode,
-    AssemblyComplexity, AssemblyPlan, AssemblyResult, FragmentOverlap
-)
-from tellus.domain.services.archive_extraction import (
-    ArchiveExtractionService, ExtractionResult
-)
-from tellus.domain.entities.archive import ArchiveMetadata, ArchiveId, ArchiveType
+import pytest
+
+from tellus.domain.entities.archive import (ArchiveId, ArchiveMetadata,
+                                            ArchiveType)
 from tellus.domain.entities.location import LocationEntity
-from tellus.domain.entities.simulation_file import FileInventory, SimulationFile, FileContentType
+from tellus.domain.entities.simulation_file import (FileContentType,
+                                                    FileInventory,
+                                                    SimulationFile)
+from tellus.domain.services.archive_extraction import (
+    ArchiveExtractionService, ExtractionResult)
+from tellus.domain.services.fragment_assembly import (AssemblyComplexity,
+                                                      AssemblyMode,
+                                                      AssemblyPlan,
+                                                      AssemblyResult,
+                                                      FragmentAssemblyService,
+                                                      FragmentConflictStrategy,
+                                                      FragmentOverlap)
 
 
 @pytest.mark.unit
@@ -182,7 +188,7 @@ class TestFragmentAssemblyService:
     def test_overlap_detection(self, assembly_service):
         """Test overlap detection between fragments."""
         from tellus.domain.entities.archive import Checksum
-        
+
         # Create fragments with file inventories for overlap detection
         file1 = SimulationFile(
             relative_path="shared_file.nc", 

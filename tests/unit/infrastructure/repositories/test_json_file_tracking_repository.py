@@ -6,26 +6,24 @@ including repository creation, state management, snapshot handling, and JSON per
 """
 
 import json
-import pytest
 import uuid
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import patch, mock_open
 from typing import Dict, List
+from unittest.mock import mock_open, patch
 
-from tellus.domain.entities.file_tracking import (
-    FileTrackingRepository,
-    TrackedFileMetadata,
-    FileChange,
-    RepositorySnapshot,
-    RepositoryState,
-    DVCConfiguration,
-    TrackingStatus,
-    FileChangeType,
-    FileHash
-)
-from tellus.infrastructure.repositories.json_file_tracking_repository import JsonFileTrackingRepository
+import pytest
+
+from tellus.domain.entities.file_tracking import (DVCConfiguration, FileChange,
+                                                  FileChangeType, FileHash,
+                                                  FileTrackingRepository,
+                                                  RepositorySnapshot,
+                                                  RepositoryState,
+                                                  TrackedFileMetadata,
+                                                  TrackingStatus)
 from tellus.domain.repositories.exceptions import RepositoryError
+from tellus.infrastructure.repositories.json_file_tracking_repository import \
+    JsonFileTrackingRepository
 
 
 @pytest.fixture
@@ -790,7 +788,7 @@ class TestComplexScenarios:
         """Test thread safety of repository operations."""
         import threading
         import time
-        
+
         # Ensure parent directory exists
         temp_repo_path.mkdir(parents=True, exist_ok=True)
         

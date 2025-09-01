@@ -5,23 +5,23 @@ Tests the infrastructure adapters for workflow execution engines,
 including Snakemake and Python workflow engines with validation, resource estimation, and execution.
 """
 
+import json
 import os
-import pytest
 import subprocess
 import tempfile
-import json
-from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch, call, mock_open
 from datetime import datetime
-from typing import Dict, Any, List, Optional, Callable
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
+from unittest.mock import MagicMock, Mock, call, mock_open, patch
 
-from tellus.domain.entities.workflow import WorkflowEntity, WorkflowRunEntity, WorkflowStep, ResourceRequirement
+import pytest
+
 from tellus.application.dtos import WorkflowExecutionResultDto
+from tellus.domain.entities.workflow import (ResourceRequirement,
+                                             WorkflowEntity, WorkflowRunEntity,
+                                             WorkflowStep)
 from tellus.infrastructure.adapters.workflow_engines import (
-    SnakemakeWorkflowEngine,
-    PythonWorkflowEngine,
-    SNAKEMAKE_AVAILABLE
-)
+    SNAKEMAKE_AVAILABLE, PythonWorkflowEngine, SnakemakeWorkflowEngine)
 
 
 @pytest.fixture

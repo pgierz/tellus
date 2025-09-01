@@ -6,7 +6,8 @@ data processing workflows, including data preprocessing, model execution,
 postprocessing, and analysis pipelines.
 """
 
-from typing import Dict, Any, Set
+from typing import Any, Dict, Set
+
 from ..entities.workflow import WorkflowTemplateEntity
 
 

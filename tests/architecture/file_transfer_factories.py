@@ -5,31 +5,28 @@ This module extends the existing factory patterns to support the new
 file transfer system, operation queue, and progress tracking features.
 """
 
-import uuid
-import time
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Type, TypeVar, Generic, Union
-from enum import Enum
 import random
 import string
-
-# Import existing factory patterns
-from .factories import Builder, Factory, TestLocation, TestSimulation
+import time
+import uuid
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, Generic, List, Optional, Type, TypeVar, Union
 
 # Import new domain DTOs 
-from ...application.dtos import (
-    FileTransferOperationDto,
-    BatchFileTransferOperationDto, 
-    DirectoryTransferOperationDto,
-    FileTransferResultDto,
-    BatchFileTransferResultDto,
-    DirectoryTransferResultDto,
-    CreateProgressTrackingDto,
-    UpdateProgressTrackingDto,
-    ProgressTrackingResultDto
-)
+from ...application.dtos import (BatchFileTransferOperationDto,
+                                 BatchFileTransferResultDto,
+                                 CreateProgressTrackingDto,
+                                 DirectoryTransferOperationDto,
+                                 DirectoryTransferResultDto,
+                                 FileTransferOperationDto,
+                                 FileTransferResultDto,
+                                 ProgressTrackingResultDto,
+                                 UpdateProgressTrackingDto)
+# Import existing factory patterns
+from .factories import Builder, Factory, TestLocation, TestSimulation
 
 
 # Test representations for new domain objects

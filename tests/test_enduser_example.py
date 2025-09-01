@@ -7,13 +7,14 @@ as a reference for how I eventually want to design inner parts.
 This test demonstrates how two peers can share simulation data using the NetworkPeer API.
 """
 
-import pytest
 import json
 import platform
 from typing import Any
 
-from tellus import Simulation
+import pytest
 import trio
+
+from tellus import Simulation
 
 # Handle architecture compatibility issues with fastecdsa
 try:

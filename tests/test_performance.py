@@ -7,26 +7,26 @@ when dealing with realistic large datasets typical in Earth science research.
 
 import gc
 import os
-import pytest
-import psutil
 import tarfile
 import tempfile
+import threading
 import time
 from pathlib import Path
 from unittest.mock import Mock, patch
-import threading
+
+import psutil
+import pytest
 
 try:
-    import numpy as np
     import netCDF4 as nc
+    import numpy as np
     HAS_NETCDF = True
 except ImportError:
     HAS_NETCDF = False
 
-from tellus.simulation.simulation import (
-    CacheConfig, CacheManager, CompressedArchive, ArchiveManifest
-)
 from tellus.location import Location, LocationKind
+from tellus.simulation.simulation import (ArchiveManifest, CacheConfig,
+                                          CacheManager, CompressedArchive)
 
 from .fixtures.earth_science import *
 

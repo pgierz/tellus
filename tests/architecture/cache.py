@@ -8,7 +8,7 @@ for both real cache operations and test doubles.
 import hashlib
 import time
 from pathlib import Path
-from typing import Dict, Optional, Any
+from typing import Any, Dict, Optional
 from unittest.mock import MagicMock
 
 from .interfaces import CacheInterface

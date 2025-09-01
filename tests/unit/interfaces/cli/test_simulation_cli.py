@@ -6,32 +6,28 @@ including command parsing, service integration, error handling,
 and output formatting.
 """
 
-import pytest
-import json
-from unittest.mock import Mock, patch, MagicMock
-from rich.console import Console
 import io
+import json
 import sys
-from click.testing import CliRunner
 from datetime import datetime
+from unittest.mock import MagicMock, Mock, patch
 
-from tellus.interfaces.cli.simulation import simulation
-from tellus.application.services.simulation_service import SimulationApplicationService
-from tellus.application.dtos import (
-    CreateSimulationDto,
-    UpdateSimulationDto,
-    SimulationDto,
-    SimulationListDto,
-    SimulationLocationAssociationDto,
-    PaginationInfo,
-    FilterOptions
-)
+import pytest
+from click.testing import CliRunner
+from rich.console import Console
+
+from tellus.application.dtos import (CreateSimulationDto, FilterOptions,
+                                     PaginationInfo, SimulationDto,
+                                     SimulationListDto,
+                                     SimulationLocationAssociationDto,
+                                     UpdateSimulationDto)
+from tellus.application.exceptions import (EntityAlreadyExistsError,
+                                           EntityNotFoundError,
+                                           ValidationError)
+from tellus.application.services.simulation_service import \
+    SimulationApplicationService
 from tellus.domain.entities.simulation import SimulationEntity
-from tellus.application.exceptions import (
-    EntityNotFoundError,
-    EntityAlreadyExistsError,
-    ValidationError
-)
+from tellus.interfaces.cli.simulation import simulation
 
 
 class TestSimulationListCommand:

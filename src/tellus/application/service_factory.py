@@ -6,24 +6,26 @@ dependency injection for use in Earth System Model workflows.
 """
 
 import logging
-from typing import Optional, Dict, Any
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Dict, Optional
 
-from .services import (
-    SimulationApplicationService, LocationApplicationService, ArchiveApplicationService,
-    WorkflowApplicationService, WorkflowExecutionService, PathResolutionService
-)
-from .services.file_transfer_service import FileTransferApplicationService
-from .services.operation_queue_service import OperationQueueService
-from .services.progress_tracking_service import IProgressTrackingService
-from .services.workflow_service import IWorkflowRepository, IWorkflowTemplateRepository
-from .services.workflow_execution_service import IWorkflowRunRepository, IWorkflowEngine
-from .dtos import CacheConfigurationDto
-from ..domain.repositories.simulation_repository import ISimulationRepository
-from ..domain.repositories.location_repository import ILocationRepository
-from ..domain.repositories.archive_repository import IArchiveRepository
 from ..domain.entities.workflow import WorkflowEngine
+from ..domain.repositories.archive_repository import IArchiveRepository
+from ..domain.repositories.location_repository import ILocationRepository
+from ..domain.repositories.simulation_repository import ISimulationRepository
+from ..domain.repositories.simulation_file_repository import ISimulationFileRepository
 from ..infrastructure.adapters.progress_tracking import ProgressTracker
+from .dtos import CacheConfigurationDto
+from .services import (ArchiveApplicationService, LocationApplicationService,
+                       PathResolutionService, SimulationApplicationService,
+                       WorkflowApplicationService, WorkflowExecutionService)
+from .services.unified_file_service import UnifiedFileService
+from .services.file_transfer_service import FileTransferApplicationService
+from .services.progress_tracking_service import IProgressTrackingService
+from .services.workflow_execution_service import (IWorkflowEngine,
+                                                  IWorkflowRunRepository)
+from .services.workflow_service import (IWorkflowRepository,
+                                        IWorkflowTemplateRepository)
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +43,7 @@ class ApplicationServiceFactory:
         simulation_repository: ISimulationRepository,
         location_repository: ILocationRepository,
         archive_repository: IArchiveRepository,
+        simulation_file_repository: Optional[ISimulationFileRepository] = None,
         workflow_repository: Optional[IWorkflowRepository] = None,
         workflow_run_repository: Optional[IWorkflowRunRepository] = None,
         workflow_template_repository: Optional[IWorkflowTemplateRepository] = None,
@@ -61,7 +64,7 @@ class ApplicationServiceFactory:
             workflow_run_repository: Repository for workflow run persistence
             workflow_template_repository: Repository for workflow template persistence
             workflow_engines: Map of workflow execution engines by type
-            progress_tracker: Legacy progress tracking system (deprecated)
+            progress_tracker: Progress tracking system (deprecated)
             progress_tracking_service: New progress tracking service
             cache_config: Optional cache configuration
             workflow_executor: Thread pool for workflow execution
@@ -69,6 +72,7 @@ class ApplicationServiceFactory:
         self._simulation_repo = simulation_repository
         self._location_repo = location_repository
         self._archive_repo = archive_repository
+        self._simulation_file_repo = simulation_file_repository
         self._workflow_repo = workflow_repository
         self._workflow_run_repo = workflow_run_repository
         self._workflow_template_repo = workflow_template_repository
@@ -83,10 +87,10 @@ class ApplicationServiceFactory:
         self._simulation_service: Optional[SimulationApplicationService] = None
         self._location_service: Optional[LocationApplicationService] = None
         self._archive_service: Optional[ArchiveApplicationService] = None
+        self._unified_file_service: Optional[UnifiedFileService] = None
         self._workflow_service: Optional[WorkflowApplicationService] = None
         self._workflow_execution_service: Optional[WorkflowExecutionService] = None
         self._file_transfer_service: Optional[FileTransferApplicationService] = None
-        self._operation_queue_service: Optional[OperationQueueService] = None
         self._path_resolution_service: Optional[PathResolutionService] = None
     
     @property
@@ -122,6 +126,19 @@ class ApplicationServiceFactory:
                 progress_tracking_service=self._progress_tracking_service
             )
         return self._archive_service
+    
+    @property
+    def unified_file_service(self) -> UnifiedFileService:
+        """Get or create unified file application service."""
+        if self._unified_file_service is None:
+            if not self._simulation_file_repo:
+                raise ValueError("SimulationFile repository not configured for UnifiedFileService")
+            
+            self._logger.debug("Creating UnifiedFileService")
+            self._unified_file_service = UnifiedFileService(
+                file_repository=self._simulation_file_repo
+            )
+        return self._unified_file_service
     
     @property
     def workflow_service(self) -> WorkflowApplicationService:
@@ -175,17 +192,6 @@ class ApplicationServiceFactory:
             )
         return self._file_transfer_service
     
-    @property
-    def operation_queue_service(self) -> OperationQueueService:
-        """Get or create operation queue service."""
-        if self._operation_queue_service is None:
-            self._logger.debug("Creating OperationQueueService")
-            self._operation_queue_service = OperationQueueService(
-                archive_service=self.archive_service,
-                file_transfer_service=self.file_transfer_service,
-                max_concurrent=3  # Can be made configurable
-            )
-        return self._operation_queue_service
     
     @property
     def path_resolution_service(self) -> PathResolutionService:
@@ -324,7 +330,7 @@ class SimulationWorkflowCoordinator:
             Dictionary with setup results and any warnings
         """
         from .dtos import CreateSimulationDto, SimulationLocationAssociationDto
-        from .exceptions import ValidationError, LocationAccessError
+        from .exceptions import LocationAccessError, ValidationError
         
         self._logger.info(f"Setting up simulation environment: {simulation_id}")
         
@@ -607,10 +613,9 @@ class WorkflowCoordinator:
         Returns:
             Dictionary with workflow submission results
         """
-        from .dtos import (
-            WorkflowInstantiationDto, WorkflowLocationAssociationDto,
-            WorkflowExecutionRequestDto
-        )
+        from .dtos import (WorkflowExecutionRequestDto,
+                           WorkflowInstantiationDto,
+                           WorkflowLocationAssociationDto)
         
         self._logger.info(f"Submitting Earth science workflow: {workflow_id} from template {template_id}")
         

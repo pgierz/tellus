@@ -6,23 +6,22 @@ validation, connectivity testing, and configuration management.
 """
 
 import logging
+import os
 import time
-from typing import List, Optional, Dict, Any
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from ..exceptions import (
-    EntityNotFoundError, EntityAlreadyExistsError, ValidationError,
-    LocationAccessError, ConfigurationError, ExternalServiceError
-)
-from ..dtos import (
-    CreateLocationDto, UpdateLocationDto, LocationDto, LocationListDto,
-    LocationTestResult, PaginationInfo, FilterOptions
-)
 from ...domain.entities.location import LocationEntity, LocationKind
+from ...domain.repositories.exceptions import (LocationExistsError,
+                                               LocationNotFoundError,
+                                               RepositoryError)
 from ...domain.repositories.location_repository import ILocationRepository
-from ...domain.repositories.exceptions import (
-    LocationExistsError, LocationNotFoundError, RepositoryError
-)
+from ..dtos import (CreateLocationDto, FilterOptions, LocationDto,
+                    LocationListDto, LocationTestResult, PaginationInfo,
+                    UpdateLocationDto)
+from ..exceptions import (ConfigurationError, EntityAlreadyExistsError,
+                          EntityNotFoundError, ExternalServiceError,
+                          LocationAccessError, ValidationError)
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +44,33 @@ class LocationApplicationService:
         """
         self._location_repo = location_repository
         self._logger = logger
+    
+    def _expand_path(self, path: str) -> str:
+        """
+        Expand user home directory (~) and environment variables in paths.
+        
+        Args:
+            path: Path that may contain ~ or $VAR patterns
+            
+        Returns:
+            Expanded path with ~ and environment variables resolved
+            
+        Examples:
+            ~/data -> /Users/username/data
+            $HOME/files -> /Users/username/files  
+            ${HOME}/work -> /Users/username/work
+            /absolute/path -> /absolute/path (unchanged)
+        """
+        if not path:
+            return path
+            
+        # First expand user home directory (~)
+        expanded = os.path.expanduser(path)
+        
+        # Then expand environment variables ($VAR, ${VAR})
+        expanded = os.path.expandvars(expanded)
+        
+        return expanded
     
     def create_location(self, dto: CreateLocationDto) -> LocationDto:
         """
@@ -83,7 +109,7 @@ class LocationApplicationService:
             }
             
             if dto.path:
-                config["path"] = dto.path
+                config["path"] = self._expand_path(dto.path)
             
             if dto.storage_options:
                 config["storage_options"] = dto.storage_options
@@ -183,7 +209,7 @@ class LocationApplicationService:
             
             if dto.path is not None:
                 if dto.path:
-                    location.update_config("path", dto.path)
+                    location.update_config("path", self._expand_path(dto.path))
                 else:
                     # Remove path if empty string provided
                     location.config.pop("path", None)
@@ -479,15 +505,19 @@ class LocationApplicationService:
         
         if protocol in ("file", "local"):
             # Local filesystem
-            from ...infrastructure.adapters.sandboxed_filesystem import PathSandboxedFileSystem
             import fsspec
+
+            from ...infrastructure.adapters.sandboxed_filesystem import \
+                PathSandboxedFileSystem
             base_fs = fsspec.filesystem('file')
             return PathSandboxedFileSystem(base_fs, base_path)
             
         elif protocol in ('ssh', 'sftp'):
             # SSH filesystem
-            from ...infrastructure.adapters.sandboxed_filesystem import PathSandboxedFileSystem
             import fsspec
+
+            from ...infrastructure.adapters.sandboxed_filesystem import \
+                PathSandboxedFileSystem
             
             host = storage_options.get("host", "localhost")
             ssh_config = {
@@ -505,8 +535,10 @@ class LocationApplicationService:
             
         elif protocol == 'scoutfs':
             # ScoutFS filesystem (extends SFTP)
-            from ...infrastructure.adapters.scoutfs_filesystem import ScoutFSFileSystem
-            from ...infrastructure.adapters.sandboxed_filesystem import PathSandboxedFileSystem
+            from ...infrastructure.adapters.sandboxed_filesystem import \
+                PathSandboxedFileSystem
+            from ...infrastructure.adapters.scoutfs_filesystem import \
+                ScoutFSFileSystem
             
             host = storage_options.get("host", "localhost")
             scoutfs_config = {k: v for k, v in storage_options.items() if k != 'host'}
@@ -551,7 +583,8 @@ class LocationApplicationService:
             
         elif protocol == 'scoutfs':
             # ScoutFS filesystem without sandboxing
-            from ...infrastructure.adapters.scoutfs_filesystem import ScoutFSFileSystem
+            from ...infrastructure.adapters.scoutfs_filesystem import \
+                ScoutFSFileSystem
             
             host = storage_options.get("host", "localhost")
             scoutfs_config = {k: v for k, v in storage_options.items() if k != 'host'}
@@ -731,8 +764,10 @@ class LocationApplicationService:
         
         try:
             # Create filesystem using fsspec
-            from ...infrastructure.adapters.sandboxed_filesystem import PathSandboxedFileSystem
             import fsspec
+
+            from ...infrastructure.adapters.sandboxed_filesystem import \
+                PathSandboxedFileSystem
             
             protocol = location.get_protocol()
             base_path = location.get_base_path() or "."
@@ -758,7 +793,8 @@ class LocationApplicationService:
                 
             elif protocol == 'scoutfs':
                 # ScoutFS filesystem (extends SFTP)
-                from ...infrastructure.adapters.scoutfs_filesystem import ScoutFSFileSystem
+                from ...infrastructure.adapters.scoutfs_filesystem import \
+                    ScoutFSFileSystem
                 scoutfs_config = {k: v for k, v in storage_options.items() if k != 'host'}
                 scoutfs_config['timeout'] = timeout_seconds
                 

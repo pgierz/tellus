@@ -2,8 +2,8 @@
 Workflow domain entities for Earth System Model data processing.
 """
 
-import uuid
 import copy
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum, auto

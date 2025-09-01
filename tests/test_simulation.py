@@ -3,18 +3,15 @@ Tests for Simulation objects - Test-driven freezing of current behavior
 """
 
 import json
-import pytest
 import uuid
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
 
-from tellus.simulation import (
-    Simulation, 
-    SimulationExistsError,
-    CacheConfig, 
-    CacheManager,
-)
+import pytest
+
 from tellus.location import Location, LocationExistsError, LocationKind
+from tellus.simulation import (CacheConfig, CacheManager, Simulation,
+                               SimulationExistsError)
 from tellus.simulation.context import LocationContext
 
 

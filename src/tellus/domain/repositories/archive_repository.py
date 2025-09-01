@@ -5,7 +5,7 @@ Repository interface for archive persistence.
 from abc import ABC, abstractmethod
 from typing import List, Optional, Set
 
-from ..entities.archive import ArchiveMetadata, ArchiveId
+from ..entities.archive import ArchiveId, ArchiveMetadata
 
 
 class IArchiveRepository(ABC):

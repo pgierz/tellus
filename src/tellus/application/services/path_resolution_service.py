@@ -8,14 +8,13 @@ path generation for filesystem operations.
 """
 
 import logging
-from typing import Dict, List, Optional, Any
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from ..exceptions import (
-    EntityNotFoundError, ValidationError, PathResolutionError
-)
-from .simulation_service import SimulationApplicationService
+from ..exceptions import (EntityNotFoundError, PathResolutionError,
+                          ValidationError)
 from .location_service import LocationApplicationService
+from .simulation_service import SimulationApplicationService
 
 logger = logging.getLogger(__name__)
 

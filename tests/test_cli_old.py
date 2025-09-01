@@ -1,17 +1,15 @@
 import json
-from unittest.mock import patch, MagicMock
+# Import the CLI app
+import sys
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
 
-from tellus.simulation import Simulation
-
-# Import the CLI app
-import sys
-from pathlib import Path
-
-from tellus.interfaces.cli.location import location
 from tellus.core.cli import cli
+from tellus.interfaces.cli.location import location
+from tellus.simulation import Simulation
 
 
 class TestCLI:
@@ -163,7 +161,7 @@ class TestCLI:
     def test_location_list_command(self):
         """Test the standalone location list command."""
         from tellus.location.location import Location, LocationKind
-        
+
         # Create a test location
         with patch("tellus.location.location.Location.load_locations"):
             with patch("tellus.location.location.Location.list_locations") as mock_list:

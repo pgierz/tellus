@@ -1,10 +1,10 @@
 """Domain entities for file tracking functionality."""
 
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Set
-from dataclasses import dataclass, field
 
 
 class TrackingStatus(Enum):

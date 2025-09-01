@@ -10,19 +10,23 @@ Usage:
 """
 
 import json
-import pytest
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
+from tellus.application.dtos import CreateLocationDto
+from tellus.application.services.location_service import \
+    LocationApplicationService
+from tellus.domain.entities.location import LocationEntity
+from tellus.domain.entities.location import LocationKind as DomainLocationKind
+from tellus.infrastructure.repositories.json_location_repository import \
+    JsonLocationRepository
 # Test both legacy and new architectures
 from tellus.location import Location, LocationKind, PathSandboxedFileSystem
 from tellus.location.sandboxed_filesystem import PathValidationError
-from tellus.domain.entities.location import LocationEntity, LocationKind as DomainLocationKind
-from tellus.infrastructure.repositories.json_location_repository import JsonLocationRepository
-from tellus.application.services.location_service import LocationApplicationService
-from tellus.application.dtos import CreateLocationDto
 from tellus.simulation.context import LocationContext
 
 
@@ -428,7 +432,7 @@ class TestLocationSandboxingIntegrationSuite:
         fs = location.fs
         
         import time
-        
+
         # Test bulk operations
         start_time = time.time()
         

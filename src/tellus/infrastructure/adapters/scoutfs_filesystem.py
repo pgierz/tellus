@@ -281,7 +281,7 @@ class ScoutFSFileSystem(fsspec.implementations.sftp.SFTPFileSystem):
             bool: True if the file is online, False otherwise
         """
         import asyncio
-        
+
         # Run the synchronous is_online method in a thread pool to avoid blocking
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self.is_online, path)
@@ -297,7 +297,7 @@ class ScoutFSFileSystem(fsspec.implementations.sftp.SFTPFileSystem):
             dict: Dictionary mapping paths to their online status (True/False)
         """
         import asyncio
-        
+
         # Create semaphore to limit concurrent operations
         semaphore = asyncio.Semaphore(max_concurrent)
         

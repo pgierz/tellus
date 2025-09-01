@@ -39,25 +39,26 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from statistics import mean, median, stdev
-from typing import Dict, List, Tuple, Optional, Any, Iterator, Union
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 from unittest.mock import Mock, patch
 
 import fsspec
-import pytest
 import psutil
+import pytest
 
 # Scientific computing imports (optional but preferred for realistic tests)
 try:
+    import h5py
     import numpy as np
     import xarray as xr
     import zarr
-    import h5py
     HAS_SCIENTIFIC = True
 except ImportError:
     HAS_SCIENTIFIC = False
     warnings.warn("Scientific packages not available, using fallback implementations")
 
-from tellus.location.sandboxed_filesystem import PathSandboxedFileSystem, PathValidationError
+from tellus.location.sandboxed_filesystem import (PathSandboxedFileSystem,
+                                                  PathValidationError)
 
 
 @dataclass

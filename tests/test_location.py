@@ -9,11 +9,12 @@ import json
 import os
 import shutil
 import tempfile
-import pytest
 from pathlib import Path
-from unittest.mock import MagicMock, patch, ANY
+from unittest.mock import ANY, MagicMock, patch
 
-from tellus.location import Location, LocationKind, LocationExistsError
+import pytest
+
+from tellus.location import Location, LocationExistsError, LocationKind
 
 
 class TestLocationBasics:

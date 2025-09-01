@@ -8,18 +8,19 @@ across a wide range of inputs and scenarios.
 
 import os
 import platform
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
 from typing import List
 
 import pytest
-from hypothesis import given, strategies as st, assume, settings
-from hypothesis.stateful import RuleBasedStateMachine, rule, Bundle, initialize
+from hypothesis import assume, given, settings
+from hypothesis import strategies as st
+from hypothesis.stateful import Bundle, RuleBasedStateMachine, initialize, rule
 
-from tellus.location import Location, LocationKind, PathSandboxedFileSystem, PathValidationError
+from tellus.location import (Location, LocationKind, PathSandboxedFileSystem,
+                             PathValidationError)
 from tests.security_utils import SecurityTestEnvironment, SecurityTestHelpers
-
 
 pytestmark = [
     pytest.mark.unit,

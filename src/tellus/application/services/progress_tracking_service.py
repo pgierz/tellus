@@ -7,48 +7,32 @@ orchestrating domain entities and repository interactions.
 
 import asyncio
 import logging
+import threading
 import time
-from typing import Any, Dict, List, Optional, Set, Callable, Union
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
-import threading
 from dataclasses import asdict
+from typing import Any, Callable, Dict, List, Optional, Set, Union
 
-from ..dtos import (
-    CreateProgressTrackingDto,
-    UpdateProgressDto,
-    ProgressTrackingDto,
-    ProgressTrackingListDto,
-    ProgressUpdateNotificationDto,
-    OperationControlDto,
-    OperationControlResultDto,
-    BulkProgressQueryDto,
-    BulkProgressResponseDto,
-    ProgressCallbackRegistrationDto,
-    ProgressSummaryDto,
-    NestedProgressDto,
-    ProgressMetricsDto,
-    ThroughputMetricsDto,
-    OperationContextDto,
-    ProgressLogEntryDto,
-    PaginationInfo,
-    FilterOptions
-)
-from ..exceptions import ApplicationError
-from ...domain.entities.progress_tracking import (
-    ProgressTrackingEntity,
-    OperationType,
-    OperationStatus,
-    Priority,
-    ProgressMetrics,
-    ThroughputMetrics,
-    OperationContext
-)
+from ...domain.entities.progress_tracking import (OperationContext,
+                                                  OperationStatus,
+                                                  OperationType, Priority,
+                                                  ProgressMetrics,
+                                                  ProgressTrackingEntity,
+                                                  ThroughputMetrics)
 from ...domain.repositories.progress_tracking_repository import (
-    IProgressTrackingRepository,
-    OperationNotFoundError,
-    OperationAlreadyExistsError
-)
+    IProgressTrackingRepository, OperationAlreadyExistsError,
+    OperationNotFoundError)
+from ..dtos import (BulkProgressQueryDto, BulkProgressResponseDto,
+                    CreateProgressTrackingDto, FilterOptions,
+                    NestedProgressDto, OperationContextDto,
+                    OperationControlDto, OperationControlResultDto,
+                    PaginationInfo, ProgressCallbackRegistrationDto,
+                    ProgressLogEntryDto, ProgressMetricsDto,
+                    ProgressSummaryDto, ProgressTrackingDto,
+                    ProgressTrackingListDto, ProgressUpdateNotificationDto,
+                    ThroughputMetricsDto, UpdateProgressDto)
+from ..exceptions import ApplicationError
 
 logger = logging.getLogger(__name__)
 

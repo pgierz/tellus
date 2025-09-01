@@ -8,39 +8,21 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from ...domain.entities.file_tracking import (
-    FileTrackingRepository,
-    TrackedFileMetadata,
-    FileChange,
-    RepositorySnapshot,
-    RepositoryState,
-    DVCConfiguration,
-    TrackingStatus,
-    FileChangeType,
-    FileHash
-)
+from ...domain.entities.file_tracking import (DVCConfiguration, FileChange,
+                                              FileChangeType, FileHash,
+                                              FileTrackingRepository,
+                                              RepositorySnapshot,
+                                              RepositoryState,
+                                              TrackedFileMetadata,
+                                              TrackingStatus)
 from ...domain.repositories.file_tracking_repository import (
-    IFileTrackingRepository,
-    IFileSystemService,
-    IDVCService
-)
-from ..dtos import (
-    CreateFileTrackingRepositoryDto,
-    FileTrackingRepositoryDto,
-    TrackedFileDto,
-    AddFilesDto,
-    FileStatusDto,
-    CreateSnapshotDto,
-    RepositorySnapshotDto,
-    DVCConfigurationDto,
-    DVCStatusDto
-)
-from ..exceptions import (
-    EntityNotFoundError,
-    EntityAlreadyExistsError,
-    ValidationError,
-    ApplicationError
-)
+    IDVCService, IFileSystemService, IFileTrackingRepository)
+from ..dtos import (AddFilesDto, CreateFileTrackingRepositoryDto,
+                    CreateSnapshotDto, DVCConfigurationDto, DVCStatusDto,
+                    FileStatusDto, FileTrackingRepositoryDto,
+                    RepositorySnapshotDto, TrackedFileDto)
+from ..exceptions import (ApplicationError, EntityAlreadyExistsError,
+                          EntityNotFoundError, ValidationError)
 
 logger = logging.getLogger(__name__)
 

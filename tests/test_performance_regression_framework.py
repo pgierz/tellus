@@ -33,10 +33,10 @@ import tempfile
 import time
 import warnings
 from collections import defaultdict, deque
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Any, Union, NamedTuple
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
 from unittest.mock import Mock, patch
 
 import fsspec
@@ -51,10 +51,12 @@ except ImportError:
     HAS_SCIPY = False
     warnings.warn("SciPy not available, using simplified statistical analysis")
 
-from tellus.location.sandboxed_filesystem import PathSandboxedFileSystem, PathValidationError
-
 # Import profilers from other test modules
-from test_hpc_climate_performance import HPC_Performance_Profiler, ClimateDataGenerator
+from test_hpc_climate_performance import (ClimateDataGenerator,
+                                          HPC_Performance_Profiler)
+
+from tellus.location.sandboxed_filesystem import (PathSandboxedFileSystem,
+                                                  PathValidationError)
 
 
 class StatisticalTestResult(NamedTuple):
@@ -1042,8 +1044,8 @@ class TestPathSandboxedFileSystemRegressionSuite:
         file_paths = [str(f.relative_to(base_path)) for f in files[:15]]
         
         def measure_concurrent_performance():
-            from concurrent.futures import ThreadPoolExecutor
             import time
+            from concurrent.futures import ThreadPoolExecutor
             
             def worker_task(filepath):
                 sandboxed_fs.exists(filepath)

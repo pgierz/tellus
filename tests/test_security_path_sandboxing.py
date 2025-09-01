@@ -17,15 +17,16 @@ Security Test Coverage:
 
 import os
 import platform
-import tempfile
 import shutil
-import pytest
+import tempfile
 from pathlib import Path, PurePosixPath
 from unittest.mock import MagicMock, patch
 from urllib.parse import quote
 
-from tellus.location import Location, LocationKind, PathSandboxedFileSystem, PathValidationError
+import pytest
 
+from tellus.location import (Location, LocationKind, PathSandboxedFileSystem,
+                             PathValidationError)
 
 # Security test markers
 pytestmark = [
@@ -735,8 +736,9 @@ class TestSecurityPerformanceImpact:
         sandbox_dir = Path(tempfile.mkdtemp(prefix="tellus_perf_"))
         
         try:
-            import fsspec
             import time
+
+            import fsspec
             
             base_fs = fsspec.filesystem("file")
             sandboxed_fs = PathSandboxedFileSystem(base_fs, str(sandbox_dir))
@@ -763,7 +765,7 @@ def test_security_markers_configuration():
     """Verify security test markers are properly configured."""
     # This test ensures security tests are properly categorized
     import inspect
-    
+
     # Get all test classes in this module
     test_classes = [obj for name, obj in inspect.getmembers(
         inspect.getmodule(test_security_markers_configuration)

@@ -6,20 +6,19 @@ following the Builder pattern and Factory pattern, ensuring
 consistent and maintainable test data creation.
 """
 
-import uuid
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Type, TypeVar, Generic
-from enum import Enum
 import random
 import string
 import tempfile
+import uuid
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, Generic, List, Optional, Type, TypeVar
 
 # Import domain objects (these would normally be imported from the actual domain)
 # For now, we'll define minimal interfaces
 from .interfaces import TestDataProvider
-
 
 T = TypeVar('T')
 
@@ -564,8 +563,8 @@ class TestDataFactory(TestDataProvider):
     def get_sample_archive_data(self) -> bytes:
         """Get sample archive data."""
         # Create a simple tar.gz content for testing
-        import tarfile
         import io
+        import tarfile
         
         buffer = io.BytesIO()
         with tarfile.open(fileobj=buffer, mode='w:gz') as tar:

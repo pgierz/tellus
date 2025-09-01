@@ -5,22 +5,17 @@ Tests the infrastructure adapter for progress tracking utilities,
 including fsspec callback integration, Rich progress display, and progress configuration.
 """
 
-import pytest
 import time
-from unittest.mock import Mock, MagicMock, patch, call
-from typing import Dict, Any, List
+from typing import Any, Dict, List
+from unittest.mock import MagicMock, Mock, call, patch
 
-from rich.progress import Progress, TaskID
+import pytest
 from rich.console import Console
+from rich.progress import Progress, TaskID
 
 from tellus.infrastructure.adapters.progress_tracking import (
-    FSSpecProgressCallback,
-    ProgressConfig,
-    ProgressTracker,
-    get_default_progress,
-    set_progress_config,
-    get_progress_callback
-)
+    FSSpecProgressCallback, ProgressConfig, ProgressTracker,
+    get_default_progress, get_progress_callback, set_progress_config)
 
 
 @pytest.fixture

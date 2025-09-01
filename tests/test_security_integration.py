@@ -6,20 +6,21 @@ Location system, including interactions with different storage backends,
 configuration scenarios, and real-world usage patterns.
 """
 
+import json
 import os
 import platform
-import tempfile
 import shutil
-import json
+import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 from typing import Dict, List
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tellus.location import Location, LocationKind, PathSandboxedFileSystem, PathValidationError
-from tests.security_utils import SecurityTestEnvironment, SecurityTestHelpers, SecurityTestVectors
-
+from tellus.location import (Location, LocationKind, PathSandboxedFileSystem,
+                             PathValidationError)
+from tests.security_utils import (SecurityTestEnvironment, SecurityTestHelpers,
+                                  SecurityTestVectors)
 
 pytestmark = [
     pytest.mark.integration,

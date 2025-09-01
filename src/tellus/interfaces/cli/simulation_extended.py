@@ -2,13 +2,16 @@
 
 import rich_click as click
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
+from rich.table import Table
 
-from .main import console
-from .simulation import simulation, _get_simulation_service
-from ...application.dtos import UpdateSimulationDto, SimulationLocationAssociationDto
+from ...application.dtos import (FileRegistrationDto,
+                                 SimulationLocationAssociationDto,
+                                 UpdateSimulationDto)
 from ...application.exceptions import EntityNotFoundError
+from ...application.container import get_service_container
+from .main import console
+from .simulation import _get_simulation_service, simulation
 
 
 def _handle_simulation_not_found(sim_id: str, service):
@@ -133,7 +136,7 @@ def add_location(sim_id: str = None, location_name: str = None, context: str = N
         # Interactive mode when no arguments provided
         if not sim_id or not location_name:
             import questionary
-            
+
             # Get simulation ID if not provided
             if not sim_id:
                 simulations = service.list_simulations()
@@ -242,7 +245,7 @@ def update_location_association(sim_id: str = None, location_name: str = None,
         # Interactive mode when arguments missing
         if not sim_id or not location_name:
             import questionary
-            
+
             # Get simulation ID if not provided
             if not sim_id:
                 simulations = service.list_simulations()
@@ -522,8 +525,16 @@ def ls_location(sim_id: str, location_name: str, path: str = ".",
             try:
                 # Use the clean architecture approach like location test does
                 fs = location_service._create_location_filesystem(location)
-                _perform_real_listing(fs, resolved_path, long, all, human_readable, 
-                                    time, size, reverse, recursive, color, tape_status, location, async_status)
+                
+                # Handle async execution with progress tracking for async mode
+                import asyncio
+                progress_tracker = AsyncProgressTracker() if async_status else None
+                
+                if async_status:
+                    console.print("[dim]🚀 Starting async operation...[/dim]")
+                
+                asyncio.run(_perform_real_listing(fs, resolved_path, long, all, human_readable, 
+                                                time, size, reverse, recursive, color, tape_status, location, async_status, progress_tracker))
             except Exception as e:
                 console.print(f"[yellow]Warning:[/yellow] Could not access registered location filesystem: {str(e)}")
                 console.print(f"[dim]Location '{location_name}' is registered but filesystem access failed[/dim]")
@@ -681,9 +692,11 @@ def _show_simple_short_format(entries, use_color: bool):
 def _get_filesystem_for_location(location):
     """Get filesystem access for a location."""
     # Import here to avoid circular imports
-    from ...infrastructure.adapters.sandboxed_filesystem import PathSandboxedFileSystem
     import fsspec
-    
+
+    from ...infrastructure.adapters.sandboxed_filesystem import \
+        PathSandboxedFileSystem
+
     # Get location configuration
     config = location.config if hasattr(location, 'config') else {}
     protocol = location.protocol if hasattr(location, 'protocol') else config.get('protocol', 'file')
@@ -743,7 +756,8 @@ def _get_filesystem_for_location(location):
             scoutfs_config['client_keys'] = [storage_options['key_filename']]
         
         # Import and use ScoutFS filesystem
-        from ...infrastructure.adapters.scoutfs_filesystem import ScoutFSFileSystem
+        from ...infrastructure.adapters.scoutfs_filesystem import \
+            ScoutFSFileSystem
         fs = ScoutFSFileSystem(**scoutfs_config)
         base_path = config.get('path', '/')
         return PathSandboxedFileSystem(fs, base_path)
@@ -752,30 +766,67 @@ def _get_filesystem_for_location(location):
         raise ValueError(f"Unsupported protocol: {protocol}")
 
 
-def _perform_real_listing(fs, path: str, long_format: bool, show_all: bool, 
+class AsyncProgressTracker:
+    """Simple progress tracker for async operations."""
+    
+    def __init__(self):
+        self.last_message = None
+        self.last_timestamp = None
+    
+    def log(self, message: str):
+        """Add a progress message."""
+        import time
+        timestamp = time.strftime("%H:%M:%S")
+        
+        # Only print if message is different or if 2+ seconds have passed
+        current_time = time.time()
+        if (self.last_message != message and 
+            (self.last_timestamp is None or current_time - self.last_timestamp >= 1)):
+            full_message = f"[dim]{timestamp}[/dim] {message}"
+            console.print(full_message)
+            self.last_message = message
+            self.last_timestamp = current_time
+    
+    def clear(self):
+        """Clear the progress display."""
+        # Just add a newline for clean separation
+        console.print()
+
+async def _perform_real_listing(fs, path: str, long_format: bool, show_all: bool, 
                         human_readable: bool, sort_time: bool, sort_size: bool, 
                         reverse_sort: bool, recursive: bool, use_color: bool, 
-                        tape_status: bool = False, location=None, async_status: bool = False):
+                        tape_status: bool = False, location=None, async_status: bool = False, 
+                        progress_tracker: AsyncProgressTracker = None):
     """Perform actual filesystem listing."""
+    if progress_tracker is None:
+        progress_tracker = AsyncProgressTracker()
+    
     try:
+        progress_tracker.log(f"🔍 Accessing path: {path}")
         # Check if path is a file or directory
         try:
+            progress_tracker.log("📋 Getting path info...")
             path_info = fs.info(path)
             if path_info.get('type') == 'file':
+                progress_tracker.log("📄 Single file detected")
                 # Show single file info instead of trying to list it
                 entries = [path_info]
                 # For single files, we don't need recursion or directory-specific sorting
                 if long_format:
-                    _show_long_format(entries, human_readable, use_color, tape_status, fs)
+                    await _show_long_format(entries, human_readable, use_color, tape_status, fs)
                 else:
-                    _show_simple_format(entries, use_color, tape_status, fs)
+                    await _show_simple_format(entries, use_color, tape_status, fs)
+                progress_tracker.clear()
                 return
         except Exception:
             # If info() fails, fallback to trying ls() - might be a directory
+            progress_tracker.log("⚠️ Path info failed, trying directory listing...")
             pass
         
         # Get directory contents
+        progress_tracker.log("📁 Listing directory contents...")
         entries = fs.ls(path, detail=True)
+        progress_tracker.log(f"✅ Found {len(entries)} items")
         
         # Filter hidden files if not showing all
         if not show_all:
@@ -793,26 +844,43 @@ def _perform_real_listing(fs, path: str, long_format: bool, show_all: bool,
             console.print("[dim]Empty directory[/dim]")
             return
         
+        # Get tape status in batch if async is enabled
+        batch_status = {}
+        if tape_status and async_status and hasattr(fs, 'check_online_status_batch'):
+            progress_tracker.log("🎯 Starting batch tape status check...")
+            batch_status = await _get_tape_status_batch(fs, entries, show_progress=False)  # Use our tracker instead
+            progress_tracker.log(f"✅ Batch status completed ({len(batch_status)} items)")
+        
+        progress_tracker.log("🖨️ Formatting output...")
         if long_format:
-            _show_long_format(entries, human_readable, use_color, tape_status, fs)
+            await _show_long_format(entries, human_readable, use_color, tape_status, fs, async_status, batch_status)
         else:
-            _show_simple_format(entries, use_color, tape_status, fs)
+            await _show_simple_format(entries, use_color, tape_status, fs, async_status, batch_status)
+        progress_tracker.log("✅ Output complete")
             
         if recursive:
             # Recursively list subdirectories
-            for entry in entries:
-                if entry['type'] == 'directory':
-                    console.print(f"\n[bold]{entry['name']}:[/bold]")
-                    _perform_real_listing(fs, entry['name'], long_format, show_all,
-                                        human_readable, sort_time, sort_size, 
-                                        reverse_sort, False, use_color, tape_status, location, async_status)
+            dirs = [e for e in entries if e['type'] == 'directory']
+            progress_tracker.log(f"🔄 Recursing into {len(dirs)} subdirectories...")
+            for i, entry in enumerate(dirs):
+                progress_tracker.log(f"📂 [{i+1}/{len(dirs)}] Entering {entry['name'].split('/')[-1]}")
+                console.print(f"\n[bold]{entry['name']}:[/bold]")
+                await _perform_real_listing(fs, entry['name'], long_format, show_all,
+                                          human_readable, sort_time, sort_size, 
+                                          reverse_sort, False, use_color, tape_status, location, async_status, progress_tracker)
     
     except Exception as e:
+        progress_tracker.log(f"❌ Error: {str(e)}")
+        progress_tracker.clear()
         console.print(f"[red]Error accessing filesystem:[/red] {str(e)}")
         raise
+    finally:
+        # Always clear progress display when done
+        if progress_tracker:
+            progress_tracker.clear()
 
 
-def _show_long_format(entries, human_readable: bool, use_color: bool, tape_status: bool = False, fs=None):
+async def _show_long_format(entries, human_readable: bool, use_color: bool, tape_status: bool = False, fs=None, async_status: bool = False, batch_status: dict = None):
     """Show entries in long format."""
     from datetime import datetime
     
@@ -856,7 +924,10 @@ def _show_long_format(entries, human_readable: bool, use_color: bool, tape_statu
         
         # Tape status (ScoutFS only)
         if tape_status:
-            tape_status_str = _get_tape_status(fs, entry['name'], entry['type'])
+            if async_status and batch_status and entry['name'] in batch_status:
+                tape_status_str = batch_status[entry['name']]
+            else:
+                tape_status_str = _get_tape_status(fs, entry['name'], entry['type'])
             table.add_row(perms, size_str, mod_time, tape_status_str, name)
         else:
             table.add_row(perms, size_str, mod_time, name)
@@ -868,7 +939,7 @@ def _show_long_format(entries, human_readable: bool, use_color: bool, tape_statu
     console.print(table)
 
 
-def _show_simple_format(entries, use_color: bool, tape_status: bool = False, fs=None):
+async def _show_simple_format(entries, use_color: bool, tape_status: bool = False, fs=None, async_status: bool = False, batch_status: dict = None):
     """Show entries in simple format."""
     items = []
     for entry in entries:
@@ -883,7 +954,10 @@ def _show_simple_format(entries, use_color: bool, tape_status: bool = False, fs=
             
         # Add tape status indicator for files
         if tape_status and entry['type'] != 'directory':
-            status = _get_tape_status(fs, entry['name'], entry['type'])
+            if async_status and batch_status and entry['name'] in batch_status:
+                status = batch_status[entry['name']]
+            else:
+                status = _get_tape_status(fs, entry['name'], entry['type'])
             item = f"{item} {status}"
             
         items.append(item)
@@ -981,7 +1055,7 @@ async def _get_tape_status_batch(fs, entries, show_progress=True) -> dict:
     
     # Show progress if requested
     if show_progress:
-        from rich.progress import Progress, TextColumn, SpinnerColumn
+        from rich.progress import Progress, SpinnerColumn, TextColumn
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -1071,9 +1145,11 @@ def _perform_simple_listing(path: str, long_format: bool, show_all: bool,
             return
         
         if long_format:
-            _show_long_format(entries, human_readable, use_color, tape_status, fs)
+            import asyncio
+            asyncio.run(_show_long_format(entries, human_readable, use_color, False, None))  # No tape status for simple listing
         else:
-            _show_simple_format(entries, use_color, tape_status, fs)
+            import asyncio
+            asyncio.run(_show_simple_format(entries, use_color, False, None))  # No tape status for simple listing
             
         if recursive:
             # Recursively list subdirectories
@@ -1114,8 +1190,8 @@ def put_file(sim_id: str, location_name: str, local_file: str = None, remote_pat
         tellus simulation location put MIS11.3-B tellus_hsm --glob "*.nc" /remote/output/
         tellus simulation location put MIS11.3-B tellus_hsm --interactive
     """
-    import os
     import glob as glob_module
+    import os
     from pathlib import Path
     
     try:
@@ -1145,9 +1221,21 @@ def put_file(sim_id: str, location_name: str, local_file: str = None, remote_pat
             console.print(f"[red]Error:[/red] Could not access location '{location_name}': {str(e)}")
             return
             
-        # Get location context for path resolution
-        context = sim.get_location_context(location_name) if hasattr(sim, 'get_location_context') else {}
-        path_prefix = context.get('path_prefix', '') if context else ''
+        # Use PathResolutionService for consistent path resolution
+        path_service = container.service_factory.path_resolution_service
+        
+        # Resolve the base path for this simulation-location
+        base_resolved_path = path_service.resolve_simulation_location_path(sim_id, location_name, ".")
+        
+        # Calculate relative path from base path for filesystem access
+        if location is not None:
+            base_path = location.get_base_path().rstrip('/')
+            if base_resolved_path.startswith(base_path):
+                resolved_path = base_resolved_path[len(base_path):].lstrip('/')
+            else:
+                resolved_path = base_resolved_path
+        else:
+            resolved_path = "."
         
         # Handle different input modes
         files_to_upload = []
@@ -1155,9 +1243,10 @@ def put_file(sim_id: str, location_name: str, local_file: str = None, remote_pat
         
         if interactive:
             # Interactive file selection using questionary
-            import questionary
             from pathlib import Path
-            
+
+            import questionary
+
             # Get current directory files
             current_dir = Path.cwd()
             all_files = [f for f in current_dir.rglob('*') if f.is_file()]
@@ -1213,15 +1302,20 @@ def put_file(sim_id: str, location_name: str, local_file: str = None, remote_pat
         
         # Upload files
         for local_path, remote_name in files_to_upload:
-            # Resolve remote path with context
+            # Resolve remote path using PathResolutionService logic
             if remote_path and remote_path.startswith('/'):
-                # Absolute path
-                resolved_remote = remote_path
-            elif path_prefix:
-                # Use path prefix
-                resolved_remote = f"{path_prefix.rstrip(' /')}/{remote_name.lstrip('/')}"
+                # Absolute path - need to compute relative path for filesystem
+                if location is not None:
+                    base_path = location.get_base_path().rstrip('/')
+                    if remote_path.startswith(base_path):
+                        resolved_remote = remote_path[len(base_path):].lstrip('/')
+                    else:
+                        resolved_remote = remote_path
+                else:
+                    resolved_remote = remote_path
             else:
-                resolved_remote = remote_name
+                # Relative path - combine with resolved base path
+                resolved_remote = f"{resolved_path}/{remote_name.lstrip('/')}" if resolved_path != "." else remote_name
                 
             try:
                 # Check if file exists and handle overwrite
@@ -1231,36 +1325,46 @@ def put_file(sim_id: str, location_name: str, local_file: str = None, remote_pat
                     
                 # Create progress callback if requested
                 if progress:
-                    from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
+                    from rich.progress import (BarColumn, Progress, SpinnerColumn, 
+                                               TextColumn, DownloadColumn, TransferSpeedColumn)
                     
                     file_size = os.path.getsize(local_path)
+                    
                     with Progress(
                         SpinnerColumn(),
                         TextColumn("[progress.description]{task.description}"),
                         BarColumn(),
-                        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                        DownloadColumn(),
+                        TransferSpeedColumn(),
                         console=console
                     ) as prog:
                         task = prog.add_task(f"Uploading {os.path.basename(local_path)}", total=file_size)
                         
-                        # Create proper fsspec callback for upload progress
+                        # Create proper fsspec callback
                         from fsspec.callbacks import Callback
                         
                         class ProgressCallback(Callback):
-                            def __init__(self, progress_obj, task_id):
-                                super().__init__()
-                                self.prog = progress_obj
+                            def __init__(self, prog_instance, task_id, size=None):
+                                super().__init__(size=size)
+                                self.prog = prog_instance
                                 self.task = task_id
                                 
                             def set_size(self, size):
-                                """Called when file size is known"""
+                                """Called when file size is determined"""
+                                super().set_size(size)
                                 self.prog.update(self.task, total=size)
                                 
                             def absolute_update(self, value):
                                 """Called with absolute bytes transferred"""
+                                super().absolute_update(value)
                                 self.prog.update(self.task, completed=value)
+                                
+                            def relative_update(self, inc=1):
+                                """Called with incremental bytes transferred"""
+                                super().relative_update(inc)
+                                self.prog.advance(self.task, inc)
                         
-                        callback = ProgressCallback(prog, task)
+                        callback = ProgressCallback(prog, task, file_size)
                         
                         # Upload with progress callback
                         fs.put(local_path, resolved_remote, callback=callback)
@@ -1331,9 +1435,21 @@ def get_file(sim_id: str, location_name: str, remote_file: str = None, local_pat
             console.print(f"[red]Error:[/red] Could not access location '{location_name}': {str(e)}")
             return
             
-        # Get location context for path resolution
-        context = sim.get_location_context(location_name) if hasattr(sim, 'get_location_context') else {}
-        path_prefix = context.get('path_prefix', '') if context else ''
+        # Use PathResolutionService for consistent path resolution
+        path_service = container.service_factory.path_resolution_service
+        
+        # Resolve the base path for this simulation-location
+        base_resolved_path = path_service.resolve_simulation_location_path(sim_id, location_name, ".")
+        
+        # Calculate relative path from base path for filesystem access
+        if location is not None:
+            base_path = location.get_base_path().rstrip('/')
+            if base_resolved_path.startswith(base_path):
+                resolved_path = base_resolved_path[len(base_path):].lstrip('/')
+            else:
+                resolved_path = base_resolved_path
+        else:
+            resolved_path = "."
         
         # Handle different input modes
         files_to_download = []
@@ -1342,17 +1458,15 @@ def get_file(sim_id: str, location_name: str, remote_file: str = None, local_pat
         if interactive:
             # Interactive file selection using questionary
             import questionary
-            
+
             # Get remote directory listing  
             try:
-                # Use the same path resolution logic as ls command
-                base_path = path_prefix.rstrip('/ ') if path_prefix else '.'
-                console.print(f"[dim]Listing files at: {base_path}[/dim]")
-                entries = fs.ls(base_path, detail=True)
+                console.print(f"[dim]Listing files at: {resolved_path}[/dim]")
+                entries = fs.ls(resolved_path, detail=True)
                 file_choices = [entry['name'].split('/')[-1] for entry in entries if entry['type'] != 'directory']
                 
                 if not file_choices:
-                    console.print(f"[yellow]No files found in remote location '{base_path}'[/yellow]")
+                    console.print(f"[yellow]No files found in remote location '{resolved_path}'[/yellow]")
                     return
                     
                 selected_file = questionary.select(
@@ -1379,8 +1493,7 @@ def get_file(sim_id: str, location_name: str, remote_file: str = None, local_pat
             # Glob pattern selection on remote
             try:
                 import fnmatch
-                base_path = path_prefix.rstrip(' /') if path_prefix else '.'
-                entries = fs.ls(base_path, detail=True)
+                entries = fs.ls(resolved_path, detail=True)
                 matching_files = []
                 
                 for entry in entries:
@@ -1412,15 +1525,20 @@ def get_file(sim_id: str, location_name: str, remote_file: str = None, local_pat
         
         # Download files
         for remote_name, local_name in files_to_download:
-            # Resolve remote path with context
+            # Resolve remote path using PathResolutionService
             if remote_name.startswith('/'):
-                # Absolute path
-                resolved_remote = remote_name
-            elif path_prefix:
-                # Use path prefix
-                resolved_remote = f"{path_prefix.rstrip(' /')}/{remote_name.lstrip('/')}"
+                # Absolute path - need to compute relative path for filesystem
+                if location is not None:
+                    base_path = location.get_base_path().rstrip('/')
+                    if remote_name.startswith(base_path):
+                        resolved_remote = remote_name[len(base_path):].lstrip('/')
+                    else:
+                        resolved_remote = remote_name
+                else:
+                    resolved_remote = remote_name
             else:
-                resolved_remote = remote_name
+                # Relative path - combine with resolved base path
+                resolved_remote = f"{resolved_path}/{remote_name.lstrip('/')}" if resolved_path != "." else remote_name
                 
             try:
                 # Check if local file exists and handle overwrite
@@ -1435,41 +1553,61 @@ def get_file(sim_id: str, location_name: str, remote_file: str = None, local_pat
                     
                 # Create progress callback if requested
                 if progress:
-                    from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
+                    from rich.progress import (BarColumn, Progress, SpinnerColumn, 
+                                               TextColumn, DownloadColumn, TransferSpeedColumn)
                     
                     try:
                         file_info = fs.info(resolved_remote)
                         file_size = file_info.get('size', 0)
-                    except:
+                        console.print(f"[dim]Debug: file_info = {file_info}[/dim]")
+                        console.print(f"[dim]Debug: extracted file_size = {file_size}[/dim]")
+                    except Exception as e:
+                        console.print(f"[dim]Debug: fs.info() failed: {e}[/dim]")
                         file_size = 0
                         
                     with Progress(
                         SpinnerColumn(),
                         TextColumn("[progress.description]{task.description}"),
                         BarColumn(),
-                        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                        DownloadColumn(),
+                        TransferSpeedColumn(),
                         console=console
                     ) as prog:
                         task = prog.add_task(f"Downloading {remote_name}", total=file_size)
                         
-                        # Create proper fsspec callback for download progress
+                        # Create proper fsspec callback with debugging
                         from fsspec.callbacks import Callback
                         
-                        class ProgressCallback(Callback):
-                            def __init__(self, progress_obj, task_id):
-                                super().__init__()
-                                self.prog = progress_obj
+                        class DownloadProgressCallback(Callback):
+                            def __init__(self, prog_instance, task_id, size=None):
+                                console.print(f"[dim]Debug: DownloadProgressCallback init with size={size}[/dim]")
+                                super().__init__(size=size)
+                                self.prog = prog_instance
                                 self.task = task_id
                                 
                             def set_size(self, size):
-                                """Called when file size is known"""
-                                self.prog.update(self.task, total=size)
+                                """Called when file size is determined"""
+                                console.print(f"[dim]Debug: set_size called with size={size}, current size={self.size}[/dim]")
+                                # Only update if we don't have a size or the new size is larger
+                                if self.size is None or self.size == 0 or size > self.size:
+                                    super().set_size(size)
+                                    self.prog.update(self.task, total=size)
+                                else:
+                                    console.print(f"[dim]Debug: ignoring set_size({size}) because we have better size={self.size}[/dim]")
                                 
                             def absolute_update(self, value):
                                 """Called with absolute bytes transferred"""
+                                console.print(f"[dim]Debug: absolute_update called with value={value}[/dim]")
+                                super().absolute_update(value)
                                 self.prog.update(self.task, completed=value)
+                                
+                            def relative_update(self, inc=1):
+                                """Called with incremental bytes transferred"""
+                                console.print(f"[dim]Debug: relative_update called with inc={inc}[/dim]")
+                                super().relative_update(inc)
+                                self.prog.advance(self.task, inc)
                         
-                        callback = ProgressCallback(prog, task)
+                        callback = DownloadProgressCallback(prog, task, file_size)
                         
                         # Download with progress callback
                         fs.get(resolved_remote, local_name, callback=callback)
@@ -1511,10 +1649,10 @@ def mput_files(sim_id: str, location_name: str, pattern: str = None,
         tellus simulation location mput MIS11.3-B tellus_hsm "data/*" --recursive
         tellus simulation location mput MIS11.3-B tellus_hsm "*.txt" --exclude "*.tmp"
     """
-    import os
-    import glob as glob_module
-    from pathlib import Path
     import fnmatch
+    import glob as glob_module
+    import os
+    from pathlib import Path
     
     try:
         # Get the simulation to verify location association
@@ -1543,9 +1681,21 @@ def mput_files(sim_id: str, location_name: str, pattern: str = None,
             console.print(f"[red]Error:[/red] Could not access location '{location_name}': {str(e)}")
             return
             
-        # Get location context for path resolution
-        context = sim.get_location_context(location_name) if hasattr(sim, 'get_location_context') else {}
-        path_prefix = context.get('path_prefix', '') if context else ''
+        # Use PathResolutionService for consistent path resolution
+        path_service = container.service_factory.path_resolution_service
+        
+        # Resolve the base path for this simulation-location
+        base_resolved_path = path_service.resolve_simulation_location_path(sim_id, location_name, ".")
+        
+        # Calculate relative path from base path for filesystem access
+        if location is not None:
+            base_path = location.get_base_path().rstrip('/')
+            if base_resolved_path.startswith(base_path):
+                resolved_path = base_resolved_path[len(base_path):].lstrip('/')
+            else:
+                resolved_path = base_resolved_path
+        else:
+            resolved_path = "."
         
         # Handle different input modes
         files_to_upload = []
@@ -1654,7 +1804,8 @@ def mput_files(sim_id: str, location_name: str, pattern: str = None,
         failed_uploads = 0
         
         if progress and len(files_to_upload) > 1:
-            from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, MofNCompleteColumn
+            from rich.progress import (BarColumn, MofNCompleteColumn, Progress,
+                                       SpinnerColumn, TextColumn)
             
             with Progress(
                 SpinnerColumn(),
@@ -1667,11 +1818,20 @@ def mput_files(sim_id: str, location_name: str, pattern: str = None,
                 overall_task = prog.add_task("Uploading files...", total=len(files_to_upload))
                 
                 for local_path, remote_name in files_to_upload:
-                    # Resolve remote path with context
-                    if path_prefix:
-                        resolved_remote = f"{path_prefix.rstrip(' /')}/{remote_name.lstrip('/')}"
+                    # Resolve remote path using PathResolutionService logic
+                    if remote_name.startswith('/'):
+                        # Absolute path - need to compute relative path for filesystem
+                        if location is not None:
+                            base_path = location.get_base_path().rstrip('/')
+                            if remote_name.startswith(base_path):
+                                resolved_remote = remote_name[len(base_path):].lstrip('/')
+                            else:
+                                resolved_remote = remote_name
+                        else:
+                            resolved_remote = remote_name
                     else:
-                        resolved_remote = remote_name
+                        # Relative path - combine with resolved base path
+                        resolved_remote = f"{resolved_path}/{remote_name.lstrip('/')}" if resolved_path != "." else remote_name
                         
                     # Create remote directory if needed
                     remote_dir = os.path.dirname(resolved_remote)
@@ -1702,11 +1862,20 @@ def mput_files(sim_id: str, location_name: str, pattern: str = None,
         else:
             # Upload without overall progress
             for local_path, remote_name in files_to_upload:
-                # Resolve remote path with context
-                if path_prefix:
-                    resolved_remote = f"{path_prefix.rstrip(' /')}/{remote_name.lstrip('/')}"
+                # Resolve remote path using PathResolutionService logic
+                if remote_name.startswith('/'):
+                    # Absolute path - need to compute relative path for filesystem
+                    if location is not None:
+                        base_path = location.get_base_path().rstrip('/')
+                        if remote_name.startswith(base_path):
+                            resolved_remote = remote_name[len(base_path):].lstrip('/')
+                        else:
+                            resolved_remote = remote_name
+                    else:
+                        resolved_remote = remote_name
                 else:
-                    resolved_remote = remote_name
+                    # Relative path - combine with resolved base path
+                    resolved_remote = f"{resolved_path}/{remote_name.lstrip('/')}" if resolved_path != "." else remote_name
                     
                 # Create remote directory if needed
                 remote_dir = os.path.dirname(resolved_remote)
@@ -1761,9 +1930,9 @@ def mget_files(sim_id: str, location_name: str, pattern: str = None,
         tellus simulation location mget MIS11.3-B tellus_hsm "*.txt" --output-dir ./downloads/
         tellus simulation location mget MIS11.3-B tellus_hsm "*" --exclude "*.tmp" --recursive
     """
+    import fnmatch
     import os
     from pathlib import Path
-    import fnmatch
     
     try:
         # Get the simulation to verify location association
@@ -1792,9 +1961,21 @@ def mget_files(sim_id: str, location_name: str, pattern: str = None,
             console.print(f"[red]Error:[/red] Could not access location '{location_name}': {str(e)}")
             return
             
-        # Get location context for path resolution
-        context = sim.get_location_context(location_name) if hasattr(sim, 'get_location_context') else {}
-        path_prefix = context.get('path_prefix', '') if context else ''
+        # Use PathResolutionService for consistent path resolution
+        path_service = container.service_factory.path_resolution_service
+        
+        # Resolve the base path for this simulation-location
+        base_resolved_path = path_service.resolve_simulation_location_path(sim_id, location_name, ".")
+        
+        # Calculate relative path from base path for filesystem access
+        if location is not None:
+            base_path = location.get_base_path().rstrip('/')
+            if base_resolved_path.startswith(base_path):
+                resolved_path = base_resolved_path[len(base_path):].lstrip('/')
+            else:
+                resolved_path = base_resolved_path
+        else:
+            resolved_path = "."
         
         # Set up output directory
         output_path = Path(output_dir) if output_dir else Path.cwd()
@@ -1809,7 +1990,7 @@ def mget_files(sim_id: str, location_name: str, pattern: str = None,
             import questionary
             
             try:
-                base_path = path_prefix.rstrip(' /') if path_prefix else '.'
+                base_path = resolved_path
                 
                 def get_remote_items(remote_path, prefix=""):
                     """Recursively get remote items for display."""
@@ -1867,7 +2048,7 @@ def mget_files(sim_id: str, location_name: str, pattern: str = None,
         else:
             # Pattern-based selection
             try:
-                base_path = path_prefix.rstrip(' /') if path_prefix else '.'
+                base_path = resolved_path
                 
                 def find_matching_files(remote_path, current_pattern):
                     """Find files matching pattern recursively."""
@@ -1923,7 +2104,8 @@ def mget_files(sim_id: str, location_name: str, pattern: str = None,
         failed_downloads = 0
         
         if progress and len(files_to_download) > 1:
-            from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, MofNCompleteColumn
+            from rich.progress import (BarColumn, MofNCompleteColumn, Progress,
+                                       SpinnerColumn, TextColumn)
             
             with Progress(
                 SpinnerColumn(),
@@ -1936,11 +2118,20 @@ def mget_files(sim_id: str, location_name: str, pattern: str = None,
                 overall_task = prog.add_task("Downloading files...", total=len(files_to_download))
                 
                 for remote_name, local_name in files_to_download:
-                    # Resolve remote path with context
-                    if path_prefix:
-                        resolved_remote = f"{path_prefix.rstrip(' /')}/{remote_name.lstrip('/')}"
+                    # Resolve remote path using PathResolutionService logic
+                    if remote_name.startswith('/'):
+                        # Absolute path - need to compute relative path for filesystem
+                        if location is not None:
+                            base_path = location.get_base_path().rstrip('/')
+                            if remote_name.startswith(base_path):
+                                resolved_remote = remote_name[len(base_path):].lstrip('/')
+                            else:
+                                resolved_remote = remote_name
+                        else:
+                            resolved_remote = remote_name
                     else:
-                        resolved_remote = remote_name
+                        # Relative path - combine with resolved base path
+                        resolved_remote = f"{resolved_path}/{remote_name.lstrip('/')}" if resolved_path != "." else remote_name
                         
                     try:
                         # Check if local file exists and handle overwrite
@@ -1968,11 +2159,20 @@ def mget_files(sim_id: str, location_name: str, pattern: str = None,
         else:
             # Download without overall progress
             for remote_name, local_name in files_to_download:
-                # Resolve remote path with context
-                if path_prefix:
-                    resolved_remote = f"{path_prefix.rstrip(' /')}/{remote_name.lstrip('/')}"
+                # Resolve remote path using PathResolutionService logic
+                if remote_name.startswith('/'):
+                    # Absolute path - need to compute relative path for filesystem
+                    if location is not None:
+                        base_path = location.get_base_path().rstrip('/')
+                        if remote_name.startswith(base_path):
+                            resolved_remote = remote_name[len(base_path):].lstrip('/')
+                        else:
+                            resolved_remote = remote_name
+                    else:
+                        resolved_remote = remote_name
                 else:
-                    resolved_remote = remote_name
+                    # Relative path - combine with resolved base path
+                    resolved_remote = f"{resolved_path}/{remote_name.lstrip('/')}" if resolved_path != "." else remote_name
                     
                 try:
                     # Check if local file exists and handle overwrite
@@ -2011,38 +2211,396 @@ def simulation_files():
 @click.argument("sim_id")
 @click.option("--location", help="Filter by location")
 @click.option("--content-type", help="Filter by content type")
-def list_files(sim_id: str, location: str = None, content_type: str = None):
+@click.option("--type", help="Filter by file type (regular, archive, directory)")
+def list_files(sim_id: str, location: str = None, content_type: str = None, type: str = None):
     """List files associated with a simulation."""
     try:
-        service = _get_simulation_service()
-        sim = service.get_simulation(sim_id)
+        container = get_service_container()
+        unified_service = container.service_factory.unified_file_service
+        simulation_service = container.service_factory.simulation_service
         
-        # For now, provide basic information about what would be shown
-        table = Table(title=f"Files for Simulation: {sim_id}")
-        table.add_column("Path", style="cyan")
-        table.add_column("Size", style="green")
-        table.add_column("Type", style="yellow")
-        table.add_column("Location", style="blue")
-        table.add_column("Last Modified", style="magenta")
+        # Verify simulation exists
+        sim = simulation_service.get_simulation(sim_id)
+        if not sim:
+            _handle_simulation_not_found(sim_id, simulation_service)
+            return
         
-        # Show example/placeholder files that would be discovered
-        # This would normally come from the file tracking service
+        # Get files associated with this simulation
+        files = unified_service.get_simulation_files(sim_id)
+        
+        # Apply filters
+        if location:
+            files = [f for f in files if f.is_available_at_location(location)]
+        if content_type:
+            from ...domain.entities.simulation_file import FileContentType
+            try:
+                content_type_enum = FileContentType(content_type.lower())
+                files = [f for f in files if f.content_type == content_type_enum]
+            except ValueError:
+                console.print(f"[red]Error:[/red] Invalid content type: {content_type}")
+                console.print(f"Valid types: {', '.join([ct.value for ct in FileContentType])}")
+                return
+        if type:
+            from ...domain.entities.simulation_file import FileType
+            try:
+                file_type_enum = FileType(type.lower())
+                files = [f for f in files if f.file_type == file_type_enum]
+            except ValueError:
+                console.print(f"[red]Error:[/red] Invalid file type: {type}")
+                console.print(f"Valid types: {', '.join([ft.value for ft in FileType])}")
+                return
+        
+        if not files:
+            console.print(f"[yellow]No files found for simulation '{sim_id}'[/yellow]")
+            if location or content_type or type:
+                console.print("[dim]Try removing filters to see if files exist[/dim]")
+            else:
+                console.print("[dim]Use 'tellus simulation files add' to register files from archives[/dim]")
+            return
+        
+        # Show summary info
         console.print(f"[dim]Simulation locations: {', '.join(sim.associated_locations) if sim.associated_locations else 'none'}[/dim]")
-        
         if location:
             console.print(f"[dim]Filtering by location: {location}[/dim]")
         if content_type:
             console.print(f"[dim]Filtering by content type: {content_type}[/dim]")
+        if type:
+            console.print(f"[dim]Filtering by file type: {type}[/dim]")
         
-        # Show placeholder message
+        # Create and populate table
+        table = Table(title=f"Files for Simulation: {sim_id} ({len(files)} files)")
+        table.add_column("Path", style="cyan", no_wrap=False)
+        table.add_column("Size", style="green", justify="right")
+        table.add_column("Content Type", style="yellow")
+        table.add_column("File Type", style="magenta")
+        table.add_column("Location", style="blue")
+        table.add_column("Source", style="dim")
+        
+        # Sort files by path for consistent display
+        files.sort(key=lambda f: f.relative_path)
+        
+        for file in files:
+            # Format file size
+            if file.size:
+                if file.size > 1024**3:  # GB
+                    size_str = f"{file.size / (1024**3):.1f} GB"
+                elif file.size > 1024**2:  # MB
+                    size_str = f"{file.size / (1024**2):.1f} MB"
+                elif file.size > 1024:  # KB
+                    size_str = f"{file.size / 1024:.1f} KB"
+                else:
+                    size_str = f"{file.size} B"
+            else:
+                size_str = "Unknown"
+            
+            # Determine source (archive or direct)
+            if file.source_archives:
+                source = f"Archive: {', '.join(list(file.source_archives)[:2])}"
+                if len(file.source_archives) > 2:
+                    source += f" +{len(file.source_archives) - 2}"
+            else:
+                source = "Direct"
+            
+            table.add_row(
+                file.relative_path,
+                size_str,
+                file.content_type.value,
+                file.file_type.value,
+                file.location_name or "Unknown",
+                source
+            )
+        
         console.print(Panel.fit(table))
-        console.print("[yellow]Note:[/yellow] File discovery and tracking is not yet fully implemented.")
-        console.print("This command would show:")
-        console.print("• All files associated with this simulation")
-        console.print("• Files discovered in associated locations") 
-        console.print("• File metadata (size, type, modification time)")
-        console.print("• Content type classification (model output, logs, etc.)")
         
+        # Show summary statistics
+        total_size = sum(f.size or 0 for f in files)
+        archive_files = [f for f in files if f.file_type.value == 'archive']
+        regular_files = [f for f in files if f.file_type.value == 'regular']
+        
+        console.print(f"[dim]Summary: {len(files)} total files, {len(regular_files)} regular, {len(archive_files)} archives")
+        if total_size > 0:
+            if total_size > 1024**3:  # GB
+                console.print(f"[dim]Total size: {total_size / (1024**3):.1f} GB[/dim]")
+            else:
+                console.print(f"[dim]Total size: {total_size / (1024**2):.1f} MB[/dim]")
+        
+    except EntityNotFoundError:
+        _handle_simulation_not_found(sim_id, simulation_service)
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@simulation_files.command(name="add")
+@click.argument("sim_id")
+@click.option("--from-archive", required=True, help="Archive ID to register files from")
+@click.option("--content-type", help="Filter files by content type (input, output, log, config)")
+@click.option("--pattern", help="Filter files by pattern (glob)")
+@click.option("--overwrite", is_flag=True, help="Overwrite existing file registrations")
+@click.option("--dry-run", is_flag=True, help="Show what would be registered without making changes")
+def add_files(sim_id: str, from_archive: str, content_type: str = None, pattern: str = None, 
+              overwrite: bool = False, dry_run: bool = False):
+    """Add (register) files from an archive to this simulation.
+    
+    This is similar to 'git add' - it registers files from an archive as being
+    associated with this simulation for tracking and provenance.
+    
+    Examples:
+    
+        # Register all files from an archive
+        tellus simulation files add my-sim --from-archive my-archive
+        
+        # Register only output files  
+        tellus simulation files add my-sim --from-archive my-archive --content-type output
+        
+        # Register files matching a pattern
+        tellus simulation files add my-sim --from-archive my-archive --pattern "*.nc"
+        
+        # Preview what would be registered
+        tellus simulation files add my-sim --from-archive my-archive --dry-run
+    """
+    try:
+        container = get_service_container()
+        unified_service = container.service_factory.unified_file_service
+        simulation_service = container.service_factory.simulation_service
+        
+        registration_dto = FileRegistrationDto(
+            archive_id=from_archive,
+            simulation_id=sim_id,
+            overwrite_existing=overwrite,
+            content_type_filter=content_type,
+            pattern_filter=pattern,
+            preserve_archive_references=True
+        )
+        
+        if dry_run:
+            # Get files that would be registered  
+            # For dry-run, we need to get files from archive to preview
+            # The unified service doesn't have this exact method yet, so use simulation service for preview
+            try:
+                archive_service = container.service_factory.archive_service
+                archive_files = archive_service.get_archive_files_for_simulation(
+                    from_archive, sim_id, content_type, pattern
+                )
+            except Exception:
+                # Fallback if archive service fails
+                archive_files = []
+            
+            console.print(f"[yellow]Dry run:[/yellow] Would register {len(archive_files)} files from archive '{from_archive}'")
+            
+            if archive_files:
+                table = Table(title="Files to be registered")
+                table.add_column("Path", style="cyan")
+                table.add_column("Size", style="green") 
+                table.add_column("Type", style="yellow")
+                table.add_column("Archive", style="blue")
+                
+                for file in archive_files[:10]:  # Show first 10
+                    table.add_row(
+                        file.relative_path,
+                        f"{file.size:,} bytes" if file.size else "Unknown",
+                        file.content_type.value if file.content_type else "Unknown",
+                        from_archive
+                    )
+                
+                console.print(Panel.fit(table))
+                if len(archive_files) > 10:
+                    console.print(f"[dim]... and {len(archive_files) - 10} more files[/dim]")
+            
+            console.print("[dim]Use without --dry-run to register these files[/dim]")
+            return
+        
+        result = unified_service.register_files_to_simulation(registration_dto)
+        
+        if result.success:
+            console.print(f"[green]✓[/green] Successfully registered files from archive '{from_archive}':")
+            console.print(f"  • {result.files_registered} files registered")
+            console.print(f"  • {result.files_updated} files updated") 
+            console.print(f"  • {result.files_skipped} files skipped")
+        else:
+            console.print(f"[red]Error:[/red] {result.error_message}")
+            
+    except EntityNotFoundError as e:
+        if "simulation" in str(e).lower():
+            _handle_simulation_not_found(sim_id, simulation_service)
+        else:
+            console.print(f"[red]Error:[/red] Archive '{from_archive}' not found")
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@simulation_files.command(name="rm")
+@click.argument("sim_id")
+@click.option("--from-archive", required=True, help="Archive ID to unregister files from")
+@click.option("--content-type", help="Filter files by content type")
+@click.option("--pattern", help="Filter files by pattern (glob)")
+@click.option("--force", is_flag=True, help="Force removal without confirmation")
+@click.option("--dry-run", is_flag=True, help="Show what would be removed without making changes")
+def remove_files(sim_id: str, from_archive: str, content_type: str = None, pattern: str = None,
+                force: bool = False, dry_run: bool = False):
+    """Remove (unregister) files from this simulation.
+    
+    This is similar to 'git rm' - it removes the association between files and this
+    simulation, but doesn't delete the actual files from archives.
+    
+    Examples:
+    
+        # Remove all files from a specific archive
+        tellus simulation files rm my-sim --from-archive my-archive
+        
+        # Remove only output files
+        tellus simulation files rm my-sim --from-archive my-archive --content-type output
+        
+        # Preview what would be removed
+        tellus simulation files rm my-sim --from-archive my-archive --dry-run
+    """
+    try:
+        container = get_service_container()
+        simulation_service = container.service_factory.simulation_service
+        
+        if dry_run:
+            # Get current files to show what would be removed
+            files = simulation_service.get_simulation_files(sim_id)
+            matching_files = [
+                f for f in files 
+                if from_archive in f.source_archives and
+                (not content_type or f.content_type.value == content_type) and
+                (not pattern or f.matches_pattern(pattern))
+            ]
+            
+            console.print(f"[yellow]Dry run:[/yellow] Would remove {len(matching_files)} files")
+            
+            if matching_files:
+                table = Table(title="Files to be removed")
+                table.add_column("Path", style="cyan")
+                table.add_column("Type", style="yellow")
+                table.add_column("Archive", style="blue")
+                
+                for file in matching_files[:10]:  # Show first 10
+                    table.add_row(
+                        file.relative_path,
+                        file.content_type.value if file.content_type else "Unknown", 
+                        from_archive
+                    )
+                
+                console.print(Panel.fit(table))
+                if len(matching_files) > 10:
+                    console.print(f"[dim]... and {len(matching_files) - 10} more files[/dim]")
+            
+            console.print("[dim]Use without --dry-run to remove these files[/dim]")
+            return
+        
+        if not force:
+            if not click.confirm(f"Remove file associations from archive '{from_archive}' for simulation '{sim_id}'?"):
+                console.print("[yellow]Removal cancelled.[/yellow]")
+                return
+        
+        result = simulation_service.unregister_archive_files(sim_id, from_archive, content_type, pattern)
+        
+        if result.success:
+            console.print(f"[green]✓[/green] Successfully removed file associations:")
+            console.print(f"  • {result.files_removed} files unregistered")
+        else:
+            console.print(f"[red]Error:[/red] {result.error_message}")
+            
+    except EntityNotFoundError as e:
+        if "simulation" in str(e).lower():
+            _handle_simulation_not_found(sim_id, simulation_service)
+        else:
+            console.print(f"[red]Error:[/red] Archive '{from_archive}' not found")
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@simulation_files.command(name="status")  
+@click.argument("sim_id")
+@click.option("--show-archives", is_flag=True, help="Show which archives contain each file")
+@click.option("--content-type", help="Filter by content type")
+def status_files(sim_id: str, show_archives: bool = False, content_type: str = None):
+    """Show file status and archive associations.
+    
+    This is similar to 'git status' - it shows the current state of files
+    associated with this simulation and their archive sources.
+    
+    Examples:
+    
+        # Show file summary
+        tellus simulation files status my-sim
+        
+        # Show detailed archive information
+        tellus simulation files status my-sim --show-archives
+        
+        # Filter by content type
+        tellus simulation files status my-sim --content-type output
+    """
+    try:
+        container = get_service_container()
+        simulation_service = container.service_factory.simulation_service
+        
+        files = simulation_service.get_simulation_files(sim_id)
+        
+        if content_type:
+            files = [f for f in files if f.content_type and f.content_type.value == content_type]
+        
+        if not files:
+            console.print(f"[yellow]No files registered for simulation '{sim_id}'[/yellow]")
+            console.print("[dim]Use 'tellus simulation files add' to register files from archives[/dim]")
+            return
+        
+        # Summary statistics
+        total_files = len(files)
+        archives_used = set()
+        content_types = {}
+        
+        for file in files:
+            archives_used.update(file.source_archives)
+            if file.content_type:
+                content_type_name = file.content_type.value
+                content_types[content_type_name] = content_types.get(content_type_name, 0) + 1
+        
+        # Summary table
+        summary_table = Table(title=f"File Status for Simulation: {sim_id}")
+        summary_table.add_column("Metric", style="cyan")
+        summary_table.add_column("Value", style="green")
+        
+        summary_table.add_row("Total Files", str(total_files))
+        summary_table.add_row("Source Archives", str(len(archives_used)))
+        summary_table.add_row("Content Types", str(len(content_types)))
+        
+        console.print(Panel.fit(summary_table))
+        
+        # Content type breakdown
+        if content_types:
+            ct_table = Table(title="Files by Content Type")
+            ct_table.add_column("Type", style="yellow")
+            ct_table.add_column("Count", style="green")
+            
+            for ct, count in sorted(content_types.items()):
+                ct_table.add_row(ct, str(count))
+            
+            console.print(Panel.fit(ct_table))
+        
+        # Archive sources
+        if archives_used:
+            console.print(f"[cyan]Source Archives:[/cyan] {', '.join(sorted(archives_used))}")
+        
+        # Detailed file listing if requested
+        if show_archives:
+            file_table = Table(title="Files with Archive Sources")
+            file_table.add_column("Path", style="cyan")
+            file_table.add_column("Type", style="yellow")
+            file_table.add_column("Archives", style="blue")
+            
+            for file in sorted(files, key=lambda f: f.relative_path):
+                file_table.add_row(
+                    file.relative_path,
+                    file.content_type.value if file.content_type else "Unknown",
+                    ", ".join(sorted(file.source_archives))
+                )
+            
+            console.print(Panel.fit(file_table))
+            
+    except EntityNotFoundError:
+        _handle_simulation_not_found(sim_id, simulation_service)
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")
 

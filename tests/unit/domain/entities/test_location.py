@@ -5,13 +5,11 @@ These tests validate the location domain model including location kinds,
 storage configuration, and connection management.
 """
 
-import pytest
 from pathlib import Path
 
-from tellus.domain.entities.location import (
-    LocationKind,
-    LocationEntity
-)
+import pytest
+
+from tellus.domain.entities.location import LocationEntity, LocationKind
 
 
 class TestLocationKind:

@@ -8,11 +8,10 @@ import threading
 from pathlib import Path
 from typing import List, Optional, Set
 
-from ...domain.entities.archive import ArchiveMetadata, ArchiveId, ArchiveType, Checksum
+from ...domain.entities.archive import (ArchiveId, ArchiveMetadata,
+                                        ArchiveType, Checksum)
 from ...domain.repositories.archive_repository import IArchiveRepository
-from ...domain.repositories.exceptions import (
-    RepositoryError
-)
+from ...domain.repositories.exceptions import RepositoryError
 
 
 class JsonArchiveRepository(IArchiveRepository):
@@ -54,13 +53,15 @@ class JsonArchiveRepository(IArchiveRepository):
                     "location": archive.location,
                     "archive_type": archive.archive_type.value,
                     "simulation_id": archive.simulation_id,
+                    "archive_paths": list(archive.archive_paths),  # Store all paths where archive exists
                     "checksum": str(archive.checksum) if archive.checksum else None,
                     "size": archive.size,
                     "created_time": archive.created_time,
                     "simulation_date": archive.simulation_date,
                     "version": archive.version,
                     "description": archive.description,
-                    "tags": list(archive.tags)
+                    "tags": list(archive.tags),
+                    "path_prefix_to_strip": archive.path_prefix_to_strip
                 }
                 
                 data[archive_id_str] = archive_dict
@@ -230,19 +231,41 @@ class JsonArchiveRepository(IArchiveRepository):
                 location=data["location"],
                 archive_type=archive_type,
                 simulation_id=data.get("simulation_id"),
+                archive_paths=self._load_archive_paths(data),  # Load all paths - backward compatible
                 checksum=checksum,
                 size=data.get("size"),
                 created_time=data.get("created_time", 0),
                 simulation_date=data.get("simulation_date"),
                 version=data.get("version"),
                 description=data.get("description"),
-                tags=set(data.get("tags", []))
+                tags=set(data.get("tags", [])),
+                path_prefix_to_strip=data.get("path_prefix_to_strip")
             )
             
             return entity
             
         except Exception as e:
             raise RepositoryError(f"Failed to convert data to ArchiveMetadata: {e}")
+    
+    def _load_archive_paths(self, data: dict) -> set:
+        """Load archive paths with backward compatibility."""
+        # New format: archive_paths as list
+        if "archive_paths" in data:
+            return set(data["archive_paths"])
+        
+        # Backward compatibility: single archive_path
+        if "archive_path" in data and data["archive_path"]:
+            import warnings
+            warnings.warn(
+                f"Archive '{data.get('archive_id', 'unknown')}' uses deprecated 'archive_path' field. "
+                "Please update to use 'archive_paths' list format.",
+                DeprecationWarning,
+                stacklevel=3
+            )
+            return {data["archive_path"]}
+        
+        # No paths found
+        return set()
     
     def backup_data(self, backup_path: Path) -> None:
         """

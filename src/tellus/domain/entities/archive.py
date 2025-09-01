@@ -5,7 +5,7 @@ Archive-related domain entities and value objects.
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 
 if TYPE_CHECKING:
     from .simulation_file import FileInventory
@@ -126,6 +126,7 @@ class ArchiveMetadata:
     location: str
     archive_type: ArchiveType
     simulation_id: Optional[str] = None  # Which simulation this archive contains parts of
+    archive_paths: Set[str] = field(default_factory=set)  # All paths where this archive exists
     checksum: Optional[Checksum] = None
     size: Optional[int] = None
     created_time: float = field(default_factory=time.time)
@@ -133,6 +134,9 @@ class ArchiveMetadata:
     version: Optional[str] = None
     description: Optional[str] = None
     tags: Set[str] = field(default_factory=set)
+    
+    # Path truncation for file listings/extraction
+    path_prefix_to_strip: Optional[str] = None  # Prefix to remove from file paths when listing/extracting
     
     # File inventory for tracking archive contents
     file_inventory: Optional['FileInventory'] = None
@@ -196,6 +200,66 @@ class ArchiveMetadata:
         if self.file_inventory:
             return self.file_inventory.get_content_type_summary()
         return {}
+    
+    def add_path(self, path: str) -> None:
+        """Add a path where this archive exists."""
+        if not isinstance(path, str) or not path:
+            raise ValueError("Path must be a non-empty string")
+        self.archive_paths.add(path)
+    
+    def remove_path(self, path: str) -> bool:
+        """Remove a path. Returns True if path was present."""
+        return path in self.archive_paths and (self.archive_paths.discard(path), True)[1]
+    
+    def get_paths(self) -> Set[str]:
+        """Get all paths where this archive exists."""
+        return self.archive_paths.copy()
+    
+    @property
+    def archive_path(self) -> Optional[str]:
+        """Backward compatibility: return first path or None."""
+        return next(iter(self.archive_paths)) if self.archive_paths else None
+    
+    @archive_path.setter
+    def archive_path(self, path: Optional[str]) -> None:
+        """Backward compatibility setter with deprecation warning."""
+        import warnings
+        warnings.warn(
+            f"Setting 'archive_path' is deprecated. Use 'add_path()' method instead to manage multiple archive paths.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        if path:
+            # Clear existing paths and set the single path
+            self.archive_paths.clear()
+            self.archive_paths.add(path)
+        else:
+            self.archive_paths.clear()
+    
+    def truncate_path(self, file_path: str) -> str:
+        """Apply path truncation to a file path if prefix is configured.
+        
+        Args:
+            file_path: The full file path from the archive
+            
+        Returns:
+            The file path with prefix stripped, or original if no prefix configured
+        """
+        if not self.path_prefix_to_strip:
+            return file_path
+            
+        # Normalize paths to handle different separators
+        import os.path
+        normalized_prefix = os.path.normpath(self.path_prefix_to_strip)
+        normalized_path = os.path.normpath(file_path)
+        
+        # Remove prefix if present
+        if normalized_path.startswith(normalized_prefix):
+            # Strip prefix and any leading separator
+            truncated = normalized_path[len(normalized_prefix):].lstrip(os.sep)
+            return truncated if truncated else os.path.basename(file_path)
+        
+        return file_path
     
     def get_archivable_files_count(self) -> int:
         """Get count of files that should be archived."""

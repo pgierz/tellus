@@ -6,11 +6,11 @@ with clear separation of concerns and dependency injection support.
 """
 
 import os
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Optional, Union, Type
-from dataclasses import dataclass, field
-from abc import ABC, abstractmethod
+from typing import Any, Dict, Optional, Type, Union
 
 from .interfaces import ConfigurationInterface
 

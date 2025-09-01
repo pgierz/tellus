@@ -42,6 +42,7 @@ class PathTemplate:
     def _extract_attributes(self) -> List[str]:
         """Extract template variable names from the pattern."""
         import re
+
         # Find all {variable_name} patterns
         matches = re.findall(r'\{([a-zA-Z_][a-zA-Z0-9_]*)\}', self.pattern)
         return list(set(matches))

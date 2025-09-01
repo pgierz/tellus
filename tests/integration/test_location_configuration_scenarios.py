@@ -7,18 +7,22 @@ Tests cover various real-world configuration scenarios and edge cases.
 """
 
 import json
-import pytest
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
+import pytest
+
+from tellus.application.dtos import CreateLocationDto
+from tellus.application.services.location_service import \
+    LocationApplicationService
+from tellus.domain.entities.location import LocationEntity
+from tellus.domain.entities.location import LocationKind as DomainLocationKind
+from tellus.infrastructure.repositories.json_location_repository import \
+    JsonLocationRepository
 from tellus.location import Location, LocationKind, PathSandboxedFileSystem
 from tellus.location.sandboxed_filesystem import PathValidationError
-from tellus.domain.entities.location import LocationEntity, LocationKind as DomainLocationKind
-from tellus.infrastructure.repositories.json_location_repository import JsonLocationRepository
-from tellus.application.services.location_service import LocationApplicationService
-from tellus.application.dtos import CreateLocationDto
 
 
 class TestRelativePathConfigurations:

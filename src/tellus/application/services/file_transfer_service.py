@@ -11,29 +11,19 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from ...domain.entities.location import LocationEntity
-from ...domain.entities.progress_tracking import OperationType, OperationContext
+from ...domain.entities.progress_tracking import (OperationContext,
+                                                  OperationType)
 from ...domain.repositories.location_repository import ILocationRepository
-from ..dtos import (
-    FileTransferOperationDto,
-    BatchFileTransferOperationDto, 
-    DirectoryTransferOperationDto,
-    FileTransferResultDto,
-    BatchFileTransferResultDto,
-    CreateProgressTrackingDto,
-    UpdateProgressDto,
-    ProgressMetricsDto,
-    ThroughputMetricsDto,
-    OperationContextDto,
-)
-from ..exceptions import (
-    EntityNotFoundError,
-    ValidationError,
-    ExternalServiceError,
-    OperationNotAllowedError,
-)
+from ..dtos import (BatchFileTransferOperationDto, BatchFileTransferResultDto,
+                    CreateProgressTrackingDto, DirectoryTransferOperationDto,
+                    FileTransferOperationDto, FileTransferResultDto,
+                    OperationContextDto, ProgressMetricsDto,
+                    ThroughputMetricsDto, UpdateProgressDto)
+from ..exceptions import (EntityNotFoundError, ExternalServiceError,
+                          OperationNotAllowedError, ValidationError)
 from .progress_tracking_service import IProgressTrackingService
 
 logger = logging.getLogger(__name__)
@@ -734,7 +724,7 @@ class FileTransferApplicationService:
     def _should_include_file(self, file_path: str, include_patterns: List[str], exclude_patterns: List[str]) -> bool:
         """Check if file should be included based on patterns."""
         import fnmatch
-        
+
         # If include patterns specified, file must match at least one
         if include_patterns:
             if not any(fnmatch.fnmatch(file_path, pattern) for pattern in include_patterns):

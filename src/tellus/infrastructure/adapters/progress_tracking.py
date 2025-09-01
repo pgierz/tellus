@@ -13,15 +13,9 @@ from typing import Any, Callable, Dict, Optional, Union
 
 from fsspec.callbacks import Callback
 from rich.console import Console
-from rich.progress import (
-    BarColumn,
-    DownloadColumn,
-    Progress,
-    TaskID,
-    TextColumn,
-    TimeRemainingColumn,
-    TransferSpeedColumn,
-)
+from rich.progress import (BarColumn, DownloadColumn, Progress, TaskID,
+                           TextColumn, TimeRemainingColumn,
+                           TransferSpeedColumn)
 from rich.text import Text
 
 

@@ -5,22 +5,19 @@ Tests the infrastructure adapter for filesystem operations across multiple proto
 including progress tracking, error handling, and file operations.
 """
 
-import pytest
 import time
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch, call
-from typing import Dict, Any, List, Tuple
+from typing import Any, Dict, List, Tuple
+from unittest.mock import MagicMock, Mock, call, patch
 
 import fsspec
-from fsspec.spec import AbstractFileSystem
+import pytest
 from fsspec.callbacks import Callback
+from fsspec.spec import AbstractFileSystem
 
 from tellus.domain.entities.location import LocationEntity, LocationKind
 from tellus.infrastructure.adapters.fsspec_adapter import (
-    FSSpecAdapter,
-    ProgressTracker,
-    FSSpecProgressCallback
-)
+    FSSpecAdapter, FSSpecProgressCallback, ProgressTracker)
 
 
 @pytest.fixture

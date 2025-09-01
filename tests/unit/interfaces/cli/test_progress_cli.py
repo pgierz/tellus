@@ -6,23 +6,20 @@ including operation listing, detailed status, real-time monitoring,
 operation control, summary statistics, and cleanup functionality.
 """
 
-import pytest
 import asyncio
 import json
-from unittest.mock import Mock, patch, AsyncMock
-from click.testing import CliRunner
 from datetime import datetime
+from unittest.mock import AsyncMock, Mock, patch
 
+import pytest
+from click.testing import CliRunner
+
+from tellus.application.dtos import (FilterOptions, OperationContextDto,
+                                     OperationControlDto, PaginationInfo,
+                                     ProgressMetricsDto, ThroughputMetricsDto)
+from tellus.application.services.progress_tracking_service import \
+    ProgressTrackingService
 from tellus.interfaces.cli.progress import progress
-from tellus.application.services.progress_tracking_service import ProgressTrackingService
-from tellus.application.dtos import (
-    FilterOptions,
-    PaginationInfo,
-    ProgressMetricsDto,
-    ThroughputMetricsDto,
-    OperationContextDto,
-    OperationControlDto
-)
 
 
 class TestProgressListCommand:

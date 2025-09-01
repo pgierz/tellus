@@ -6,34 +6,29 @@ including command parsing, service integration, error handling,
 and output formatting.
 """
 
-import pytest
-import json
 import asyncio
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
-from rich.console import Console
 import io
+import json
 import sys
-from click.testing import CliRunner
 from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
-from tellus.interfaces.cli.archive import archive
-from tellus.application.services.archive_service import ArchiveApplicationService
-from tellus.application.dtos import (
-    CreateArchiveDto,
-    ArchiveDto,
-    ArchiveListDto,
-    ArchiveCopyOperationDto,
-    ArchiveExtractionDto,
-    ArchiveOperationResultDto,
-    PaginationInfo,
-    FilterOptions
-)
+import pytest
+from click.testing import CliRunner
+from rich.console import Console
+
+from tellus.application.dtos import (ArchiveCopyOperationDto, ArchiveDto,
+                                     ArchiveExtractionDto, ArchiveListDto,
+                                     ArchiveOperationResultDto,
+                                     CreateArchiveDto, FilterOptions,
+                                     PaginationInfo)
+from tellus.application.exceptions import (EntityAlreadyExistsError,
+                                           EntityNotFoundError,
+                                           ValidationError)
+from tellus.application.services.archive_service import \
+    ArchiveApplicationService
 from tellus.domain.entities.archive import ArchiveType
-from tellus.application.exceptions import (
-    EntityNotFoundError,
-    EntityAlreadyExistsError,
-    ValidationError
-)
+from tellus.interfaces.cli.archive import archive
 
 
 class TestArchiveListCommand:

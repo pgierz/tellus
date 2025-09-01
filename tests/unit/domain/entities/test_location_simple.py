@@ -5,7 +5,8 @@ These tests validate the actual location domain model as it exists.
 """
 
 import pytest
-from tellus.domain.entities.location import LocationKind, LocationEntity
+
+from tellus.domain.entities.location import LocationEntity, LocationKind
 
 
 class TestLocationKind:

@@ -1,14 +1,16 @@
 import os
+from typing import Any, Dict, List, Optional
+
 import uvicorn
-from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
 
-from ..core.chat_interface import ChatInterface, Message as ChatMessage
-from ..core.message import MessageRole
 from ..config import load_config
+from ..core.chat_interface import ChatInterface
+from ..core.chat_interface import Message as ChatMessage
+from ..core.message import MessageRole
 
 
 class Message(BaseModel):

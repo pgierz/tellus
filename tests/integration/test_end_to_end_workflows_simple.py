@@ -10,10 +10,7 @@ import unittest
 from pathlib import Path
 
 from tellus.application.container import ServiceContainer
-from tellus.application.dtos import (
-    CreateLocationDto,
-    CreateSimulationDto,
-)
+from tellus.application.dtos import CreateLocationDto, CreateSimulationDto
 
 
 class TestEndToEndWorkflowsSimple(unittest.TestCase):
@@ -22,7 +19,7 @@ class TestEndToEndWorkflowsSimple(unittest.TestCase):
     def setUp(self):
         """Set up test environment with temporary directories."""
         import shutil
-        
+
         # Create temporary directories for testing
         self.temp_dir = Path(tempfile.mkdtemp(prefix="tellus_e2e_simple_"))
         self.data_dir = self.temp_dir / "data"
@@ -268,8 +265,9 @@ class TestEndToEndWorkflowsSimple(unittest.TestCase):
         self.assertIsNotNone(file_transfer_service)
         
         # Test DTO creation - this validates the service interface
-        from tellus.application.dtos import FileTransferOperationDto, BatchFileTransferOperationDto
-        
+        from tellus.application.dtos import (BatchFileTransferOperationDto,
+                                             FileTransferOperationDto)
+
         # Create test files for transfer operations
         source_file = self.data_dir / "transfer_test_source.txt"
         dest_file = self.data_dir / "transfer_test_destination.txt"

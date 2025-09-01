@@ -10,25 +10,29 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
-from unittest.mock import Mock, patch, AsyncMock
-
-# Import existing base test patterns
-from .base_tests import BaseTest
-from .dependency_injection import TestContainer
-from .file_transfer_factories import (
-    FileTransferFactory, ProgressTrackingFactory, OperationQueueFactory,
-    FileTransferDtoBuilder, TestFileTransferOperation, TestProgressTracking
-)
+from unittest.mock import AsyncMock, Mock, patch
 
 # Import application services and DTOs
 from ...application.container import get_service_container
-from ...application.services.file_transfer_service import FileTransferApplicationService
-from ...application.services.operation_queue_service import OperationQueueService
-from ...application.services.progress_tracking_service import ProgressTrackingService
-from ...application.dtos import (
-    FileTransferOperationDto, FileTransferResultDto,
-    CreateProgressTrackingDto, ProgressTrackingResultDto
-)
+from ...application.dtos import (CreateProgressTrackingDto,
+                                 FileTransferOperationDto,
+                                 FileTransferResultDto,
+                                 ProgressTrackingResultDto)
+from ...application.services.file_transfer_service import \
+    FileTransferApplicationService
+from ...application.services.operation_queue_service import \
+    OperationQueueService
+from ...application.services.progress_tracking_service import \
+    ProgressTrackingService
+# Import existing base test patterns
+from .base_tests import BaseTest
+from .dependency_injection import TestContainer
+from .file_transfer_factories import (FileTransferDtoBuilder,
+                                      FileTransferFactory,
+                                      OperationQueueFactory,
+                                      ProgressTrackingFactory,
+                                      TestFileTransferOperation,
+                                      TestProgressTracking)
 
 
 class FileTransferTestBase(BaseTest):
@@ -350,7 +354,8 @@ class ProgressTrackingTestBase(BaseTest):
     
     def create_progress_dto(self, **kwargs) -> CreateProgressTrackingDto:
         """Create progress tracking DTO with test defaults."""
-        from ...application.dtos import CreateProgressTrackingDto, OperationType
+        from ...application.dtos import (CreateProgressTrackingDto,
+                                         OperationType)
         
         return CreateProgressTrackingDto(
             operation_id=kwargs.get('operation_id', 'test_operation'),

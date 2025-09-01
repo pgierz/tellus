@@ -8,13 +8,12 @@ import threading
 from pathlib import Path
 from typing import List, Optional
 
-from ...domain.entities.location import LocationEntity, LocationKind, PathTemplate
+from ...domain.entities.location import (LocationEntity, LocationKind,
+                                         PathTemplate)
+from ...domain.repositories.exceptions import (LocationExistsError,
+                                               LocationNotFoundError,
+                                               RepositoryError)
 from ...domain.repositories.location_repository import ILocationRepository
-from ...domain.repositories.exceptions import (
-    RepositoryError, 
-    LocationExistsError, 
-    LocationNotFoundError
-)
 
 
 class JsonLocationRepository(ILocationRepository):
@@ -252,35 +251,6 @@ class JsonLocationRepository(ILocationRepository):
         except Exception as e:
             raise RepositoryError(f"Failed to convert data to LocationEntity: {e}")
     
-    def migrate_from_legacy_format(self, legacy_file: Path) -> None:
-        """
-        Migrate data from the legacy location format.
-        
-        Args:
-            legacy_file: Path to the legacy locations.json file
-        """
-        with self._lock:
-            try:
-                if not legacy_file.exists():
-                    return
-                
-                with open(legacy_file, 'r', encoding='utf-8') as f:
-                    legacy_data = json.load(f)
-                
-                migrated_count = 0
-                for name, loc_data in legacy_data.items():
-                    try:
-                        # Convert legacy format to entity
-                        entity = self._dict_to_entity(name, loc_data)
-                        self.save(entity)
-                        migrated_count += 1
-                    except Exception as e:
-                        print(f"Warning: Failed to migrate location '{name}': {e}")
-                
-                print(f"Migrated {migrated_count} locations from legacy format")
-                
-            except Exception as e:
-                raise RepositoryError(f"Failed to migrate from legacy format: {e}")
     
     def backup_data(self, backup_path: Path) -> None:
         """

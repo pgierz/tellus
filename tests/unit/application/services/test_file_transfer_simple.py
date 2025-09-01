@@ -5,16 +5,18 @@ This tests the new file transfer architecture using only the new clean
 architecture components, avoiding legacy simulation/location imports.
 """
 
-import unittest
 import asyncio
 import tempfile
 import time
+import unittest
 from pathlib import Path
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import AsyncMock, Mock
 
+from tellus.application.dtos import (FileTransferOperationDto,
+                                     FileTransferResultDto)
 # Import application services and DTOs directly
-from tellus.application.services.file_transfer_service import FileTransferApplicationService
-from tellus.application.dtos import FileTransferOperationDto, FileTransferResultDto
+from tellus.application.services.file_transfer_service import \
+    FileTransferApplicationService
 from tellus.domain.entities.location import LocationEntity, LocationKind
 
 

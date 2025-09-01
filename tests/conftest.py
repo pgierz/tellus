@@ -5,29 +5,28 @@ This module provides shared fixtures and configuration for all tests,
 with special focus on Earth science workflows and data scenarios.
 """
 
-import pytest
-import tempfile
 import shutil
-from pathlib import Path
+import tempfile
 from functools import wraps
+from pathlib import Path
+
+import pytest
 
 # Import core fixtures
 from tellus.testing.fixtures import sample_simulation_awi_locations_with_laptop
 
 # Import Earth science specific fixtures (with error handling for numpy/netCDF4 compatibility)
 try:
-    from .fixtures.earth_science import (
-        earth_science_temp_dir,
-        sample_climate_netcdf_data,
-        create_netcdf_file,
-        sample_model_archive_structure,
-        create_model_archive,
-        create_compressed_archive,
-        multi_location_setup,
-        earth_science_file_patterns,
-        realistic_file_sizes,
-        hpc_environment_config,
-    )
+    from .fixtures.earth_science import (create_compressed_archive,
+                                         create_model_archive,
+                                         create_netcdf_file,
+                                         earth_science_file_patterns,
+                                         earth_science_temp_dir,
+                                         hpc_environment_config,
+                                         multi_location_setup,
+                                         realistic_file_sizes,
+                                         sample_climate_netcdf_data,
+                                         sample_model_archive_structure)
     EARTH_SCIENCE_AVAILABLE = True
 except (ImportError, RuntimeWarning) as e:
     # Handle netCDF4/NumPy compatibility issues
@@ -47,11 +46,9 @@ except (ImportError, RuntimeWarning) as e:
 
 # Import test utilities (with error handling)
 try:
-    from .utils.earth_science_helpers import (
-        EarthScienceFileValidator,
-        EarthScienceArchiveAnalyzer,
-        EarthScienceTestAssertions,
-    )
+    from .utils.earth_science_helpers import (EarthScienceArchiveAnalyzer,
+                                              EarthScienceFileValidator,
+                                              EarthScienceTestAssertions)
 except (ImportError, RuntimeWarning):
     # Create placeholder classes if imports fail
     class EarthScienceFileValidator:

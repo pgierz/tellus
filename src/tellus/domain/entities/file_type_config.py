@@ -7,10 +7,10 @@ custom patterns for classifying file content types and importance levels.
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Pattern
-import re
 
 from .simulation_file import FileContentType, FileImportance
 

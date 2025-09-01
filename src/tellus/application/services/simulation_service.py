@@ -6,25 +6,24 @@ implementing business workflows and ensuring data consistency.
 """
 
 import logging
-from typing import List, Optional, Dict, Any, Set
+import time
 from dataclasses import asdict
+from typing import Any, Dict, List, Optional, Set
 
-from ..exceptions import (
-    EntityNotFoundError, EntityAlreadyExistsError, ValidationError,
-    BusinessRuleViolationError, OperationNotAllowedError
-)
-from ..dtos import (
-    CreateSimulationDto, UpdateSimulationDto, SimulationDto, SimulationListDto,
-    SimulationLocationAssociationDto, PaginationInfo, FilterOptions
-)
-from ...domain.entities.simulation import SimulationEntity
 from ...domain.entities.location import LocationEntity
-from ...domain.repositories.simulation_repository import ISimulationRepository
+from ...domain.entities.simulation import SimulationEntity
+from ...domain.repositories.exceptions import (LocationNotFoundError,
+                                               RepositoryError,
+                                               SimulationExistsError,
+                                               SimulationNotFoundError)
 from ...domain.repositories.location_repository import ILocationRepository
-from ...domain.repositories.exceptions import (
-    SimulationExistsError, SimulationNotFoundError,
-    LocationNotFoundError, RepositoryError
-)
+from ...domain.repositories.simulation_repository import ISimulationRepository
+from ..dtos import (CreateSimulationDto, FileRegistrationDto, FileRegistrationResultDto,
+                    FilterOptions, PaginationInfo, SimulationDto, SimulationFileDto,
+                    SimulationListDto, SimulationLocationAssociationDto, UpdateSimulationDto)
+from ..exceptions import (BusinessRuleViolationError, EntityAlreadyExistsError,
+                          EntityNotFoundError, OperationNotAllowedError,
+                          ValidationError)
 
 logger = logging.getLogger(__name__)
 
@@ -662,35 +661,33 @@ class SimulationApplicationService:
     
     def _entity_to_dto(self, simulation: SimulationEntity) -> SimulationDto:
         """Convert domain entity to DTO."""
-        # Build contexts from entity data
-        contexts = {}
+        # Clean user attributes (filter out system-managed data)
+        clean_attributes = {k: v for k, v in simulation.attrs.items() 
+                           if k != "associated_locations"}
         
-        # Add location contexts
+        # Build locations from entity location contexts
+        locations = {}
         associated_locations = simulation.get_associated_locations()
         if associated_locations:
-            location_contexts = {}
             for location_name in associated_locations:
                 context_data = simulation.get_location_context(location_name)
                 if context_data:
                     # Convert LocationContext to dict
                     if hasattr(context_data, 'to_dict'):
-                        location_contexts[location_name] = context_data.to_dict()
+                        locations[location_name] = context_data.to_dict()
                     else:
-                        location_contexts[location_name] = context_data
+                        locations[location_name] = context_data
                 else:
                     # Default empty context
-                    location_contexts[location_name] = {"path_prefix": "", "overrides": {}, "metadata": {}}
-            contexts["LocationContext"] = location_contexts
+                    locations[location_name] = {"path_prefix": "", "overrides": {}, "metadata": {}}
         
         return SimulationDto(
             simulation_id=simulation.simulation_id,
             uid=simulation.uid,
-            model_id=simulation.model_id,
-            path=simulation.path,
-            attrs=simulation.attrs.copy(),
+            attributes=clean_attributes,  # New format: clean user attributes
+            locations=locations,  # New format: simplified locations
             namelists=simulation.namelists.copy(),
-            snakemakes=simulation.snakemakes.copy(),
-            contexts=contexts
+            workflows=simulation.snakemakes.copy()  # New format: renamed to workflows
         )
     
     def _apply_filters(
@@ -756,3 +753,203 @@ class SimulationApplicationService:
         # Additional business rules could be added here
         # e.g., validating that required location types are present,
         # checking quotas, validating paths, etc.
+
+    # File Management Methods
+    
+    def get_simulation_files(self, simulation_id: str) -> List[SimulationFileDto]:
+        """
+        Get all files associated with a simulation.
+        
+        Args:
+            simulation_id: The ID of the simulation
+            
+        Returns:
+            List of SimulationFileDto objects
+            
+        Raises:
+            EntityNotFoundError: If simulation not found
+        """
+        from ..dtos import SimulationFileDto
+        
+        self._logger.debug(f"Getting files for simulation: {simulation_id}")
+        
+        # Get simulation entity
+        entity = self._simulation_repo.get_by_id(simulation_id)
+        if entity is None:
+            raise EntityNotFoundError("Simulation", simulation_id)
+        
+        if not entity.has_file_inventory():
+            return []
+        
+        # Convert SimulationFile entities to DTOs
+        file_dtos = []
+        for simulation_file in entity.get_files():
+            file_dto = SimulationFileDto(
+                relative_path=simulation_file.relative_path,
+                size=simulation_file.size,
+                checksum=str(simulation_file.checksum) if simulation_file.checksum else None,
+                content_type=simulation_file.content_type.value,
+                importance=simulation_file.importance.value,
+                file_role=simulation_file.file_role,
+                simulation_date=simulation_file.get_simulation_date_string(),
+                created_time=simulation_file.created_time,
+                modified_time=simulation_file.modified_time,
+                source_archive=simulation_file.source_archive,
+                extraction_time=simulation_file.extraction_time,
+                tags=list(simulation_file.tags),
+                attributes=simulation_file.attributes.copy()
+            )
+            file_dtos.append(file_dto)
+        
+        self._logger.info(f"Retrieved {len(file_dtos)} files for simulation {simulation_id}")
+        return file_dtos
+    
+    def register_archive_files(self, registration_dto: FileRegistrationDto, 
+                             archive_service: 'ArchiveApplicationService') -> FileRegistrationResultDto:
+        """
+        Register files from an archive to a simulation.
+        
+        Args:
+            registration_dto: Parameters for file registration
+            archive_service: Archive service to get files from
+            
+        Returns:
+            Result of the registration operation
+        """
+        from ..dtos import FileRegistrationResultDto
+        
+        start_time = time.time()
+        self._logger.info(f"Registering files from archive {registration_dto.archive_id} to simulation {registration_dto.simulation_id}")
+        
+        try:
+            # Get simulation entity
+            entity = self._simulation_repo.get_by_id(registration_dto.simulation_id)
+            if entity is None:
+                return FileRegistrationResultDto(
+                    archive_id=registration_dto.archive_id,
+                    simulation_id=registration_dto.simulation_id,
+                    success=False,
+                    error_message=f"Simulation '{registration_dto.simulation_id}' not found"
+                )
+            
+            # Get files from archive service
+            simulation_files = archive_service.get_archive_files_for_simulation(
+                registration_dto.archive_id,
+                registration_dto.simulation_id,
+                registration_dto.content_type_filter,
+                registration_dto.pattern_filter
+            )
+            
+            if not simulation_files:
+                return FileRegistrationResultDto(
+                    archive_id=registration_dto.archive_id,
+                    simulation_id=registration_dto.simulation_id,
+                    success=True,
+                    files_registered=0,
+                    warnings=["No files found in archive matching the specified filters"],
+                    processing_time=time.time() - start_time
+                )
+            
+            # Register files to simulation
+            files_registered = 0
+            files_updated = 0
+            files_skipped = 0
+            duplicate_files = []
+            
+            for simulation_file in simulation_files:
+                # Check if file already exists in simulation
+                existing_file = entity.get_file(simulation_file.relative_path)
+                
+                if existing_file:
+                    if registration_dto.overwrite_existing:
+                        # Add archive reference to existing file
+                        existing_file.add_archive_reference(registration_dto.archive_id)
+                        files_updated += 1
+                    else:
+                        files_skipped += 1
+                        duplicate_files.append(simulation_file.relative_path)
+                else:
+                    # Add new file to simulation
+                    entity.add_file(simulation_file)
+                    files_registered += 1
+            
+            # Save updated simulation entity
+            self._simulation_repo.save(entity)
+            
+            result = FileRegistrationResultDto(
+                archive_id=registration_dto.archive_id,
+                simulation_id=registration_dto.simulation_id,
+                success=True,
+                files_registered=files_registered,
+                files_updated=files_updated,
+                files_skipped=files_skipped,
+                duplicate_files=duplicate_files,
+                processing_time=time.time() - start_time
+            )
+            
+            self._logger.info(f"Successfully registered {files_registered} files from archive {registration_dto.archive_id} to simulation {registration_dto.simulation_id}")
+            return result
+            
+        except EntityNotFoundError:
+            raise  # Re-raise as is
+        except Exception as e:
+            error_msg = f"Failed to register archive files: {str(e)}"
+            self._logger.error(error_msg, exc_info=True)
+            return FileRegistrationResultDto(
+                archive_id=registration_dto.archive_id,
+                simulation_id=registration_dto.simulation_id,
+                success=False,
+                error_message=error_msg,
+                processing_time=time.time() - start_time
+            )
+    
+    def unregister_archive_files(self, archive_id: str, simulation_id: str) -> bool:
+        """
+        Unregister files from a specific archive from a simulation.
+        
+        Args:
+            archive_id: ID of the archive to unregister files from
+            simulation_id: ID of the simulation
+            
+        Returns:
+            True if operation was successful, False otherwise
+        """
+        self._logger.info(f"Unregistering files from archive {archive_id} from simulation {simulation_id}")
+        
+        try:
+            # Get simulation entity
+            entity = self._simulation_repo.get_by_id(simulation_id)
+            if entity is None:
+                raise EntityNotFoundError("Simulation", simulation_id)
+            
+            if not entity.has_file_inventory():
+                return True  # Nothing to unregister
+            
+            files_to_remove = []
+            files_modified = []
+            
+            # Find files that reference this archive
+            for simulation_file in entity.get_files():
+                if simulation_file.is_in_archive(archive_id):
+                    # Remove archive reference
+                    simulation_file.remove_archive_reference(archive_id)
+                    
+                    # If file has no more archive references, remove it entirely
+                    if not simulation_file.has_archive_references():
+                        files_to_remove.append(simulation_file.relative_path)
+                    else:
+                        files_modified.append(simulation_file.relative_path)
+            
+            # Remove files with no remaining archive references
+            for file_path in files_to_remove:
+                entity.remove_file(file_path)
+            
+            # Save updated simulation entity
+            self._simulation_repo.save(entity)
+            
+            self._logger.info(f"Unregistered {len(files_to_remove)} files and updated {len(files_modified)} files from simulation {simulation_id}")
+            return True
+            
+        except Exception as e:
+            self._logger.error(f"Failed to unregister archive files: {str(e)}", exc_info=True)
+            return False

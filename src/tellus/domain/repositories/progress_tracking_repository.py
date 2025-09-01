@@ -8,12 +8,8 @@ progress tracking entities, following clean architecture principles.
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Set
 
-from ..entities.progress_tracking import (
-    ProgressTrackingEntity,
-    OperationStatus,
-    OperationType,
-    Priority
-)
+from ..entities.progress_tracking import (OperationStatus, OperationType,
+                                          Priority, ProgressTrackingEntity)
 
 
 class ProgressTrackingRepositoryError(Exception):

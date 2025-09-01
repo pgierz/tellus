@@ -6,10 +6,10 @@ for both real network operations and test doubles.
 """
 
 import time
-from pathlib import Path
-from typing import Dict, List, Optional, Any, Callable
-from unittest.mock import MagicMock
 import urllib.parse
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
+from unittest.mock import MagicMock
 
 from .interfaces import NetworkInterface
 

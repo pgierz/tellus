@@ -5,25 +5,29 @@ Tests the application service layer for simulation management,
 including CRUD operations, location associations, and validation.
 """
 
-import pytest
-from unittest.mock import Mock, MagicMock, patch
-from typing import Dict, Any, List
+from typing import Any, Dict, List
+from unittest.mock import MagicMock, Mock, patch
 
-from tellus.application.services.simulation_service import SimulationApplicationService
-from tellus.application.dtos import (
-    CreateSimulationDto, UpdateSimulationDto, SimulationDto, SimulationListDto,
-    SimulationLocationAssociationDto, PaginationInfo, FilterOptions
-)
-from tellus.application.exceptions import (
-    EntityNotFoundError, EntityAlreadyExistsError, ValidationError,
-    BusinessRuleViolationError, OperationNotAllowedError
-)
-from tellus.domain.entities.simulation import SimulationEntity
+import pytest
+
+from tellus.application.dtos import (CreateSimulationDto, FilterOptions,
+                                     PaginationInfo, SimulationDto,
+                                     SimulationListDto,
+                                     SimulationLocationAssociationDto,
+                                     UpdateSimulationDto)
+from tellus.application.exceptions import (BusinessRuleViolationError,
+                                           EntityAlreadyExistsError,
+                                           EntityNotFoundError,
+                                           OperationNotAllowedError,
+                                           ValidationError)
+from tellus.application.services.simulation_service import \
+    SimulationApplicationService
 from tellus.domain.entities.location import LocationEntity, LocationKind
-from tellus.domain.repositories.exceptions import (
-    SimulationExistsError, SimulationNotFoundError,
-    LocationNotFoundError, RepositoryError
-)
+from tellus.domain.entities.simulation import SimulationEntity
+from tellus.domain.repositories.exceptions import (LocationNotFoundError,
+                                                   RepositoryError,
+                                                   SimulationExistsError,
+                                                   SimulationNotFoundError)
 
 
 @pytest.fixture

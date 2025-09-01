@@ -3,13 +3,15 @@ Tests for JsonSimulationRepository.
 """
 
 import json
-import pytest
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from src.tellus.domain.entities.simulation import SimulationEntity
-from src.tellus.infrastructure.repositories.json_simulation_repository import JsonSimulationRepository
 from src.tellus.domain.repositories.exceptions import RepositoryError
+from src.tellus.infrastructure.repositories.json_simulation_repository import \
+    JsonSimulationRepository
 
 
 @pytest.fixture

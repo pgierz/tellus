@@ -10,8 +10,9 @@ import os
 import platform
 import tempfile
 from pathlib import Path
-from typing import List, Dict, Tuple, Generator
+from typing import Dict, Generator, List, Tuple
 from urllib.parse import quote, quote_plus
+
 import pytest
 
 
@@ -325,6 +326,7 @@ def sandboxed_filesystem(security_test_env):
     sandbox_dir, _, _ = security_test_env
     
     import fsspec
+
     from tellus.location.sandboxed_filesystem import PathSandboxedFileSystem
     
     base_fs = fsspec.filesystem("file")
@@ -338,7 +340,7 @@ class SecurityTestHelpers:
     def assert_path_is_blocked(sandboxed_fs, attack_path: str):
         """Assert that a path is properly blocked by the sandboxed filesystem."""
         from tellus.location.sandboxed_filesystem import PathValidationError
-        
+
         # Test various operations that should all be blocked
         operations = [
             lambda: sandboxed_fs.read_text(attack_path),

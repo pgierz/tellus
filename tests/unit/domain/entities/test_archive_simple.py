@@ -4,16 +4,13 @@ Unit tests for archive domain entities - simplified version.
 These tests validate the actual archive domain model as it exists.
 """
 
-import pytest
 import time
 
-from tellus.domain.entities.archive import (
-    ArchiveId, 
-    ArchiveType, 
-    Checksum, 
-    ArchiveMetadata,
-    FileMetadata
-)
+import pytest
+
+from tellus.domain.entities.archive import (ArchiveId, ArchiveMetadata,
+                                            ArchiveType, Checksum,
+                                            FileMetadata)
 
 
 class TestArchiveId:

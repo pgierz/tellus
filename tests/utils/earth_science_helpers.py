@@ -8,14 +8,14 @@ assertions.
 
 import re
 import tarfile
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any, Union
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 try:
-    import numpy as np
     import netCDF4 as nc
+    import numpy as np
     HAS_NETCDF = True
 except ImportError:
     HAS_NETCDF = False

@@ -8,28 +8,27 @@ archive system for Earth science data.
 
 import hashlib
 import json
-import pytest
 import tarfile
 import tempfile
 import time
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 from unittest.mock import Mock, patch
 
 # Import hypothesis at module level
 import hypothesis
-from hypothesis import given, assume, settings, HealthCheck
+import pytest
+from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
-from hypothesis.stateful import RuleBasedStateMachine, rule, Bundle, initialize
+from hypothesis.stateful import Bundle, RuleBasedStateMachine, initialize, rule
 
 HAS_HYPOTHESIS = True
 
-from tellus.simulation.simulation import (
-    CacheConfig, CacheManager, CacheEntry, 
-    ArchiveMetadata, ArchiveManifest, CompressedArchive
-)
-from tellus.location import Location, LocationKind
 from tellus import Simulation
+from tellus.location import Location, LocationKind
+from tellus.simulation.simulation import (ArchiveManifest, ArchiveMetadata,
+                                          CacheConfig, CacheEntry,
+                                          CacheManager, CompressedArchive)
 
 from .fixtures.earth_science import *
 

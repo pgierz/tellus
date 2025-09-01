@@ -5,12 +5,12 @@ Tests the infrastructure adapter for ScoutFS with tape staging support,
 including API integration, file staging, progress tracking, and error handling.
 """
 
-import pytest
-import time
 import datetime
-from unittest.mock import Mock, MagicMock, patch, call
-from typing import Dict, Any
+import time
+from typing import Any, Dict
+from unittest.mock import MagicMock, Mock, call, patch
 
+import pytest
 import requests
 from fsspec.callbacks import Callback
 from rich.text import Text
@@ -983,6 +983,7 @@ class TestEdgeCases:
         with patch('tellus.infrastructure.adapters.scoutfs_filesystem.register_implementation') as mock_register:
             # Re-import module to trigger registration
             import importlib
+
             import tellus.infrastructure.adapters.scoutfs_filesystem
             importlib.reload(tellus.infrastructure.adapters.scoutfs_filesystem)
             

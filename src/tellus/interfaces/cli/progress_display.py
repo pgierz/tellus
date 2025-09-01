@@ -8,23 +8,16 @@ for file transfers, archive operations, and other long-running tasks.
 import asyncio
 import time
 from contextlib import asynccontextmanager
-from typing import Dict, Any, Optional, Callable, AsyncGenerator
-from rich.progress import (
-    Progress, 
-    SpinnerColumn, 
-    TextColumn, 
-    BarColumn, 
-    TaskProgressColumn,
-    TimeRemainingColumn,
-    TransferSpeedColumn,
-    ProgressColumn,
-    Task
-)
+from typing import Any, AsyncGenerator, Callable, Dict, Optional
+
 from rich.console import Console
-from rich.live import Live
-from rich.table import Table
-from rich.panel import Panel
 from rich.layout import Layout
+from rich.live import Live
+from rich.panel import Panel
+from rich.progress import (BarColumn, Progress, ProgressColumn, SpinnerColumn,
+                           Task, TaskProgressColumn, TextColumn,
+                           TimeRemainingColumn, TransferSpeedColumn)
+from rich.table import Table
 from rich.text import Text
 
 from ...application.container import get_service_container
@@ -271,167 +264,3 @@ class BatchProgressDisplay:
         return self.layout
 
 
-class QueueMonitorDisplay:
-    """Real-time queue monitoring display."""
-    
-    def __init__(self, console: Console):
-        self.console = console
-        self._queue_service = None
-    
-    def _get_queue_service(self):
-        """Get queue service lazily."""
-        if self._queue_service is None:
-            service_container = get_service_container()
-            self._queue_service = service_container.service_factory.operation_queue_service
-        return self._queue_service
-    
-    def create_queue_table(self) -> Table:
-        """Create real-time queue status table."""
-        table = Table(title="Operation Queue Status", show_header=True)
-        table.add_column("ID", style="cyan", width=12)
-        table.add_column("Type", style="blue")
-        table.add_column("Status", style="green") 
-        table.add_column("Progress", style="white")
-        table.add_column("Speed", style="yellow")
-        
-        try:
-            queue_service = self._get_queue_service()
-            operations = queue_service.list_operations()
-            
-            for op in operations[:10]:  # Show latest 10 operations
-                operation_type = getattr(op.operation_dto, 'operation_type', 'unknown')
-                
-                # Format status with colors
-                status_text = op.status.value
-                if op.status.value == "completed":
-                    status_text = f"[green]{status_text}[/green]"
-                elif op.status.value == "failed":
-                    status_text = f"[red]{status_text}[/red]"
-                elif op.status.value == "running":
-                    status_text = f"[yellow]{status_text}[/yellow]"
-                
-                # Format progress
-                progress_text = ""
-                speed_text = ""
-                if op.result:
-                    if hasattr(op.result, 'bytes_transferred') and op.result.bytes_transferred > 0:
-                        progress_text = self._format_bytes(op.result.bytes_transferred)
-                        if hasattr(op.result, 'throughput_mbps'):
-                            speed_text = f"{op.result.throughput_mbps:.1f} MB/s"
-                    elif hasattr(op.result, 'total_bytes_transferred'):
-                        progress_text = self._format_bytes(op.result.total_bytes_transferred)
-                
-                table.add_row(
-                    op.id[:12],
-                    operation_type,
-                    status_text,
-                    progress_text,
-                    speed_text
-                )
-        
-        except Exception as e:
-            table.add_row("Error", str(e), "", "", "")
-        
-        return table
-    
-    def create_stats_panel(self) -> Panel:
-        """Create queue statistics panel."""
-        try:
-            queue_service = self._get_queue_service()
-            stats = queue_service.get_queue_stats()
-            
-            stats_text = Text()
-            stats_text.append(f"Total: {stats['total_operations']} | ", style="white")
-            stats_text.append(f"Running: {stats['running']} | ", style="yellow")
-            stats_text.append(f"Queued: {stats['queued']} | ", style="blue")
-            stats_text.append(f"Completed: {stats['completed']} | ", style="green")
-            stats_text.append(f"Failed: {stats['failed']}", style="red")
-            
-            if stats['total_bytes_processed'] > 0:
-                stats_text.append(f"\nTotal processed: {self._format_bytes(stats['total_bytes_processed'])}")
-            
-            return Panel(stats_text, title="Queue Statistics")
-            
-        except Exception as e:
-            return Panel(f"Error: {e}", title="Queue Statistics")
-    
-    def _format_bytes(self, bytes_count: int) -> str:
-        """Format bytes in human-readable format."""
-        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
-            if bytes_count < 1024.0:
-                return f"{bytes_count:.1f} {unit}"
-            bytes_count /= 1024.0
-        return f"{bytes_count:.1f} PB"
-
-
-@asynccontextmanager
-async def progress_display(console: Console) -> AsyncGenerator[OperationProgressDisplay, None]:
-    """Context manager for progress display."""
-    display = OperationProgressDisplay(console)
-    try:
-        with display.progress:
-            yield display
-    finally:
-        # Cleanup if needed
-        pass
-
-
-@asynccontextmanager 
-async def batch_progress_display(console: Console) -> AsyncGenerator[BatchProgressDisplay, None]:
-    """Context manager for batch progress display."""
-    display = BatchProgressDisplay(console)
-    try:
-        with Live(display.render(), console=console, refresh_per_second=4) as live:
-            display._live = live
-            yield display
-    finally:
-        # Cleanup if needed
-        pass
-
-
-async def monitor_queue_realtime(console: Console, duration: int = 30):
-    """Monitor queue in real-time for specified duration."""
-    monitor = QueueMonitorDisplay(console)
-    
-    with Live(console=console, refresh_per_second=2) as live:
-        start_time = time.time()
-        
-        while time.time() - start_time < duration:
-            layout = Layout()
-            layout.split_column(
-                Layout(monitor.create_stats_panel(), size=4),
-                Layout(Panel(monitor.create_queue_table(), title="Active Operations"))
-            )
-            
-            live.update(layout)
-            await asyncio.sleep(0.5)
-    
-    console.print(f"[dim]Queue monitoring completed after {duration}s[/dim]")
-
-
-# Progress callback function for queue operations
-def create_progress_callback(display: OperationProgressDisplay, operation_id: str) -> Callable[[str, Dict[str, Any]], None]:
-    """Create a progress callback function for queue operations."""
-    
-    def callback(callback_operation_id: str, data: Dict[str, Any]):
-        """Progress callback function."""
-        if callback_operation_id != operation_id:
-            return
-        
-        status = data.get('status', '')
-        if status == 'started':
-            operation_type = data.get('operation_type', 'operation')
-            count = data.get('archive_count', data.get('transfer_count', 1))
-            display.create_task(
-                operation_id, 
-                f"Starting {operation_type} ({count} items)",
-                total=count
-            )
-        elif status in ['completed', 'failed']:
-            if status == 'completed':
-                display.complete_task(operation_id, "✓ Operation completed")
-            else:
-                error = data.get('error', 'Unknown error')
-                display.fail_task(operation_id, f"Operation failed: {error}")
-    
-    return callback

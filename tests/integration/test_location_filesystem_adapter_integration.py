@@ -6,16 +6,20 @@ PathSandboxedFileSystem fix, ensuring proper integration between the new
 infrastructure adapters and the security fixes.
 """
 
-import pytest
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from tellus.domain.entities.location import LocationEntity, LocationKind
-from tellus.infrastructure.adapters.fsspec_adapter import FSSpecAdapter, ProgressTracker
-from tellus.location import Location as LegacyLocation, LocationKind as LegacyLocationKind
-from tellus.location.sandboxed_filesystem import PathSandboxedFileSystem, PathValidationError
+from tellus.infrastructure.adapters.fsspec_adapter import (FSSpecAdapter,
+                                                           ProgressTracker)
+from tellus.location import Location as LegacyLocation
+from tellus.location import LocationKind as LegacyLocationKind
+from tellus.location.sandboxed_filesystem import (PathSandboxedFileSystem,
+                                                  PathValidationError)
 
 
 class TestFSSpecAdapterIntegration:

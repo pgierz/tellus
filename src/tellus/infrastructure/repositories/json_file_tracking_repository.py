@@ -6,18 +6,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from ...domain.entities.file_tracking import (
-    FileTrackingRepository,
-    TrackedFileMetadata,
-    FileChange,
-    RepositorySnapshot,
-    RepositoryState,
-    DVCConfiguration,
-    TrackingStatus,
-    FileChangeType,
-    FileHash
-)
-from ...domain.repositories.file_tracking_repository import IFileTrackingRepository
+from ...domain.entities.file_tracking import (DVCConfiguration, FileChange,
+                                              FileChangeType, FileHash,
+                                              FileTrackingRepository,
+                                              RepositorySnapshot,
+                                              RepositoryState,
+                                              TrackedFileMetadata,
+                                              TrackingStatus)
+from ...domain.repositories.file_tracking_repository import \
+    IFileTrackingRepository
 
 
 class JsonFileTrackingRepository(IFileTrackingRepository):

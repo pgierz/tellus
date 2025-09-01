@@ -9,12 +9,10 @@ from pathlib import Path
 from typing import List, Optional
 
 from ...domain.entities.simulation import SimulationEntity
+from ...domain.repositories.exceptions import (RepositoryError,
+                                               SimulationExistsError,
+                                               SimulationNotFoundError)
 from ...domain.repositories.simulation_repository import ISimulationRepository
-from ...domain.repositories.exceptions import (
-    RepositoryError, 
-    SimulationExistsError, 
-    SimulationNotFoundError
-)
 
 
 class JsonSimulationRepository(ISimulationRepository):
@@ -48,18 +46,33 @@ class JsonSimulationRepository(ISimulationRepository):
             try:
                 data = self._load_data()
                 
-                # Convert entity to dictionary format
+                # Convert entity to new dictionary format
+                # Filter out system-managed data from user attributes
+                clean_attributes = {k: v for k, v in simulation.attrs.items() 
+                                   if k != "associated_locations"}
+                
+                # Extract locations from location_contexts
+                # Handle both nested ("LocationContext" key) and direct formats
+                if "LocationContext" in simulation.location_contexts:
+                    # Nested format from repository load
+                    locations = simulation.location_contexts["LocationContext"]
+                else:
+                    # Direct format from entity operations
+                    locations = {name: context for name, context in simulation.location_contexts.items()}
+                
                 simulation_dict = {
                     "simulation_id": simulation.simulation_id,
                     "uid": simulation.uid,
-                    "path": simulation.path,
-                    "model_id": simulation.model_id,
-                    "attrs": simulation.attrs,
-                    "namelists": simulation.namelists,
-                    "snakemakes": simulation.snakemakes,
-                    "associated_locations": list(simulation.associated_locations),
-                    "location_contexts": simulation.location_contexts
+                    "attributes": clean_attributes,  # New: clean user attributes
+                    "locations": locations,  # New: simplified locations structure
                 }
+                
+                # Only add optional sections if they contain data
+                if simulation.namelists:
+                    simulation_dict["namelists"] = simulation.namelists
+                    
+                if simulation.snakemakes:
+                    simulation_dict["workflows"] = simulation.snakemakes  # New: renamed to workflows
                 
                 data[simulation.simulation_id] = simulation_dict
                 self._save_data(data)
@@ -182,16 +195,24 @@ class JsonSimulationRepository(ISimulationRepository):
     def _dict_to_entity(self, data: dict) -> SimulationEntity:
         """Convert dictionary data to SimulationEntity."""
         try:
+            # Convert to entity expected structure
+            attrs = data.get("attributes", {})
+            locations = data.get("locations", {})
+            
+            # Use direct format for location contexts
+            location_contexts = locations
+            associated_locations = set(locations.keys())
+            
             # Create entity with required fields
             entity = SimulationEntity(
                 simulation_id=data["simulation_id"],
                 model_id=data.get("model_id"),
                 path=data.get("path"),
-                attrs=data.get("attrs", {}),
+                attrs=attrs,
                 namelists=data.get("namelists", {}),
-                snakemakes=data.get("snakemakes", {}),
-                associated_locations=set(data.get("associated_locations", [])),
-                location_contexts=data.get("location_contexts", {})
+                snakemakes=data.get("snakemakes", data.get("workflows", {})),  # Support both names
+                associated_locations=associated_locations,
+                location_contexts=location_contexts
             )
             
             # Set the internal UID if it exists
@@ -203,32 +224,3 @@ class JsonSimulationRepository(ISimulationRepository):
         except Exception as e:
             raise RepositoryError(f"Failed to convert data to SimulationEntity: {e}")
     
-    def migrate_from_legacy_format(self, legacy_file: Path) -> None:
-        """
-        Migrate data from the legacy simulation format.
-        
-        Args:
-            legacy_file: Path to the legacy simulations.json file
-        """
-        with self._lock:
-            try:
-                if not legacy_file.exists():
-                    return
-                
-                with open(legacy_file, 'r', encoding='utf-8') as f:
-                    legacy_data = json.load(f)
-                
-                migrated_count = 0
-                for sim_id, sim_data in legacy_data.items():
-                    try:
-                        # Convert legacy format to entity
-                        entity = self._dict_to_entity(sim_data)
-                        self.save(entity)
-                        migrated_count += 1
-                    except Exception as e:
-                        print(f"Warning: Failed to migrate simulation '{sim_id}': {e}")
-                
-                print(f"Migrated {migrated_count} simulations from legacy format")
-                
-            except Exception as e:
-                raise RepositoryError(f"Failed to migrate from legacy format: {e}")

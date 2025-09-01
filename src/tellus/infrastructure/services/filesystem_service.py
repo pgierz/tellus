@@ -7,7 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-from ...domain.entities.file_tracking import TrackedFileMetadata, FileHash, TrackingStatus
+from ...domain.entities.file_tracking import (FileHash, TrackedFileMetadata,
+                                              TrackingStatus)
 from ...domain.repositories.file_tracking_repository import IFileSystemService
 
 

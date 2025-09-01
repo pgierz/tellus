@@ -8,18 +8,20 @@ ArchiveManifest, and CacheManager with Earth science specific scenarios.
 import hashlib
 import io
 import json
-import pytest
 import tarfile
 import tempfile
 import time
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
 
-from tellus.simulation.simulation import (
-    CacheConfig, CacheManager, CacheEntry, CleanupPolicy, CachePriority,
-    ArchiveMetadata, ArchiveManifest, CompressedArchive, ArchivedSimulation
-)
+import pytest
+
 from tellus.location import Location, LocationKind
+from tellus.simulation.simulation import (ArchivedSimulation, ArchiveManifest,
+                                          ArchiveMetadata, CacheConfig,
+                                          CacheEntry, CacheManager,
+                                          CachePriority, CleanupPolicy,
+                                          CompressedArchive)
 
 from .fixtures.earth_science import *
 

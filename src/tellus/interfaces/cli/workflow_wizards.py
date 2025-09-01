@@ -2,15 +2,15 @@
 Interactive workflow creation wizards for common Earth science patterns.
 """
 
+from typing import Any, Dict, List, Optional
+
 import questionary
-from typing import Dict, List, Any, Optional
 from rich.console import Console
 from rich.panel import Panel
 
-from ...domain.entities.workflow import (
-    WorkflowEntity, WorkflowStep, WorkflowType, WorkflowStatus, 
-    ResourceRequirement
-)
+from ...domain.entities.workflow import (ResourceRequirement, WorkflowEntity,
+                                         WorkflowStatus, WorkflowStep,
+                                         WorkflowType)
 
 console = Console()
 

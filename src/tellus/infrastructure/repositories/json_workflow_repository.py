@@ -7,19 +7,19 @@ using JSON files, following the same pattern as other Tellus repositories.
 
 import json
 import logging
-from pathlib import Path
-from typing import List, Optional, Dict, Any
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from ...domain.entities.workflow import (
-    WorkflowEntity, WorkflowRunEntity, WorkflowTemplateEntity,
-    WorkflowStep, ResourceRequirement, WorkflowStatus,
-    WorkflowEngine, ExecutionEnvironment
-)
+from ...application.services.workflow_execution_service import \
+    IWorkflowRunRepository
 from ...application.services.workflow_service import (
-    IWorkflowRepository, IWorkflowTemplateRepository
-)
-from ...application.services.workflow_execution_service import IWorkflowRunRepository
+    IWorkflowRepository, IWorkflowTemplateRepository)
+from ...domain.entities.workflow import (ExecutionEnvironment,
+                                         ResourceRequirement, WorkflowEngine,
+                                         WorkflowEntity, WorkflowRunEntity,
+                                         WorkflowStatus, WorkflowStep,
+                                         WorkflowTemplateEntity)
 from ...domain.repositories.exceptions import RepositoryError
 
 logger = logging.getLogger(__name__)

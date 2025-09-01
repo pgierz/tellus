@@ -9,9 +9,8 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-from ..entities.simulation_file import (
-    FileContentType, FileImportance, FilePattern, SimulationFile
-)
+from ..entities.simulation_file import (FileContentType, FileImportance,
+                                        FilePattern, SimulationFile)
 
 
 class FileClassifier:

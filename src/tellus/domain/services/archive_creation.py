@@ -13,22 +13,19 @@ import os
 import tarfile
 import tempfile
 import time
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Callable, Union
-from datetime import datetime
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Set, Union
 
-from ..entities.archive import (
-    ArchiveMetadata, ArchiveId, ArchiveType, Checksum, LocationContext
-)
-from ..entities.simulation_file import (
-    SimulationFile, FileInventory, FileContentType, FileImportance
-)
+from ..entities.archive import (ArchiveId, ArchiveMetadata, ArchiveType,
+                                Checksum, LocationContext)
 from ..entities.location import LocationEntity
+from ..entities.simulation_file import (FileContentType, FileImportance,
+                                        FileInventory, SimulationFile)
 from .file_scanner import FileScanner, FileScanResult
 from .sidecar_metadata import SidecarMetadata
-
 
 logger = logging.getLogger(__name__)
 

@@ -5,32 +5,41 @@ Tests the application service layer for archive management,
 including CRUD operations, file operations, caching, and progress tracking.
 """
 
-import pytest
 import asyncio
-from unittest.mock import Mock, MagicMock, patch, AsyncMock
-from typing import Dict, Any, List
+from typing import Any, Dict, List
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
-from tellus.application.services.archive_service import ArchiveApplicationService
-from tellus.application.dtos import (
-    CreateArchiveDto, UpdateArchiveDto, ArchiveDto, ArchiveListDto,
-    ArchiveOperationDto, ArchiveOperationResultDto, ArchiveExtractionDto,
-    ArchiveCopyOperationDto, ArchiveMoveOperationDto, CacheConfigurationDto,
-    CacheStatusDto, CacheOperationResult, FilterOptions, PaginationInfo,
-    FileMetadataDto, SimulationFileDto, FileInventoryDto, ArchiveFileListDto,
-    BulkArchiveOperationDto, BulkOperationResultDto
-)
-from tellus.application.exceptions import (
-    EntityNotFoundError, EntityAlreadyExistsError, ValidationError,
-    ArchiveOperationError, CacheOperationError, DataIntegrityError
-)
-from tellus.domain.entities.archive import (
-    ArchiveId, ArchiveMetadata, ArchiveType, CacheConfiguration
-)
+import pytest
+
+from tellus.application.dtos import (ArchiveCopyOperationDto, ArchiveDto,
+                                     ArchiveExtractionDto, ArchiveFileListDto,
+                                     ArchiveListDto, ArchiveMoveOperationDto,
+                                     ArchiveOperationDto,
+                                     ArchiveOperationResultDto,
+                                     BulkArchiveOperationDto,
+                                     BulkOperationResultDto,
+                                     CacheConfigurationDto,
+                                     CacheOperationResult, CacheStatusDto,
+                                     CreateArchiveDto, FileInventoryDto,
+                                     FileMetadataDto, FilterOptions,
+                                     PaginationInfo, SimulationFileDto,
+                                     UpdateArchiveDto)
+from tellus.application.exceptions import (ArchiveOperationError,
+                                           CacheOperationError,
+                                           DataIntegrityError,
+                                           EntityAlreadyExistsError,
+                                           EntityNotFoundError,
+                                           ValidationError)
+from tellus.application.services.archive_service import \
+    ArchiveApplicationService
+from tellus.domain.entities.archive import (ArchiveId, ArchiveMetadata,
+                                            ArchiveType, CacheConfiguration)
 from tellus.domain.entities.location import LocationEntity, LocationKind
-from tellus.domain.entities.simulation_file import SimulationFile, FileContentType, FileImportance
-from tellus.domain.repositories.exceptions import (
-    LocationNotFoundError, RepositoryError
-)
+from tellus.domain.entities.simulation_file import (FileContentType,
+                                                    FileImportance,
+                                                    SimulationFile)
+from tellus.domain.repositories.exceptions import (LocationNotFoundError,
+                                                   RepositoryError)
 
 
 @pytest.fixture

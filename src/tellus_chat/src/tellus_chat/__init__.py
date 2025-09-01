@@ -5,7 +5,7 @@ This package provides a chat interface for interacting with Tellus simulations u
 natural language, powered by large language models.
 """
 
-from importlib.metadata import version, PackageNotFoundError
+from importlib.metadata import PackageNotFoundError, version
 
 try:
     __version__ = version("tellus-chat")

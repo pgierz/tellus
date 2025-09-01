@@ -26,13 +26,13 @@ import tracemalloc
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from statistics import mean, stdev, median
-from typing import Dict, List, Tuple, Optional, Any, Callable
+from statistics import mean, median, stdev
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from unittest.mock import Mock, patch
 
 import fsspec
-import pytest
 import psutil
+import pytest
 
 from tellus.location.sandboxed_filesystem import PathSandboxedFileSystem
 

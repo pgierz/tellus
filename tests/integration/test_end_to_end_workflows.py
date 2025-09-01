@@ -6,24 +6,21 @@ to file system operations, ensuring the entire system works together correctly.
 """
 
 import asyncio
-import unittest
-import tempfile
 import json
+import tempfile
+import unittest
 from pathlib import Path
-from unittest.mock import patch, Mock
+from unittest.mock import Mock, patch
 
 from tellus.application.container import ServiceContainer
-from tellus.application.dtos import (
-    FileTransferOperationDto,
-    BatchFileTransferOperationDto,
-    BulkArchiveOperationDto,
-    CreateSimulationDto,
-    CreateLocationDto,
-    CreateArchiveDto,
-    SimulationLocationAssociationDto
-)
+from tellus.application.dtos import (BatchFileTransferOperationDto,
+                                     BulkArchiveOperationDto, CreateArchiveDto,
+                                     CreateLocationDto, CreateSimulationDto,
+                                     FileTransferOperationDto,
+                                     SimulationLocationAssociationDto)
 from tellus.domain.entities.location import LocationKind
-from tellus.domain.entities.simulation_file import FileContentType, FileImportance
+from tellus.domain.entities.simulation_file import (FileContentType,
+                                                    FileImportance)
 
 
 class TestEndToEndWorkflows(unittest.TestCase):
@@ -32,7 +29,7 @@ class TestEndToEndWorkflows(unittest.TestCase):
     def setUp(self):
         """Set up test environment with temporary directories and service container."""
         import shutil
-        
+
         # Create temporary directories for testing
         self.temp_dir = Path(tempfile.mkdtemp(prefix="tellus_e2e_"))
         self.data_dir = self.temp_dir / "data"

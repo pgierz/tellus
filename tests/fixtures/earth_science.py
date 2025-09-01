@@ -10,9 +10,10 @@ import json
 import tarfile
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Any, Optional
-import pytest
+from typing import Any, Dict, List, Optional
+
 import numpy as np
+import pytest
 
 try:
     import netCDF4 as nc

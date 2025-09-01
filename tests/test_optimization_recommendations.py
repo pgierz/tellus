@@ -28,28 +28,34 @@ import re
 import statistics
 import tempfile
 import time
-from collections import defaultdict, Counter
-from dataclasses import dataclass, asdict
-from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Any, Set, NamedTuple
-from unittest.mock import Mock, patch
 import warnings
+from collections import Counter, defaultdict
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any, Dict, List, NamedTuple, Optional, Set, Tuple
+from unittest.mock import Mock, patch
 
 import fsspec
-import pytest
 import psutil
-
-from tellus.location.sandboxed_filesystem import PathSandboxedFileSystem, PathValidationError
-
+import pytest
 # Import components from other performance test modules
-from test_hpc_climate_performance import (HPC_Performance_Profiler, ClimateDataGenerator, 
-                                        PerformanceProfile, generate_hpc_performance_report)
-from test_parallel_stress_performance import (ParallelStressTester, StressTestResult,
-                                            generate_stress_test_report)
-from test_memory_cpu_profiling import (AdvancedMemoryProfiler, AdvancedCPUProfiler, 
-                                     CombinedProfile, generate_profiling_report)
-from test_performance_regression_framework import (RegressionTestFramework, BaselineManager,
-                                                 RegressionTestResult, generate_regression_report)
+from test_hpc_climate_performance import (ClimateDataGenerator,
+                                          HPC_Performance_Profiler,
+                                          PerformanceProfile,
+                                          generate_hpc_performance_report)
+from test_memory_cpu_profiling import (AdvancedCPUProfiler,
+                                       AdvancedMemoryProfiler, CombinedProfile,
+                                       generate_profiling_report)
+from test_parallel_stress_performance import (ParallelStressTester,
+                                              StressTestResult,
+                                              generate_stress_test_report)
+from test_performance_regression_framework import (BaselineManager,
+                                                   RegressionTestFramework,
+                                                   RegressionTestResult,
+                                                   generate_regression_report)
+
+from tellus.location.sandboxed_filesystem import (PathSandboxedFileSystem,
+                                                  PathValidationError)
 
 
 class OptimizationOpportunity(NamedTuple):
@@ -784,7 +790,8 @@ class TestPerformanceOptimizationAnalysis:
         mock_profiles = []
         
         for i in range(10):
-            from test_memory_cpu_profiling import MemoryProfile, CPUProfile, CombinedProfile
+            from test_memory_cpu_profiling import (CombinedProfile, CPUProfile,
+                                                   MemoryProfile)
             
             memory_profile = MemoryProfile(
                 operation=f"test_op_{i}",

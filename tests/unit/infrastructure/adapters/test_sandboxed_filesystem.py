@@ -6,19 +6,17 @@ including path validation, security constraints, and delegation to underlying fi
 """
 
 import os
-import pytest
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch, call
 from typing import List
+from unittest.mock import MagicMock, Mock, call, patch
 
 import fsspec
+import pytest
 from fsspec.implementations.local import LocalFileSystem
 
 from tellus.infrastructure.adapters.sandboxed_filesystem import (
-    PathSandboxedFileSystem, 
-    PathValidationError
-)
+    PathSandboxedFileSystem, PathValidationError)
 
 
 @pytest.fixture

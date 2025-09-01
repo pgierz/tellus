@@ -9,13 +9,13 @@ import asyncio
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
 
 from tellus.application.container import ServiceContainer
-from tellus.application.dtos import CreateSimulationDto, CreateLocationDto
+from tellus.application.dtos import CreateLocationDto, CreateSimulationDto
 from tellus.interfaces.cli.main import create_main_cli
 
 

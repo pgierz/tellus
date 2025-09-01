@@ -1,6 +1,6 @@
 """Command-line interface for Tellus workflow management.
 
-Note: Workflow CLI only uses the new architecture. There is no legacy workflow system
+Note: Workflow CLI uses the clean architecture.
 to fall back to, so USE_NEW_WORKFLOW_SERVICE feature flag is not checked here.
 """
 
@@ -9,31 +9,34 @@ import json
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
+import questionary
 import rich_click as click
+from rich import print as rprint
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
 from rich.progress import Progress, TaskID
-from rich.prompt import Prompt, Confirm, IntPrompt, FloatPrompt
+from rich.prompt import Confirm, FloatPrompt, IntPrompt, Prompt
+from rich.table import Table
 from rich.text import Text
-from rich import print as rprint
-import questionary
 
-# Import workflow system components
-from ...domain.entities.workflow import (
-    WorkflowEntity, WorkflowStep, WorkflowType, WorkflowStatus,
-    WorkflowRunEntity, RunStatus, ResourceRequirement, WorkflowEngine
-)
+from ...application.services.workflow_execution_service import \
+    WorkflowExecutionService
 from ...application.services.workflow_service import WorkflowApplicationService
-from ...application.services.workflow_execution_service import WorkflowExecutionService
-from ...infrastructure.repositories.json_workflow_repository import (
-    JsonWorkflowRepository, JsonWorkflowRunRepository, JsonWorkflowTemplateRepository
-)
-from ...infrastructure.repositories.json_location_repository import JsonLocationRepository
-from ...infrastructure.adapters.workflow_engines import SnakemakeWorkflowEngine, PythonWorkflowEngine
+# Import workflow system components
+from ...domain.entities.workflow import (ResourceRequirement, RunStatus,
+                                         WorkflowEngine, WorkflowEntity,
+                                         WorkflowRunEntity, WorkflowStatus,
+                                         WorkflowStep, WorkflowType)
 from ...infrastructure.adapters.progress_tracking import ProgressTracker
+from ...infrastructure.adapters.workflow_engines import (
+    PythonWorkflowEngine, SnakemakeWorkflowEngine)
+from ...infrastructure.repositories.json_location_repository import \
+    JsonLocationRepository
+from ...infrastructure.repositories.json_workflow_repository import (
+    JsonWorkflowRepository, JsonWorkflowRunRepository,
+    JsonWorkflowTemplateRepository)
 
 # Initialize console
 console = Console()

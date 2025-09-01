@@ -2,19 +2,19 @@
 Tests for WorkflowEntity domain entity.
 """
 
-import pytest
-from datetime import datetime, timedelta
-
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
+
+import pytest
 
 # Add src directory to path to avoid the scoutfs import issue
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent / "src"))
 
-from tellus.domain.entities.workflow import (
-    WorkflowEntity, WorkflowStep, WorkflowStatus, WorkflowType,
-    ResourceRequirement, WorkflowValidationError
-)
+from tellus.domain.entities.workflow import (ResourceRequirement,
+                                             WorkflowEntity, WorkflowStatus,
+                                             WorkflowStep, WorkflowType,
+                                             WorkflowValidationError)
 
 
 class TestWorkflowEntity:

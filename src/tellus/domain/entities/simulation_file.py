@@ -15,6 +15,14 @@ from typing import Any, Dict, Optional, Set
 from .archive import Checksum
 
 
+class FileType(Enum):
+    """Physical types of files in the system."""
+    REGULAR = "regular"          # Regular files
+    ARCHIVE = "archive"          # Archive files (tar.gz, zip, etc.)
+    DIRECTORY = "directory"      # Directory entries
+    SYMLINK = "symlink"          # Symbolic links
+    
+
 class FileContentType(Enum):
     """Types of content that simulation files can represent."""
     ANALYSIS = "analysis"        # Analysis results, statistical summaries
@@ -61,9 +69,15 @@ class SimulationFile:
     """
     Domain entity representing a file within a simulation context.
     
-    This entity provides semantic meaning to files beyond their raw filesystem
-    properties, including their role in the simulation, temporal associations,
-    and archive relationships.
+    This unified entity represents all types of files in the system:
+    - Regular files (individual data files, scripts, logs, etc.)
+    - Archive files (tar.gz, zip files containing other files)
+    - Directories (collection containers)
+    - Symbolic links (references to other files)
+    
+    Provides semantic meaning beyond raw filesystem properties, including
+    simulation roles, temporal associations, hierarchical relationships,
+    and archive-specific functionality.
     """
     
     # Core Identity
@@ -71,19 +85,36 @@ class SimulationFile:
     size: Optional[int] = None                   # File size in bytes
     checksum: Optional[Checksum] = None          # File integrity checksum
     
-    # Semantic Classification
-    content_type: FileContentType = FileContentType.OUTDATA
+    # File Type Classification
+    file_type: FileType = FileType.REGULAR      # Physical type (regular, archive, directory, symlink)
+    content_type: FileContentType = FileContentType.OUTDATA  # Semantic content type
     importance: FileImportance = FileImportance.IMPORTANT
     file_role: Optional[str] = None              # Specific role: "parameters", "restart", etc.
+    
+    # Hierarchical Relationships (NEW)
+    parent_file_id: Optional[str] = None         # ID of parent file (if extracted from archive)
+    contained_file_ids: Set[str] = field(default_factory=set)  # IDs of contained files (if archive)
     
     # Temporal Information
     simulation_date: Optional[datetime] = None    # What simulation date this represents
     created_time: Optional[float] = None          # When file was created (timestamp)
     modified_time: Optional[float] = None         # When file was modified (timestamp)
     
-    # Archive Context
-    source_archive: Optional[str] = None          # Which archive this came from
+    # Archive Context (ENHANCED)
+    source_archive: Optional[str] = None          # Primary archive this came from (backward compatibility)
+    source_archives: Set[str] = field(default_factory=set)  # All archives that contain this file
     extraction_time: Optional[float] = None      # When file was extracted
+    
+    # Archive-Specific Properties (NEW - for files with file_type=ARCHIVE)
+    archive_format: Optional[str] = None          # Archive format: "tar.gz", "zip", "tar", etc.
+    compression_type: Optional[str] = None        # Compression: "gzip", "bzip2", "xz", etc.
+    path_prefix_to_strip: Optional[str] = None    # Path prefix to remove during extraction
+    is_split_archive: bool = False                # Whether this is part of a split archive
+    split_archive_parts: Set[str] = field(default_factory=set)  # Other parts if split
+    
+    # Location and Storage
+    location_name: Optional[str] = None           # Primary location where file is stored
+    available_locations: Set[str] = field(default_factory=set)  # All locations with copies
     
     # Metadata and Tags
     tags: Set[str] = field(default_factory=set)
@@ -103,11 +134,31 @@ class SimulationFile:
         if self.checksum is not None and not isinstance(self.checksum, Checksum):
             raise ValueError("Checksum must be a Checksum instance")
         
+        if not isinstance(self.file_type, FileType):
+            raise ValueError("File type must be a FileType enum")
+            
         if not isinstance(self.content_type, FileContentType):
             raise ValueError("Content type must be a FileContentType enum")
             
         if not isinstance(self.importance, FileImportance):
             raise ValueError("Importance must be a FileImportance enum")
+        
+        # Validate hierarchical relationship fields
+        if self.parent_file_id is not None and (not isinstance(self.parent_file_id, str) or not self.parent_file_id):
+            raise ValueError("Parent file ID must be a non-empty string if provided")
+        
+        if not isinstance(self.contained_file_ids, set):
+            raise ValueError("Contained file IDs must be a set")
+        
+        # Validate archive-specific fields
+        if not isinstance(self.is_split_archive, bool):
+            raise ValueError("is_split_archive must be a boolean")
+            
+        if not isinstance(self.split_archive_parts, set):
+            raise ValueError("Split archive parts must be a set")
+        
+        if not isinstance(self.available_locations, set):
+            raise ValueError("Available locations must be a set")
         
         # Validate timestamps
         for time_field in ['created_time', 'modified_time', 'extraction_time']:
@@ -240,20 +291,186 @@ class SimulationFile:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation for serialization."""
         return {
+            # Core Identity
             'relative_path': self.relative_path,
             'size': self.size,
             'checksum': str(self.checksum) if self.checksum else None,
+            
+            # File Type Classification
+            'file_type': self.file_type.value,
             'content_type': self.content_type.value,
             'importance': self.importance.value,
             'file_role': self.file_role,
+            
+            # Hierarchical Relationships
+            'parent_file_id': self.parent_file_id,
+            'contained_file_ids': list(self.contained_file_ids),
+            
+            # Temporal Information
             'simulation_date': self.simulation_date.isoformat() if self.simulation_date else None,
             'created_time': self.created_time,
             'modified_time': self.modified_time,
+            
+            # Archive Context
             'source_archive': self.source_archive,
+            'source_archives': list(self.source_archives),
             'extraction_time': self.extraction_time,
+            
+            # Archive-Specific Properties
+            'archive_format': self.archive_format,
+            'compression_type': self.compression_type,
+            'path_prefix_to_strip': self.path_prefix_to_strip,
+            'is_split_archive': self.is_split_archive,
+            'split_archive_parts': list(self.split_archive_parts),
+            
+            # Location and Storage
+            'location_name': self.location_name,
+            'available_locations': list(self.available_locations),
+            
+            # Metadata and Tags
             'tags': list(self.tags),
             'attributes': self.attributes.copy()
         }
+    
+    @classmethod
+    def from_archive_metadata(cls, archive_metadata: 'Any') -> 'SimulationFile':
+        """
+        Create a SimulationFile from ArchiveMetadata entity.
+        This is a migration helper for Phase 2 of the unified architecture.
+        
+        Args:
+            archive_metadata: ArchiveMetadata instance to convert
+            
+        Returns:
+            SimulationFile instance representing the archive
+        """
+        from .archive import ArchiveMetadata, ArchiveType
+        
+        if not isinstance(archive_metadata, ArchiveMetadata):
+            raise ValueError("Must provide an ArchiveMetadata instance")
+        
+        # Determine archive format from archive type
+        archive_format = None
+        compression_type = None
+        if archive_metadata.archive_type == ArchiveType.COMPRESSED:
+            # Try to infer format from archive paths
+            for path in archive_metadata.archive_paths:
+                if path.endswith('.tar.gz') or path.endswith('.tgz'):
+                    archive_format = "tar.gz"
+                    compression_type = "gzip"
+                    break
+                elif path.endswith('.tar.bz2'):
+                    archive_format = "tar.bz2"
+                    compression_type = "bzip2"
+                    break
+                elif path.endswith('.tar.xz'):
+                    archive_format = "tar.xz"
+                    compression_type = "xz"
+                    break
+                elif path.endswith('.tar'):
+                    archive_format = "tar"
+                    break
+                elif path.endswith('.zip'):
+                    archive_format = "zip"
+                    break
+            
+            # Default to tar.gz if we can't determine
+            if not archive_format:
+                archive_format = "tar.gz"
+                compression_type = "gzip"
+        elif archive_metadata.archive_type == ArchiveType.SPLIT_TARBALL:
+            archive_format = "tar.gz"
+            compression_type = "gzip"
+        
+        # Create the SimulationFile with archive type
+        simulation_file = cls(
+            relative_path=str(archive_metadata.archive_id),
+            size=archive_metadata.size,
+            checksum=archive_metadata.checksum,
+            file_type=FileType.ARCHIVE,
+            content_type=FileContentType.OUTDATA,  # Default, can be updated
+            importance=FileImportance.IMPORTANT,   # Archives are generally important
+            simulation_date=datetime.fromisoformat(archive_metadata.simulation_date) if archive_metadata.simulation_date else None,
+            created_time=archive_metadata.created_time,
+            archive_format=archive_format,
+            compression_type=compression_type,
+            path_prefix_to_strip=archive_metadata.path_prefix_to_strip,
+            location_name=archive_metadata.location,
+            available_locations={archive_metadata.location},
+            tags=archive_metadata.tags.copy(),
+            attributes={
+                'version': archive_metadata.version,
+                'description': archive_metadata.description,
+                'fragment_info': archive_metadata.fragment_info,
+                'archive_paths': list(archive_metadata.archive_paths),
+                'archive_type_legacy': archive_metadata.archive_type.value,
+                'simulation_id': archive_metadata.simulation_id  # Keep simulation association
+            }
+        )
+        
+        # Handle split archives
+        if archive_metadata.archive_type == ArchiveType.SPLIT_TARBALL:
+            simulation_file.is_split_archive = True
+            # Archive paths become split parts
+            for path in archive_metadata.archive_paths:
+                simulation_file.add_split_archive_part(path)
+        
+        # If archive has file inventory, add contained files
+        if archive_metadata.file_inventory:
+            for file_path, file_obj in archive_metadata.file_inventory.files.items():
+                # Create a synthetic file ID for contained files
+                file_id = f"{archive_metadata.archive_id}:{file_path}"
+                simulation_file.add_contained_file(file_id)
+        
+        return simulation_file
+    
+    def to_archive_metadata(self) -> 'Any':
+        """
+        Convert this SimulationFile back to ArchiveMetadata for backward compatibility.
+        Only works if this file has file_type=ARCHIVE.
+        
+        Returns:
+            ArchiveMetadata instance
+            
+        Raises:
+            ValueError: If this file is not an archive type
+        """
+        import time
+        from .archive import ArchiveMetadata, ArchiveId, ArchiveType
+        
+        if self.file_type != FileType.ARCHIVE:
+            raise ValueError("Can only convert archive-type SimulationFiles to ArchiveMetadata")
+        
+        # Determine archive type from properties
+        archive_type = ArchiveType.COMPRESSED
+        if self.is_split_archive:
+            archive_type = ArchiveType.SPLIT_TARBALL
+        elif self.attributes.get('archive_type_legacy'):
+            archive_type = ArchiveType(self.attributes['archive_type_legacy'])
+        
+        # Get archive paths from split parts or attributes
+        archive_paths = set()
+        if self.is_split_archive:
+            archive_paths = self.split_archive_parts.copy()
+        elif 'archive_paths' in self.attributes:
+            archive_paths = set(self.attributes['archive_paths'])
+        
+        return ArchiveMetadata(
+            archive_id=ArchiveId(self.relative_path),
+            location=self.location_name or '',
+            archive_type=archive_type,
+            simulation_id=self.attributes.get('simulation_id'),
+            archive_paths=archive_paths,
+            checksum=self.checksum,
+            size=self.size,
+            created_time=self.created_time or time.time(),
+            simulation_date=self.simulation_date.isoformat() if self.simulation_date else None,
+            version=self.attributes.get('version'),
+            description=self.attributes.get('description'),
+            tags=self.tags.copy(),
+            path_prefix_to_strip=self.path_prefix_to_strip,
+            fragment_info=self.attributes.get('fragment_info')
+        )
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'SimulationFile':
@@ -274,20 +491,288 @@ class SimulationFile:
             simulation_date = datetime.fromisoformat(data['simulation_date'])
         
         return cls(
+            # Core Identity
             relative_path=data['relative_path'],
             size=data.get('size'),
             checksum=checksum,
+            
+            # File Type Classification
+            file_type=FileType(data.get('file_type', 'regular')),
             content_type=FileContentType(data.get('content_type', 'outdata')),
             importance=FileImportance(data.get('importance', 'important')),
             file_role=data.get('file_role'),
+            
+            # Hierarchical Relationships
+            parent_file_id=data.get('parent_file_id'),
+            contained_file_ids=set(data.get('contained_file_ids', [])),
+            
+            # Temporal Information
             simulation_date=simulation_date,
             created_time=data.get('created_time'),
             modified_time=data.get('modified_time'),
+            
+            # Archive Context
             source_archive=data.get('source_archive'),
+            source_archives=set(data.get('source_archives', [])),
             extraction_time=data.get('extraction_time'),
+            
+            # Archive-Specific Properties
+            archive_format=data.get('archive_format'),
+            compression_type=data.get('compression_type'),
+            path_prefix_to_strip=data.get('path_prefix_to_strip'),
+            is_split_archive=data.get('is_split_archive', False),
+            split_archive_parts=set(data.get('split_archive_parts', [])),
+            
+            # Location and Storage
+            location_name=data.get('location_name'),
+            available_locations=set(data.get('available_locations', [])),
+            
+            # Metadata and Tags
             tags=set(data.get('tags', [])),
             attributes=data.get('attributes', {})
         )
+    
+    # Archive Reference Management Methods
+    
+    def add_archive_reference(self, archive_id: str) -> None:
+        """
+        Add a reference to an archive that contains this file.
+        
+        Args:
+            archive_id: ID of the archive to reference
+        """
+        if not isinstance(archive_id, str) or not archive_id:
+            raise ValueError("Archive ID must be a non-empty string")
+        
+        self.source_archives.add(archive_id)
+        
+        # Maintain backward compatibility with source_archive
+        if self.source_archive is None:
+            self.source_archive = archive_id
+    
+    def remove_archive_reference(self, archive_id: str) -> bool:
+        """
+        Remove a reference to an archive.
+        
+        Args:
+            archive_id: ID of the archive to remove reference to
+            
+        Returns:
+            True if reference was removed, False if it didn't exist
+        """
+        if archive_id in self.source_archives:
+            self.source_archives.remove(archive_id)
+            
+            # Update source_archive if we removed the primary reference
+            if self.source_archive == archive_id:
+                self.source_archive = next(iter(self.source_archives), None)
+            
+            return True
+        return False
+    
+    def is_in_archive(self, archive_id: str) -> bool:
+        """
+        Check if this file is contained in a specific archive.
+        
+        Args:
+            archive_id: ID of the archive to check
+            
+        Returns:
+            True if file is in the archive, False otherwise
+        """
+        return archive_id in self.source_archives
+    
+    def get_archive_references(self) -> Set[str]:
+        """
+        Get all archive references for this file.
+        
+        Returns:
+            Set of archive IDs that contain this file
+        """
+        return self.source_archives.copy()
+    
+    def has_archive_references(self) -> bool:
+        """
+        Check if this file has any archive references.
+        
+        Returns:
+            True if file has archive references, False otherwise
+        """
+        return len(self.source_archives) > 0
+    
+    def get_primary_archive(self) -> Optional[str]:
+        """
+        Get the primary archive for this file (for backward compatibility).
+        
+        Returns:
+            Primary archive ID, or None if no archives referenced
+        """
+        return self.source_archive
+    
+    # NEW: Hierarchical Relationship Management Methods
+    
+    def set_parent_file(self, parent_file_id: str) -> None:
+        """
+        Set the parent file for this file (e.g., archive it was extracted from).
+        
+        Args:
+            parent_file_id: ID of the parent file
+        """
+        if not isinstance(parent_file_id, str) or not parent_file_id:
+            raise ValueError("Parent file ID must be a non-empty string")
+        self.parent_file_id = parent_file_id
+    
+    def clear_parent_file(self) -> None:
+        """Remove parent file relationship."""
+        self.parent_file_id = None
+    
+    def has_parent(self) -> bool:
+        """Check if this file has a parent file."""
+        return self.parent_file_id is not None
+    
+    def add_contained_file(self, file_id: str) -> None:
+        """
+        Add a file ID to the set of files contained by this file.
+        Only valid for archive-type files.
+        
+        Args:
+            file_id: ID of the contained file
+        """
+        if not isinstance(file_id, str) or not file_id:
+            raise ValueError("File ID must be a non-empty string")
+        self.contained_file_ids.add(file_id)
+    
+    def remove_contained_file(self, file_id: str) -> bool:
+        """
+        Remove a file from the set of contained files.
+        
+        Args:
+            file_id: ID of the file to remove
+            
+        Returns:
+            True if file was removed, False if it wasn't contained
+        """
+        if file_id in self.contained_file_ids:
+            self.contained_file_ids.remove(file_id)
+            return True
+        return False
+    
+    def contains_file(self, file_id: str) -> bool:
+        """Check if this file contains another file (for archives)."""
+        return file_id in self.contained_file_ids
+    
+    def get_contained_files(self) -> Set[str]:
+        """Get set of file IDs contained by this file."""
+        return self.contained_file_ids.copy()
+    
+    def get_contained_file_count(self) -> int:
+        """Get count of files contained by this file."""
+        return len(self.contained_file_ids)
+    
+    # NEW: Archive-Specific Methods
+    
+    def is_archive(self) -> bool:
+        """Check if this file is an archive."""
+        return self.file_type == FileType.ARCHIVE
+    
+    def is_directory(self) -> bool:
+        """Check if this file is a directory."""
+        return self.file_type == FileType.DIRECTORY
+    
+    def is_regular_file(self) -> bool:
+        """Check if this file is a regular file."""
+        return self.file_type == FileType.REGULAR
+    
+    def set_archive_properties(self, archive_format: str, compression_type: Optional[str] = None,
+                              path_prefix_to_strip: Optional[str] = None) -> None:
+        """
+        Set archive-specific properties. Should only be called on archive-type files.
+        
+        Args:
+            archive_format: Format of the archive (e.g., "tar.gz", "zip")
+            compression_type: Type of compression (e.g., "gzip", "bzip2")
+            path_prefix_to_strip: Path prefix to remove during extraction
+        """
+        if self.file_type != FileType.ARCHIVE:
+            raise ValueError("Archive properties can only be set on archive-type files")
+        
+        self.archive_format = archive_format
+        self.compression_type = compression_type
+        self.path_prefix_to_strip = path_prefix_to_strip
+    
+    def truncate_path(self, path: str) -> str:
+        """
+        Truncate a path by removing the configured prefix.
+        Used for archive files to provide clean extraction paths.
+        
+        Args:
+            path: Path to truncate
+            
+        Returns:
+            Truncated path, or original path if no prefix configured
+        """
+        if not self.path_prefix_to_strip or not path.startswith(self.path_prefix_to_strip):
+            return path
+        
+        truncated = path[len(self.path_prefix_to_strip):]
+        # Remove leading slash if present
+        return truncated.lstrip('/')
+    
+    def add_split_archive_part(self, part_id: str) -> None:
+        """Add a part ID to split archive parts."""
+        if not isinstance(part_id, str) or not part_id:
+            raise ValueError("Part ID must be a non-empty string")
+        self.split_archive_parts.add(part_id)
+        self.is_split_archive = True
+    
+    def remove_split_archive_part(self, part_id: str) -> bool:
+        """Remove a part from split archive parts."""
+        if part_id in self.split_archive_parts:
+            self.split_archive_parts.remove(part_id)
+            # If no parts left, mark as not split
+            if not self.split_archive_parts:
+                self.is_split_archive = False
+            return True
+        return False
+    
+    # NEW: Location Management Methods
+    
+    def set_primary_location(self, location_name: str) -> None:
+        """Set the primary location for this file."""
+        if not isinstance(location_name, str) or not location_name:
+            raise ValueError("Location name must be a non-empty string")
+        self.location_name = location_name
+        self.available_locations.add(location_name)
+    
+    def add_location(self, location_name: str) -> None:
+        """Add a location where this file is available."""
+        if not isinstance(location_name, str) or not location_name:
+            raise ValueError("Location name must be a non-empty string")
+        self.available_locations.add(location_name)
+        
+        # Set as primary if no primary location set
+        if self.location_name is None:
+            self.location_name = location_name
+    
+    def remove_location(self, location_name: str) -> bool:
+        """Remove a location. Returns True if location was removed."""
+        if location_name in self.available_locations:
+            self.available_locations.remove(location_name)
+            
+            # Update primary location if we removed it
+            if self.location_name == location_name:
+                self.location_name = next(iter(self.available_locations), None)
+            
+            return True
+        return False
+    
+    def is_available_at_location(self, location_name: str) -> bool:
+        """Check if file is available at a specific location."""
+        return location_name in self.available_locations
+    
+    def get_available_locations(self) -> Set[str]:
+        """Get set of all locations where this file is available."""
+        return self.available_locations.copy()
 
 
 @dataclass

@@ -8,18 +8,17 @@ progress tracking updates, supporting multiple notification channels and filteri
 import asyncio
 import json
 import logging
-import time
 import threading
+import time
+import uuid
 import weakref
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Union
 from urllib.parse import urlparse
-import uuid
 
-from ..dtos import ProgressUpdateNotificationDto, ProgressMetricsDto
-
+from ..dtos import ProgressMetricsDto, ProgressUpdateNotificationDto
 
 logger = logging.getLogger(__name__)
 

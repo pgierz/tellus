@@ -8,11 +8,11 @@ to the new clean architecture approach with proper separation of concerns.
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from .base_tests import UnitTest, IntegrationTest
-from .factories import LocationBuilder, SimulationBuilder, LocationFactory
+from .base_tests import IntegrationTest, UnitTest
+from .factories import LocationBuilder, LocationFactory, SimulationBuilder
 from .test_doubles import TestDoubleFactory, TestDoubleType
-from .utilities import TemporaryPathManager, FileSystemTestHelper, AssertionHelper
-
+from .utilities import (AssertionHelper, FileSystemTestHelper,
+                        TemporaryPathManager)
 
 # =============================================================================
 # UNIT TESTS - Fast, isolated, no I/O

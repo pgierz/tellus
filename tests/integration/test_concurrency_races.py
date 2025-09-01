@@ -10,12 +10,12 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from unittest.mock import patch
+
 import pytest
 
 from tellus.location import Location, LocationKind
-from tellus.simulation import (
-    Simulation, CacheManager, CompressedArchive, ArchiveRegistry
-)
+from tellus.simulation import (ArchiveRegistry, CacheManager,
+                               CompressedArchive, Simulation)
 
 
 @pytest.mark.concurrency
@@ -118,7 +118,7 @@ class TestConcurrentCacheOperations:
         def cache_archive(worker_id):
             """Worker function to cache archive data."""
             import tempfile
-            
+
             # Create temporary archive file
             with tempfile.NamedTemporaryFile(suffix='.tar.gz', delete=False) as f:
                 f.write(sample_archive_data)

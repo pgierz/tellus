@@ -4,15 +4,10 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from ..entities.file_tracking import (
-    FileTrackingRepository,
-    TrackedFileMetadata,
-    FileChange,
-    RepositorySnapshot,
-    RepositoryState,
-    DVCConfiguration,
-    TrackingStatus
-)
+from ..entities.file_tracking import (DVCConfiguration, FileChange,
+                                      FileTrackingRepository,
+                                      RepositorySnapshot, RepositoryState,
+                                      TrackedFileMetadata, TrackingStatus)
 
 
 class IFileTrackingRepository(ABC):

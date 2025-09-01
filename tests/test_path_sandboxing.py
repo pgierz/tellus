@@ -5,18 +5,15 @@ This test suite verifies that the PathSandboxedFileSystem correctly enforces
 path boundaries and prevents operations outside the configured location path.
 """
 
-import pytest
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from tellus.location import (
-    Location,
-    LocationKind,
-    PathSandboxedFileSystem,
-    PathValidationError,
-)
+import pytest
+
+from tellus.location import (Location, LocationKind, PathSandboxedFileSystem,
+                             PathValidationError)
 
 
 class TestPathSandboxedFileSystem:

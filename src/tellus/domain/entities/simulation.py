@@ -2,8 +2,8 @@
 Core Simulation domain entity - pure business logic without infrastructure dependencies.
 """
 
-import uuid
 import copy
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
 
@@ -29,6 +29,9 @@ class SimulationEntity:
     
     # Location-specific contexts and configurations
     location_contexts: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    
+    # File management - tracks files associated with this simulation
+    file_inventory: Optional['FileInventory'] = None
 
     # Internal identifier (different from user-facing simulation_id)
     _uid: str = field(default_factory=lambda: str(uuid.uuid4()))
@@ -74,6 +77,12 @@ class SimulationEntity:
             
         if not isinstance(self.location_contexts, dict):
             errors.append("Location contexts must be a dictionary")
+            
+        if self.file_inventory is not None:
+            # Import here to avoid circular imports
+            from .simulation_file import FileInventory
+            if not isinstance(self.file_inventory, FileInventory):
+                errors.append("File inventory must be a FileInventory instance")
 
         return errors
 
@@ -243,6 +252,134 @@ class SimulationEntity:
             True if location is associated, False otherwise
         """
         return location_name in self.associated_locations
+
+    # File Management Methods
+    
+    def has_file_inventory(self) -> bool:
+        """Check if simulation has a file inventory."""
+        return self.file_inventory is not None
+    
+    def get_file_count(self) -> int:
+        """Get the number of files associated with this simulation."""
+        if self.file_inventory:
+            return self.file_inventory.file_count
+        return 0
+    
+    def add_file(self, file: 'SimulationFile') -> None:
+        """
+        Add a file to the simulation's file inventory.
+        
+        Args:
+            file: SimulationFile to add
+        """
+        # Import here to avoid circular imports
+        from .simulation_file import FileInventory, SimulationFile
+        
+        if not isinstance(file, SimulationFile):
+            raise ValueError("File must be a SimulationFile instance")
+        
+        if self.file_inventory is None:
+            self.file_inventory = FileInventory()
+        
+        self.file_inventory.add_file(file)
+    
+    def remove_file(self, relative_path: str) -> bool:
+        """
+        Remove a file from the simulation's file inventory.
+        
+        Args:
+            relative_path: Path of the file to remove
+            
+        Returns:
+            True if file was removed, False if it didn't exist
+        """
+        if self.file_inventory is None:
+            return False
+        
+        return self.file_inventory.remove_file(relative_path)
+    
+    def get_file(self, relative_path: str) -> Optional['SimulationFile']:
+        """
+        Get a specific file from the simulation's file inventory.
+        
+        Args:
+            relative_path: Path of the file to get
+            
+        Returns:
+            SimulationFile if found, None otherwise
+        """
+        if self.file_inventory is None:
+            return None
+        
+        return self.file_inventory.get_file(relative_path)
+    
+    def get_files(self) -> List['SimulationFile']:
+        """
+        Get all files in the simulation's file inventory.
+        
+        Returns:
+            List of all SimulationFile instances
+        """
+        if self.file_inventory is None:
+            return []
+        
+        return self.file_inventory.get_all_files()
+    
+    def get_files_by_content_type(self, content_type: 'FileContentType') -> List['SimulationFile']:
+        """
+        Get files filtered by content type.
+        
+        Args:
+            content_type: Content type to filter by
+            
+        Returns:
+            List of SimulationFile instances matching the content type
+        """
+        if self.file_inventory is None:
+            return []
+        
+        return self.file_inventory.get_files_by_content_type(content_type)
+    
+    def get_files_by_importance(self, importance: 'FileImportance') -> List['SimulationFile']:
+        """
+        Get files filtered by importance level.
+        
+        Args:
+            importance: Importance level to filter by
+            
+        Returns:
+            List of SimulationFile instances matching the importance level
+        """
+        if self.file_inventory is None:
+            return []
+        
+        return self.file_inventory.get_files_by_importance(importance)
+    
+    def get_content_type_summary(self) -> Dict[str, int]:
+        """
+        Get summary of files by content type.
+        
+        Returns:
+            Dictionary mapping content type names to counts
+        """
+        if self.file_inventory is None:
+            return {}
+        
+        return self.file_inventory.get_content_type_summary()
+    
+    def clear_files(self) -> int:
+        """
+        Remove all files from the simulation's file inventory.
+        
+        Returns:
+            Number of files that were removed
+        """
+        if self.file_inventory is None:
+            return 0
+        
+        count = self.file_inventory.file_count
+        self.file_inventory = None
+        return count
     
     def get_associated_locations(self) -> List[str]:
         """

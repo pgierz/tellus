@@ -1,12 +1,14 @@
-import os
 import asyncio
-import typer
-from typing import Optional
+import os
 from pathlib import Path
+from typing import Optional
 
-from .core.chat_interface import ChatInterface, Message as ChatMessage
+import typer
+
+from .config import get_default_config, load_config, save_config
+from .core.chat_interface import ChatInterface
+from .core.chat_interface import Message as ChatMessage
 from .core.message import MessageRole
-from .config import load_config, save_config, get_default_config
 
 app = typer.Typer(
     help="Tellus Chat - Natural language interface for Tellus simulations"

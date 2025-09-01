@@ -11,19 +11,17 @@ from typing import Optional
 
 import rich_click as click
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
 from rich.syntax import Syntax
+from rich.table import Table
 
-from .main import console
-from ...domain.entities.file_type_config import (
-    FileTypeConfiguration,
-    FileTypeRule,
-    load_file_type_config,
-    save_default_config,
-    get_default_config_path,
-)
+from ...domain.entities.file_type_config import (FileTypeConfiguration,
+                                                 FileTypeRule,
+                                                 get_default_config_path,
+                                                 load_file_type_config,
+                                                 save_default_config)
 from ...domain.entities.simulation_file import FileContentType, FileImportance
+from .main import console
 
 
 @click.group()

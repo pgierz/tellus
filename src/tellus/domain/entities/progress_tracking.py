@@ -5,12 +5,12 @@ This module defines pure business objects for tracking progress of long-running 
 in the Tellus system, following clean architecture principles.
 """
 
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set
-import time
 
 
 class OperationStatus(Enum):
