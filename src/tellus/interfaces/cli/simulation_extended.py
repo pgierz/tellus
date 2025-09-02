@@ -68,11 +68,12 @@ def _handle_simulation_not_found(sim_id: str, service):
 
 
 @simulation.command(name="update")
-@click.argument("sim_id")
+@click.argument("expid")
 @click.option("--model-id", help="Update model identifier")
 @click.option("--path", help="Update simulation path")
 @click.option("--description", help="Update simulation description")
-def update_simulation(sim_id: str, model_id: str = None, path: str = None, description: str = None):
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def update_simulation(expid: str, model_id: str = None, path: str = None, description: str = None, output_json: bool = False):
     """Update an existing simulation."""
     try:
         service = _get_simulation_service()
@@ -83,31 +84,41 @@ def update_simulation(sim_id: str, model_id: str = None, path: str = None, descr
             description=description
         )
         
-        result = service.update_simulation(sim_id, dto)
-        console.print(f"[green]✓[/green] Updated simulation: {result.simulation_id}")
+        result = service.update_simulation(expid, dto)
+        
+        if output_json:
+            console.print(result.pretty_json() if hasattr(result, 'pretty_json') else '{"status": "updated"}')
+        else:
+            console.print(f"[green]✓[/green] Updated simulation: {result.simulation_id}")
         
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")
 
 
 @simulation.command(name="delete")
-@click.argument("sim_id")
+@click.argument("expid")
 @click.option("--force", is_flag=True, help="Force deletion without confirmation")
-def delete_simulation(sim_id: str, force: bool = False):
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def delete_simulation(expid: str, force: bool = False, output_json: bool = False):
     """Delete a simulation."""
     try:
         if not force:
-            if not click.confirm(f"Are you sure you want to delete simulation '{sim_id}'?"):
+            if not click.confirm(f"Are you sure you want to delete simulation '{expid}'?"):
                 console.print("[yellow]Deletion cancelled.[/yellow]")
                 return
         
         service = _get_simulation_service()
-        success = service.delete_simulation(sim_id)
+        success = service.delete_simulation(expid)
         
-        if success:
-            console.print(f"[green]✓[/green] Deleted simulation: {sim_id}")
+        if output_json:
+            import json
+            result = {"simulation_id": expid, "status": "deleted" if success else "failed"}
+            console.print(json.dumps(result, indent=2))
         else:
-            console.print(f"[red]Error:[/red] Could not delete simulation: {sim_id}")
+            if success:
+                console.print(f"[green]✓[/green] Deleted simulation: {expid}")
+            else:
+                console.print(f"[red]Error:[/red] Could not delete simulation: {expid}")
         
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")

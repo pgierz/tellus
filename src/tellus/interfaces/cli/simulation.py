@@ -80,7 +80,9 @@ def simulation():
 
 
 @simulation.command(name="list")
-def list_simulations():
+@click.option("--location", help="Filter simulations by location (supports regex patterns)")
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def list_simulations(location: str = None, output_json: bool = False):
     """
     List all configured simulations with summary information.
     
@@ -119,8 +121,35 @@ def list_simulations():
         result = service.list_simulations()
         simulations = result.simulations
         
+        # Apply location filter if provided (supports regex)
+        if location:
+            import re
+            try:
+                # Try to compile the pattern as regex
+                location_pattern = re.compile(location, re.IGNORECASE)
+                filtered_simulations = []
+                for sim in simulations:
+                    # Check if simulation has locations matching the pattern
+                    if hasattr(sim, 'associated_locations') and sim.associated_locations:
+                        for loc_name in sim.associated_locations.keys():
+                            if location_pattern.search(loc_name):
+                                filtered_simulations.append(sim)
+                                break
+                simulations = filtered_simulations
+            except re.error as e:
+                console.print(f"[red]Error:[/red] Invalid regex pattern '{location}': {e}")
+                return
+        
         if not simulations:
-            console.print("No simulations found.")
+            if location:
+                console.print(f"No simulations found matching location pattern '{location}'.")
+            else:
+                console.print("No simulations found.")
+            return
+            
+        # JSON output
+        if output_json:
+            console.print(result.pretty_json() if hasattr(result, 'pretty_json') else '[]')
             return
             
         table = Table(
