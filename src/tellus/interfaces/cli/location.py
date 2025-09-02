@@ -1,4 +1,4 @@
-"""CLI for location management."""
+"""Clean architecture CLI for location management."""
 
 import rich_click as click
 from rich.console import Console
@@ -46,18 +46,23 @@ def _get_location_service():
 
 @cli.group()
 def location():
-    """Manage locations .."""
+    """Manage locations using clean architecture."""
     pass
 
 
 @location.command(name="list")
-def list_locations():
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def list_locations(output_json: bool = False):
     """List all locations."""
     try:
         service = _get_location_service()
         result = service.list_locations()
         locations = result.locations
 
+        if output_json:
+            console.print(result.pretty_json())
+            return
+            
         if not locations:
             console.print("No locations found.")
             return
@@ -92,12 +97,13 @@ def list_locations():
 
 
 @location.command(name="delete")
-@click.argument("names", nargs=-1)
+@click.argument("location_ids", nargs=-1)
 @click.option("--force", "-f", is_flag=True, help="Skip confirmation prompt")
-def delete_location(names: tuple = (), force: bool = False):
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def delete_location(location_ids: tuple = (), force: bool = False, output_json: bool = False):
     """Delete one or more locations.
 
-    Can specify multiple location names as arguments, or launch interactive wizard if none provided.
+    Can specify multiple location-ids as arguments, or launch interactive wizard if none provided.
 
     Examples:
         tellus location delete loc1 loc2 loc3
@@ -107,8 +113,8 @@ def delete_location(names: tuple = (), force: bool = False):
     try:
         service = _get_location_service()
 
-        # If no names provided, launch interactive wizard
-        if not names:
+        # If no location-ids provided, launch interactive wizard
+        if not location_ids:
             console.print("[cyan]Delete locations...[/cyan]")
 
             # Get all locations
@@ -148,7 +154,7 @@ def delete_location(names: tuple = (), force: bool = False):
 
         else:
             # Location names specified on command line
-            location_names = list(names)
+            location_names = list(location_ids)
 
             # Check if all locations exist
             missing_locations = []
@@ -663,17 +669,18 @@ def create_location(
 
 
 @location.command(name="show")
-@click.argument("name", required=False)
-def show_location(name: str = None):
+@click.argument("location_id", required=False)
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def show_location(location_id: str = None, output_json: bool = False):
     """Show details for a location.
 
-    If no name is provided, launches an interactive wizard to select a location to show.
+    If no location-id is provided, launches an interactive wizard to select a location to show.
     """
     try:
         service = _get_location_service()
 
-        # If no name provided, launch interactive wizard
-        if not name:
+        # If no location-id provided, launch interactive wizard
+        if not location_id:
             console.print("[cyan]Show location details...[/cyan]")
 
             # Get all locations
@@ -700,11 +707,15 @@ def show_location(name: str = None):
                 return
 
             # Extract location name
-            name = selected.split(" (")[0]
+            location_id = selected.split(" (")[0]
 
-        loc = service.get_location(name)
+        loc = service.get_location(location_id)
 
-        table = Table(title=f"Location: {name}")
+        if output_json:
+            console.print(loc.pretty_json())
+            return
+
+        table = Table(title=f"Location: {location_id}")
         table.add_column("Property", style="cyan")
         table.add_column("Value", style="green")
 

@@ -162,30 +162,70 @@ def list_simulations():
 
 
 @simulation.command(name="create")
-@click.argument("sim_id")
+@click.argument("expid", required=False)
+@click.option("--location", help="Location where simulation will be stored")
 @click.option("--model-id", help="Model identifier")
 @click.option("--path", help="Simulation path")
-def create_simulation(sim_id: str, model_id: str = None, path: str = None):
-    """Create a new simulation."""
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def create_simulation(expid: str = None, location: str = None, model_id: str = None, path: str = None, output_json: bool = False):
+    """Create a new simulation.
+    
+    If no expid is provided, launches an interactive wizard to gather information.
+    """
     try:
         service = _get_simulation_service()
         
+        # If no expid provided, launch interactive wizard
+        if not expid:
+            import questionary
+            
+            expid = questionary.text(
+                "Simulation ID (expid):",
+                validate=lambda text: True if text.strip() else "Simulation ID is required"
+            ).ask()
+            
+            if not expid:
+                console.print("[dim]Operation cancelled[/dim]")
+                return
+                
+        # If no location provided and interactive mode
+        if not location:
+            import questionary
+            
+            # Get available locations
+            location_service = get_service_container().service_factory.location_service
+            locations_result = location_service.list_locations()
+            
+            if locations_result.locations:
+                location_choices = [loc.name for loc in locations_result.locations]
+                location = questionary.select(
+                    "Select location for simulation:",
+                    choices=location_choices
+                ).ask()
+        
         dto = CreateSimulationDto(
-            simulation_id=sim_id,
+            simulation_id=expid,
             model_id=model_id,
             path=path
         )
         
         result = service.create_simulation(dto)
-        console.print(f"[green]✓[/green] Created simulation: {result.simulation_id}")
+        
+        if output_json:
+            console.print(result.pretty_json())
+        else:
+            console.print(f"[green]✓[/green] Created simulation: {result.simulation_id}")
+            if location:
+                console.print(f"[dim]Location: {location}[/dim]")
         
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")
 
 
 @simulation.command(name="show")
-@click.argument("sim_id")
-def show_simulation(sim_id: str):
+@click.argument("expid", required=False)
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def show_simulation(expid: str = None, output_json: bool = False):
     """Show details for a simulation."""
     try:
         service = _get_simulation_service()
@@ -369,4 +409,796 @@ def edit_simulation(sim_id: str = None, dry_run: bool = False):
         console.print(f"[red]Error:[/red] {str(e)}")
 
 
-# Note: File management commands moved to simulation_extended.py under the files subgroup
+@simulation.command(name="update")
+@click.argument("expid", required=False)
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+@click.option("--param", multiple=True, help="Update parameter in key=value format")
+def update_simulation(expid: str = None, output_json: bool = False, param: tuple = ()):
+    """Update simulation parameters programmatically.
+    
+    If no expid is provided, launches an interactive wizard to select a simulation.
+    Use --param multiple times to update multiple parameters.
+    
+    Examples:
+        tellus simulation update exp001 --param model=FESOM2 --param years=100
+        tellus simulation update  # Interactive selection
+    """
+    try:
+        service = _get_simulation_service()
+        
+        # If no expid provided, launch interactive selection  
+        if not expid:
+            import questionary
+            
+            simulations = service.list_simulations()
+            if not simulations.simulations:
+                console.print("No simulations found.")
+                return
+                
+            choices = [f"{sim.simulation_id}" + (f" - {sim.model_id}" if hasattr(sim, 'model_id') and sim.model_id else '') 
+                      for sim in simulations.simulations]
+            
+            selected = questionary.select("Select simulation to update:", choices=choices).ask()
+            if not selected:
+                console.print("[dim]No simulation selected[/dim]")
+                return
+                
+            expid = selected.split(" -")[0].strip()
+            
+        # Get existing simulation
+        try:
+            existing_sim = service.get_simulation(expid)
+        except Exception:
+            console.print(f"[red]Error:[/red] Simulation '{expid}' not found")
+            return
+            
+        # Parse parameters
+        updates = {}
+        for p in param:
+            if "=" not in p:
+                console.print(f"[red]Error:[/red] Invalid parameter format: {p}. Use key=value")
+                return
+            key, value = p.split("=", 1)
+            updates[key.strip()] = value.strip()
+            
+        if not updates and not param:
+            console.print("[yellow]No parameters to update. Use --param key=value[/yellow]")
+            return
+            
+        # Show what will be updated
+        console.print(f"[dim]Updating simulation '{expid}':[/dim]")
+        for key, value in updates.items():
+            console.print(f"  {key} → {value}")
+            
+        # Perform update
+        update_dto = UpdateSimulationDto(**updates)
+        result = service.update_simulation(expid, update_dto)
+        
+        if output_json:
+            console.print(result.pretty_json())
+        else:
+            console.print(f"[green]✓[/green] Updated simulation: {result.simulation_id}")
+            for key, value in updates.items():
+                console.print(f"[dim]  {key}: {value}[/dim]")
+                
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@simulation.command(name="delete")
+@click.argument("expid", required=False)  
+@click.option("--force", "-f", is_flag=True, help="Skip confirmation prompt")
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def delete_simulation(expid: str = None, force: bool = False, output_json: bool = False):
+    """Delete a simulation.
+    
+    If no expid is provided, launches an interactive wizard to select a simulation.
+    
+    Examples:
+        tellus simulation delete exp001
+        tellus simulation delete --force exp001  # Skip confirmation
+        tellus simulation delete  # Interactive selection
+    """
+    try:
+        service = _get_simulation_service()
+        
+        # If no expid provided, launch interactive selection
+        if not expid:
+            import questionary
+            
+            simulations = service.list_simulations()
+            if not simulations.simulations:
+                console.print("No simulations found.")
+                return
+                
+            choices = [f"{sim.simulation_id}" + (f" - {sim.model_id}" if hasattr(sim, 'model_id') and sim.model_id else '') 
+                      for sim in simulations.simulations]
+            
+            selected = questionary.select("Select simulation to delete:", choices=choices).ask()
+            if not selected:
+                console.print("[dim]No simulation selected[/dim]")
+                return
+                
+            expid = selected.split(" -")[0].strip()
+            
+        # Check if simulation exists
+        try:
+            existing_sim = service.get_simulation(expid)
+        except Exception:
+            console.print(f"[red]Error:[/red] Simulation '{expid}' not found")
+            return
+            
+        # Confirmation prompt unless forced
+        if not force:
+            import questionary
+            
+            if not questionary.confirm(f"Are you sure you want to delete simulation '{expid}'?").ask():
+                console.print("[dim]Operation cancelled[/dim]")
+                return
+                
+        # Perform deletion
+        service.delete_simulation(expid)
+        
+        if output_json:
+            import json
+            delete_result = {"simulation_id": expid, "status": "deleted"}
+            console.print(json.dumps(delete_result, indent=2))
+        else:
+            console.print(f"[green]✓[/green] Deleted simulation: {expid}")
+            
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+# Simulation Location subcommands (per CLI specification)
+
+@simulation.group()
+def location():
+    """Manage simulation-location associations."""
+    pass
+
+
+@location.command(name="create")
+@click.argument("simulation_id", required=False)
+@click.argument("location_name", required=False)
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def create_simulation_location(simulation_id: str = None, location_name: str = None, output_json: bool = False):
+    """Associate a simulation with a location.
+    
+    If arguments are not provided, launches an interactive wizard.
+    
+    Examples:
+        tellus simulation location create exp001 main_lab
+        tellus simulation location create  # Interactive mode
+    """
+    try:
+        service = _get_simulation_service()
+        
+        # Interactive mode if arguments missing
+        if not simulation_id or not location_name:
+            import questionary
+            
+            if not simulation_id:
+                simulations = service.list_simulations()
+                if not simulations.simulations:
+                    console.print("No simulations found.")
+                    return
+                    
+                choices = [f"{sim.simulation_id}" for sim in simulations.simulations]
+                simulation_id = questionary.select("Select simulation:", choices=choices).ask()
+                
+                if not simulation_id:
+                    console.print("[dim]No simulation selected[/dim]")
+                    return
+                    
+            if not location_name:
+                location_service = get_service_container().service_factory.location_service
+                locations_result = location_service.list_locations()
+                
+                if not locations_result.locations:
+                    console.print("No locations found.")
+                    return
+                    
+                choices = [loc.name for loc in locations_result.locations]
+                location_name = questionary.select("Select location:", choices=choices).ask()
+                
+                if not location_name:
+                    console.print("[dim]No location selected[/dim]")
+                    return
+        
+        # Create association (this would need to be implemented in the service)
+        association_dto = SimulationLocationAssociationDto(
+            simulation_id=simulation_id,
+            location_name=location_name
+        )
+        
+        # Note: This assumes the service has a method to create location associations
+        # This might need to be implemented in the service layer
+        result = service.associate_location(simulation_id, location_name)
+        
+        if output_json:
+            console.print(result.pretty_json() if hasattr(result, 'pretty_json') else '{"status": "associated"}')
+        else:
+            console.print(f"[green]✓[/green] Associated simulation '{simulation_id}' with location '{location_name}'")
+            
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@location.command(name="show")
+@click.argument("association_id", required=False)
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def show_simulation_location(association_id: str = None, output_json: bool = False):
+    """Show details for a simulation-location association.
+    
+    If no association-id is provided, launches interactive selection.
+    """
+    try:
+        service = _get_simulation_service()
+        
+        if not association_id:
+            import questionary
+            console.print("Interactive selection for simulation-location associations not yet implemented.")
+            console.print("Please specify an association-id")
+            return
+            
+        # This would need to be implemented in the service layer
+        result = service.get_location_association(association_id)
+        
+        if output_json:
+            console.print(result.pretty_json())
+        else:
+            console.print(f"Association ID: {association_id}")
+            # Display association details
+            
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@location.command(name="list")
+@click.argument("simulation_id", required=False)
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def list_simulation_locations(simulation_id: str = None, output_json: bool = False):
+    """List all locations linked to a simulation.
+    
+    If no simulation-id is provided, launches interactive selection.
+    """
+    try:
+        service = _get_simulation_service()
+        
+        if not simulation_id:
+            import questionary
+            
+            simulations = service.list_simulations()
+            if not simulations.simulations:
+                console.print("No simulations found.")
+                return
+                
+            choices = [f"{sim.simulation_id}" for sim in simulations.simulations]
+            simulation_id = questionary.select("Select simulation:", choices=choices).ask()
+            
+            if not simulation_id:
+                console.print("[dim]No simulation selected[/dim]")
+                return
+                
+        # This would need to be implemented in the service layer
+        associations = service.list_location_associations(simulation_id)
+        
+        if output_json:
+            console.print(associations.pretty_json() if hasattr(associations, 'pretty_json') else '[]')
+        else:
+            if not associations:
+                console.print(f"No locations associated with simulation '{simulation_id}'")
+            else:
+                console.print(f"Locations for simulation '{simulation_id}':")
+                # Display list of associated locations
+                
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@location.command(name="edit")
+@click.argument("association_id", required=False)
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def edit_simulation_location(association_id: str = None, output_json: bool = False):
+    """Edit a simulation-location association.
+    
+    If no association-id is provided, launches interactive selection.
+    """
+    try:
+        console.print("Edit functionality for simulation-location associations not yet implemented.")
+        console.print("This would open an editor for association metadata.")
+        
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@location.command(name="update")
+@click.argument("association_id", required=False)
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def update_simulation_location(association_id: str = None, output_json: bool = False):
+    """Update a simulation-location association programmatically.
+    
+    If no association-id is provided, launches interactive selection.
+    """
+    try:
+        console.print("Update functionality for simulation-location associations not yet implemented.")
+        console.print("This would allow programmatic updates to association properties.")
+        
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@location.command(name="delete")
+@click.argument("association_id", required=False)
+@click.option("--force", "-f", is_flag=True, help="Skip confirmation prompt")
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def delete_simulation_location(association_id: str = None, force: bool = False, output_json: bool = False):
+    """Remove a simulation-location association.
+    
+    If no association-id is provided, launches interactive selection.
+    """
+    try:
+        service = _get_simulation_service()
+        
+        if not association_id:
+            import questionary
+            console.print("Interactive selection for deleting simulation-location associations not yet implemented.")
+            console.print("Please specify an association-id")
+            return
+            
+        # Confirmation unless forced
+        if not force:
+            import questionary
+            
+            if not questionary.confirm(f"Are you sure you want to remove association '{association_id}'?").ask():
+                console.print("[dim]Operation cancelled[/dim]")
+                return
+                
+        # This would need to be implemented in the service layer
+        service.remove_location_association(association_id)
+        
+        if output_json:
+            import json
+            result = {"association_id": association_id, "status": "removed"}
+            console.print(json.dumps(result, indent=2))
+        else:
+            console.print(f"[green]✓[/green] Removed association: {association_id}")
+            
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+# Simulation File subcommands (per CLI specification)
+
+@simulation.group()
+def file():
+    """Manage files associated with simulations."""
+    pass
+
+
+@file.command(name="create")
+@click.argument("simulation_id", required=False)
+@click.argument("file_path", required=False)
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def create_simulation_file(simulation_id: str = None, file_path: str = None, output_json: bool = False):
+    """Attach a file to a simulation.
+    
+    If arguments are not provided, launches an interactive wizard.
+    
+    Examples:
+        tellus simulation file create exp001 /path/to/output.nc
+        tellus simulation file create  # Interactive mode
+    """
+    try:
+        service = _get_unified_file_service()
+        
+        # Interactive mode if arguments missing
+        if not simulation_id or not file_path:
+            import questionary
+            
+            if not simulation_id:
+                sim_service = _get_simulation_service()
+                simulations = sim_service.list_simulations()
+                if not simulations.simulations:
+                    console.print("No simulations found.")
+                    return
+                    
+                choices = [f"{sim.simulation_id}" for sim in simulations.simulations]
+                simulation_id = questionary.select("Select simulation:", choices=choices).ask()
+                
+                if not simulation_id:
+                    console.print("[dim]No simulation selected[/dim]")
+                    return
+                    
+            if not file_path:
+                file_path = questionary.text("File path:").ask()
+                
+                if not file_path:
+                    console.print("[dim]No file path provided[/dim]")
+                    return
+        
+        # Register file with simulation using unified file service
+        from ...application.dtos import FileRegistrationDto
+        from ...domain.entities.simulation_file import FileContentType, FileImportance
+        
+        registration_dto = FileRegistrationDto(
+            simulation_id=simulation_id,
+            file_path=file_path,
+            content_type=FileContentType.OUTPUT,  # Default, could be made configurable
+            importance=FileImportance.NORMAL,     # Default, could be made configurable
+            description=f"File registered via CLI: {file_path}"
+        )
+        
+        result = service.register_file(registration_dto)
+        
+        if output_json:
+            console.print(result.pretty_json() if hasattr(result, 'pretty_json') else '{"status": "registered"}')
+        else:
+            console.print(f"[green]✓[/green] Registered file '{file_path}' with simulation '{simulation_id}'")
+            
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@file.command(name="show")
+@click.argument("file_id", required=False)
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def show_simulation_file(file_id: str = None, output_json: bool = False):
+    """Display details of a file.
+    
+    If no file-id is provided, launches interactive selection.
+    """
+    try:
+        service = _get_unified_file_service()
+        
+        if not file_id:
+            import questionary
+            console.print("Interactive file selection not yet fully implemented.")
+            console.print("Please specify a file-id")
+            return
+            
+        # Get file details from unified file service
+        file_details = service.get_file_details(file_id)
+        
+        if output_json:
+            console.print(file_details.pretty_json() if hasattr(file_details, 'pretty_json') else '{}')
+        else:
+            console.print(f"File ID: {file_id}")
+            # Display file details in table format
+            
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@file.command(name="list")
+@click.argument("simulation_id", required=False)
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def list_simulation_files(simulation_id: str = None, output_json: bool = False):
+    """List files associated with a simulation.
+    
+    If no simulation-id is provided, launches interactive selection.
+    """
+    try:
+        service = _get_unified_file_service()
+        
+        if not simulation_id:
+            import questionary
+            
+            sim_service = _get_simulation_service()
+            simulations = sim_service.list_simulations()
+            if not simulations.simulations:
+                console.print("No simulations found.")
+                return
+                
+            choices = [f"{sim.simulation_id}" for sim in simulations.simulations]
+            simulation_id = questionary.select("Select simulation:", choices=choices).ask()
+            
+            if not simulation_id:
+                console.print("[dim]No simulation selected[/dim]")
+                return
+                
+        # List files for simulation using unified file service
+        files = service.list_simulation_files(simulation_id)
+        
+        if output_json:
+            console.print(files.pretty_json() if hasattr(files, 'pretty_json') else '[]')
+        else:
+            if not files:
+                console.print(f"No files registered for simulation '{simulation_id}'")
+            else:
+                console.print(f"Files for simulation '{simulation_id}':")
+                # Display files in table format
+                
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@file.command(name="edit")
+@click.argument("file_id", required=False)
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def edit_simulation_file(file_id: str = None, output_json: bool = False):
+    """Edit file metadata.
+    
+    If no file-id is provided, launches interactive selection.
+    """
+    try:
+        console.print("Edit functionality for simulation files not yet implemented.")
+        console.print("This would open an editor for file metadata.")
+        
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@file.command(name="update")
+@click.argument("file_id", required=False)
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def update_simulation_file(file_id: str = None, output_json: bool = False):
+    """Update file metadata programmatically.
+    
+    If no file-id is provided, launches interactive selection.
+    """
+    try:
+        console.print("Update functionality for simulation files not yet implemented.")
+        console.print("This would allow programmatic updates to file metadata.")
+        
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@file.command(name="delete")
+@click.argument("file_id", required=False)
+@click.option("--force", "-f", is_flag=True, help="Skip confirmation prompt")
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def delete_simulation_file(file_id: str = None, force: bool = False, output_json: bool = False):
+    """Remove a file from a simulation.
+    
+    If no file-id is provided, launches interactive selection.
+    """
+    try:
+        service = _get_unified_file_service()
+        
+        if not file_id:
+            import questionary
+            console.print("Interactive file selection for deletion not yet implemented.")
+            console.print("Please specify a file-id")
+            return
+            
+        # Confirmation unless forced
+        if not force:
+            import questionary
+            
+            if not questionary.confirm(f"Are you sure you want to remove file '{file_id}' from the simulation?").ask():
+                console.print("[dim]Operation cancelled[/dim]")
+                return
+                
+        # Remove file using unified file service
+        service.remove_file(file_id)
+        
+        if output_json:
+            import json
+            result = {"file_id": file_id, "status": "removed"}
+            console.print(json.dumps(result, indent=2))
+        else:
+            console.print(f"[green]✓[/green] Removed file: {file_id}")
+            
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+# Simulation Archive subcommands (per CLI specification)
+
+@simulation.group()
+def archive():
+    """Manage archived outputs for simulations (special case of files)."""
+    pass
+
+
+@archive.command(name="create")
+@click.argument("simulation_id", required=False)
+@click.argument("archive_name", required=False)
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def create_simulation_archive(simulation_id: str = None, archive_name: str = None, output_json: bool = False):
+    """Create a new archive for a simulation.
+    
+    If arguments are not provided, launches an interactive wizard.
+    
+    Examples:
+        tellus simulation archive create exp001 results_archive
+        tellus simulation archive create  # Interactive mode
+    """
+    try:
+        service = _get_unified_file_service()
+        
+        # Interactive mode if arguments missing
+        if not simulation_id or not archive_name:
+            import questionary
+            
+            if not simulation_id:
+                sim_service = _get_simulation_service()
+                simulations = sim_service.list_simulations()
+                if not simulations.simulations:
+                    console.print("No simulations found.")
+                    return
+                    
+                choices = [f"{sim.simulation_id}" for sim in simulations.simulations]
+                simulation_id = questionary.select("Select simulation:", choices=choices).ask()
+                
+                if not simulation_id:
+                    console.print("[dim]No simulation selected[/dim]")
+                    return
+                    
+            if not archive_name:
+                archive_name = questionary.text("Archive name:").ask()
+                
+                if not archive_name:
+                    console.print("[dim]No archive name provided[/dim]")
+                    return
+        
+        # Create archive using unified file service (archives are SimulationFiles with file_type=ARCHIVE)
+        from ...application.dtos import FileRegistrationDto
+        from ...domain.entities.simulation_file import FileContentType, FileImportance
+        
+        registration_dto = FileRegistrationDto(
+            simulation_id=simulation_id,
+            file_path=f"archives/{archive_name}.tar.gz",  # Default archive path
+            content_type=FileContentType.ARCHIVE,
+            importance=FileImportance.HIGH,  # Archives are typically important
+            description=f"Archive created via CLI: {archive_name}"
+        )
+        
+        result = service.register_file(registration_dto)
+        
+        if output_json:
+            console.print(result.pretty_json() if hasattr(result, 'pretty_json') else '{"status": "created"}')
+        else:
+            console.print(f"[green]✓[/green] Created archive '{archive_name}' for simulation '{simulation_id}'")
+            
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@archive.command(name="show")
+@click.argument("archive_id", required=False)
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def show_simulation_archive(archive_id: str = None, output_json: bool = False):
+    """Show details of an archive.
+    
+    If no archive-id is provided, launches interactive selection.
+    """
+    try:
+        service = _get_unified_file_service()
+        
+        if not archive_id:
+            import questionary
+            console.print("Interactive archive selection not yet fully implemented.")
+            console.print("Please specify an archive-id")
+            return
+            
+        # Get archive details (archives are SimulationFiles with file_type=ARCHIVE)
+        archive_details = service.get_file_details(archive_id)
+        
+        if output_json:
+            console.print(archive_details.pretty_json() if hasattr(archive_details, 'pretty_json') else '{}')
+        else:
+            console.print(f"Archive ID: {archive_id}")
+            # Display archive details in table format
+            
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@archive.command(name="list")
+@click.argument("simulation_id", required=False)
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def list_simulation_archives(simulation_id: str = None, output_json: bool = False):
+    """List all archives for a simulation.
+    
+    If no simulation-id is provided, launches interactive selection.
+    """
+    try:
+        service = _get_unified_file_service()
+        
+        if not simulation_id:
+            import questionary
+            
+            sim_service = _get_simulation_service()
+            simulations = sim_service.list_simulations()
+            if not simulations.simulations:
+                console.print("No simulations found.")
+                return
+                
+            choices = [f"{sim.simulation_id}" for sim in simulations.simulations]
+            simulation_id = questionary.select("Select simulation:", choices=choices).ask()
+            
+            if not simulation_id:
+                console.print("[dim]No simulation selected[/dim]")
+                return
+                
+        # List archives for simulation (filter SimulationFiles by file_type=ARCHIVE)
+        archives = service.list_simulation_archives(simulation_id)
+        
+        if output_json:
+            console.print(archives.pretty_json() if hasattr(archives, 'pretty_json') else '[]')
+        else:
+            if not archives:
+                console.print(f"No archives found for simulation '{simulation_id}'")
+            else:
+                console.print(f"Archives for simulation '{simulation_id}':")
+                # Display archives in table format
+                
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@archive.command(name="edit")
+@click.argument("archive_id", required=False)
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def edit_simulation_archive(archive_id: str = None, output_json: bool = False):
+    """Edit archive metadata.
+    
+    If no archive-id is provided, launches interactive selection.
+    """
+    try:
+        console.print("Edit functionality for simulation archives not yet implemented.")
+        console.print("This would open an editor for archive metadata.")
+        
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@archive.command(name="update")
+@click.argument("archive_id", required=False)
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def update_simulation_archive(archive_id: str = None, output_json: bool = False):
+    """Update archive metadata programmatically.
+    
+    If no archive-id is provided, launches interactive selection.
+    """
+    try:
+        console.print("Update functionality for simulation archives not yet implemented.")
+        console.print("This would allow programmatic updates to archive metadata.")
+        
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@archive.command(name="delete")
+@click.argument("archive_id", required=False)
+@click.option("--force", "-f", is_flag=True, help="Skip confirmation prompt")
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def delete_simulation_archive(archive_id: str = None, force: bool = False, output_json: bool = False):
+    """Delete an archive.
+    
+    If no archive-id is provided, launches interactive selection.
+    """
+    try:
+        service = _get_unified_file_service()
+        
+        if not archive_id:
+            import questionary
+            console.print("Interactive archive selection for deletion not yet implemented.")
+            console.print("Please specify an archive-id")
+            return
+            
+        # Confirmation unless forced
+        if not force:
+            import questionary
+            
+            if not questionary.confirm(f"Are you sure you want to delete archive '{archive_id}'? This action cannot be undone.").ask():
+                console.print("[dim]Operation cancelled[/dim]")
+                return
+                
+        # Delete archive using unified file service (archives are SimulationFiles)
+        service.remove_file(archive_id)
+        
+        if output_json:
+            import json
+            result = {"archive_id": archive_id, "status": "deleted"}
+            console.print(json.dumps(result, indent=2))
+        else:
+            console.print(f"[green]✓[/green] Deleted archive: {archive_id}")
+            console.print("[yellow]Warning:[/yellow] Archive data has been permanently removed.")
+            
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")

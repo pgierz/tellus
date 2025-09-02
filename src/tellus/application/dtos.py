@@ -5,11 +5,50 @@ These objects define the contracts between the application layer and external cl
 providing a stable interface that can evolve independently of the domain model.
 """
 
+import json
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set
+
+# Base mixin for JSON serialization
+class JsonSerializable:
+    """Mixin class that provides JSON serialization for dataclasses."""
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert the dataclass to a dictionary."""
+        def serialize_value(obj):
+            """Custom serializer for special types."""
+            if isinstance(obj, Enum):
+                return obj.value
+            elif isinstance(obj, datetime):
+                return obj.isoformat()
+            elif isinstance(obj, set):
+                return list(obj)
+            elif hasattr(obj, 'to_dict'):
+                return obj.to_dict()
+            return obj
+            
+        def convert_dict(d):
+            """Recursively convert dictionary values."""
+            if isinstance(d, dict):
+                return {k: convert_dict(serialize_value(v)) for k, v in d.items()}
+            elif isinstance(d, (list, tuple)):
+                return [convert_dict(serialize_value(item)) for item in d]
+            else:
+                return serialize_value(d)
+        
+        return convert_dict(asdict(self))
+    
+    def to_json(self, indent: int = 2) -> str:
+        """Convert the dataclass to JSON string."""
+        return json.dumps(self.to_dict(), indent=indent)
+    
+    def pretty_json(self) -> str:
+        """Convert the dataclass to pretty-printed JSON string."""
+        return self.to_json(indent=2)
+
 
 # Local enums for DTOs (formerly from archive entity)
 class CacheCleanupPolicy(str, Enum):
@@ -49,7 +88,7 @@ class FilterOptions:
 # Simulation DTOs
 
 @dataclass
-class CreateSimulationDto:
+class CreateSimulationDto(JsonSerializable):
     """DTO for creating a new simulation."""
     simulation_id: str
     model_id: Optional[str] = None
@@ -60,7 +99,7 @@ class CreateSimulationDto:
 
 
 @dataclass
-class UpdateSimulationDto:
+class UpdateSimulationDto(JsonSerializable):
     """DTO for updating an existing simulation."""
     model_id: Optional[str] = None
     path: Optional[str] = None
@@ -70,7 +109,7 @@ class UpdateSimulationDto:
 
 
 @dataclass
-class SimulationDto:
+class SimulationDto(JsonSerializable):
     """DTO for simulation data (new clean format)."""
     simulation_id: str
     uid: str
@@ -137,7 +176,7 @@ class SimulationLocationAssociationDto:
 # Location DTOs
 
 @dataclass
-class CreateLocationDto:
+class CreateLocationDto(JsonSerializable):
     """DTO for creating a new location."""
     name: str
     kinds: List[str]  # Will be converted to LocationKind enums
@@ -148,7 +187,7 @@ class CreateLocationDto:
 
 
 @dataclass
-class UpdateLocationDto:
+class UpdateLocationDto(JsonSerializable):
     """DTO for updating an existing location."""
     kinds: Optional[List[str]] = None
     protocol: Optional[str] = None
@@ -158,7 +197,7 @@ class UpdateLocationDto:
 
 
 @dataclass
-class LocationDto:
+class LocationDto(JsonSerializable):
     """DTO for location data."""
     name: str
     kinds: List[str]
@@ -172,7 +211,7 @@ class LocationDto:
 
 
 @dataclass
-class LocationListDto:
+class LocationListDto(JsonSerializable):
     """DTO for paginated location lists."""
     locations: List[LocationDto]
     pagination: PaginationInfo
