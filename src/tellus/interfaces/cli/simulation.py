@@ -149,7 +149,15 @@ def list_simulations(location: str = None, output_json: bool = False):
             
         # JSON output
         if output_json:
-            console.print(result.pretty_json() if hasattr(result, 'pretty_json') else '[]')
+            import json
+            # Output a simple dict with simulations list
+            output = {
+                "simulations": [
+                    json.loads(sim.to_json()) if hasattr(sim, 'to_json') else sim.__dict__
+                    for sim in simulations
+                ]
+            }
+            console.print(json.dumps(output, indent=2))
             return
             
         table = Table(
@@ -257,10 +265,39 @@ def create_simulation(expid: str = None, location: str = None, model_id: str = N
 def show_simulation(expid: str = None, output_json: bool = False):
     """Show details for a simulation."""
     try:
-        service = _get_simulation_service()
-        sim = service.get_simulation(sim_id)
+        # If no expid provided, launch interactive selection
+        if not expid:
+            import questionary
+            service = _get_simulation_service()
+            simulations_result = service.list_simulations()
+            
+            if not simulations_result.simulations:
+                console.print("[yellow]No simulations found[/yellow]")
+                return
+            
+            sim_choices = [sim.simulation_id for sim in simulations_result.simulations]
+            expid = questionary.select(
+                "Select simulation to show:",
+                choices=sim_choices
+            ).ask()
+            
+            if not expid:
+                console.print("[dim]Operation cancelled[/dim]")
+                return
         
-        table = Table(title=f"Simulation: {sim_id}")
+        service = _get_simulation_service()
+        sim = service.get_simulation(expid)
+        
+        if not sim:
+            console.print(f"[red]Error:[/red] Simulation '{expid}' not found")
+            return
+        
+        # JSON output
+        if output_json:
+            console.print(sim.pretty_json() if hasattr(sim, 'pretty_json') else '{}')
+            return
+        
+        table = Table(title=f"Simulation: {expid}")
         table.add_column("Property", style="cyan")
         table.add_column("Value", style="green")
         
@@ -268,18 +305,18 @@ def show_simulation(expid: str = None, output_json: bool = False):
         table.add_row("Locations", ", ".join(sim.associated_locations) if sim.associated_locations else "-")
         
         # Show actual attributes with their values
-        if sim.attributes:
-            for key, value in sim.attributes.items():
+        if sim.attrs:
+            for key, value in sim.attrs.items():
                 table.add_row(f"  {key}", str(value))
         else:
             table.add_row("Attributes", "-")
             
         # Show workflows if any
-        if sim.workflows:
+        if hasattr(sim, 'workflows') and sim.workflows:
             table.add_row("Workflows", f"{len(sim.workflows)} defined")
         
         # Show namelists if any  
-        if sim.namelists:
+        if hasattr(sim, 'namelists') and sim.namelists:
             table.add_row("Namelists", f"{len(sim.namelists)} files")
         
         console.print(Panel.fit(table))
