@@ -333,20 +333,32 @@ def update_location(
                 ).ask()
 
             if "Kinds" in update_options:
-                available_kinds = [k.name.lower() for k in LocationKind]
-                current_kinds = [
-                    k.name.lower() if hasattr(k, "name") else str(k).lower()
-                    for k in (existing_loc.kinds or [])
-                ]
+                from questionary import Choice
+                
+                # Normalize existing kinds to lowercase
+                current_kinds_lower = []
+                for k in (existing_loc.kinds or []):
+                    if hasattr(k, "name"):
+                        current_kinds_lower.append(k.name.lower())
+                    elif isinstance(k, str):
+                        current_kinds_lower.append(k.lower())
+                    else:
+                        current_kinds_lower.append(str(k).lower())
+                
+                # Create Choice objects with checked state based on current kinds
+                choices = []
+                for kind in LocationKind:
+                    kind_lower = kind.name.lower()
+                    is_checked = kind_lower in current_kinds_lower
+                    choices.append(Choice(kind_lower, checked=is_checked))
 
                 selected_kinds = questionary.checkbox(
                     "Select kinds for this location:",
-                    choices=available_kinds,
-                    default=current_kinds,
+                    choices=choices,
                 ).ask()
 
-                # Convert to add/remove operations
-                current_set = set(current_kinds)
+                # Convert to add/remove operations  
+                current_set = set(current_kinds_lower)
                 new_set = set(selected_kinds)
                 add_kind = tuple(new_set - current_set)
                 remove_kind = tuple(current_set - new_set)
