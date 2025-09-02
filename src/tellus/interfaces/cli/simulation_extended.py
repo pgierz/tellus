@@ -72,9 +72,10 @@ def _handle_simulation_not_found(sim_id: str, service):
 @click.option("--model-id", help="Update model identifier")
 @click.option("--path", help="Update simulation path")
 @click.option("--description", help="Update simulation description")
-@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-def update_simulation(expid: str, model_id: str = None, path: str = None, description: str = None, output_json: bool = False):
+@click.pass_context
+def update_simulation(ctx, expid: str, model_id: str = None, path: str = None, description: str = None):
     """Update an existing simulation."""
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
         service = _get_simulation_service()
         
@@ -98,9 +99,10 @@ def update_simulation(expid: str, model_id: str = None, path: str = None, descri
 @simulation.command(name="delete")
 @click.argument("expid")
 @click.option("--force", is_flag=True, help="Force deletion without confirmation")
-@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-def delete_simulation(expid: str, force: bool = False, output_json: bool = False):
+@click.pass_context
+def delete_simulation(ctx, expid: str, force: bool = False):
     """Delete a simulation."""
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
         if not force:
             if not click.confirm(f"Are you sure you want to delete simulation '{expid}'?"):

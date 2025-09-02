@@ -51,9 +51,10 @@ def location():
 
 
 @location.command(name="list")
-@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-def list_locations(output_json: bool = False):
+@click.pass_context
+def list_locations(ctx):
     """List all locations."""
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
         service = _get_location_service()
         result = service.list_locations()
@@ -99,8 +100,8 @@ def list_locations(output_json: bool = False):
 @location.command(name="delete")
 @click.argument("location_ids", nargs=-1)
 @click.option("--force", "-f", is_flag=True, help="Skip confirmation prompt")
-@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-def delete_location(location_ids: tuple = (), force: bool = False, output_json: bool = False):
+@click.pass_context
+def delete_location(ctx, location_ids: tuple = (), force: bool = False):
     """Delete one or more locations.
 
     Can specify multiple location-ids as arguments, or launch interactive wizard if none provided.
@@ -110,6 +111,7 @@ def delete_location(location_ids: tuple = (), force: bool = False, output_json: 
         tellus location delete --force loc1 loc2
         tellus location delete  # Interactive wizard
     """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
         service = _get_location_service()
 
@@ -670,12 +672,13 @@ def create_location(
 
 @location.command(name="show")
 @click.argument("location_id", required=False)
-@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-def show_location(location_id: str = None, output_json: bool = False):
+@click.pass_context
+def show_location(ctx, location_id: str = None):
     """Show details for a location.
 
     If no location-id is provided, launches an interactive wizard to select a location to show.
     """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
         service = _get_location_service()
 

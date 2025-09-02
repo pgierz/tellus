@@ -81,8 +81,8 @@ def simulation():
 
 @simulation.command(name="list")
 @click.option("--location", help="Filter simulations by location (supports regex patterns)")
-@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-def list_simulations(location: str = None, output_json: bool = False):
+@click.pass_context
+def list_simulations(ctx, location: str = None):
     """
     List all configured simulations with summary information.
     
@@ -116,6 +116,7 @@ def list_simulations(location: str = None, output_json: bool = False):
     tellus simulation show : Get detailed simulation information
     tellus simulation create : Create a new simulation
     """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
         service = _get_simulation_service()
         result = service.list_simulations()
@@ -203,12 +204,13 @@ def list_simulations(location: str = None, output_json: bool = False):
 @click.option("--location", help="Location where simulation will be stored")
 @click.option("--model-id", help="Model identifier")
 @click.option("--path", help="Simulation path")
-@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-def create_simulation(expid: str = None, location: str = None, model_id: str = None, path: str = None, output_json: bool = False):
+@click.pass_context
+def create_simulation(ctx, expid: str = None, location: str = None, model_id: str = None, path: str = None):
     """Create a new simulation.
     
     If no expid is provided, launches an interactive wizard to gather information.
     """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
         service = _get_simulation_service()
         
@@ -261,9 +263,10 @@ def create_simulation(expid: str = None, location: str = None, model_id: str = N
 
 @simulation.command(name="show")
 @click.argument("expid", required=False)
-@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-def show_simulation(expid: str = None, output_json: bool = False):
+@click.pass_context
+def show_simulation(ctx, expid: str = None):
     """Show details for a simulation."""
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
         # If no expid provided, launch interactive selection
         if not expid:
@@ -477,9 +480,9 @@ def edit_simulation(sim_id: str = None, dry_run: bool = False):
 
 @simulation.command(name="update")
 @click.argument("expid", required=False)
-@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
 @click.option("--param", multiple=True, help="Update parameter in key=value format")
-def update_simulation(expid: str = None, output_json: bool = False, param: tuple = ()):
+@click.pass_context
+def update_simulation(ctx, expid: str = None, param: tuple = ()):
     """Update simulation parameters programmatically.
     
     If no expid is provided, launches an interactive wizard to select a simulation.
@@ -489,6 +492,7 @@ def update_simulation(expid: str = None, output_json: bool = False, param: tuple
         tellus simulation update exp001 --param model=FESOM2 --param years=100
         tellus simulation update  # Interactive selection
     """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
         service = _get_simulation_service()
         
@@ -554,8 +558,8 @@ def update_simulation(expid: str = None, output_json: bool = False, param: tuple
 @simulation.command(name="delete")
 @click.argument("expid", required=False)  
 @click.option("--force", "-f", is_flag=True, help="Skip confirmation prompt")
-@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-def delete_simulation(expid: str = None, force: bool = False, output_json: bool = False):
+@click.pass_context
+def delete_simulation(ctx, expid: str = None, force: bool = False):
     """Delete a simulation.
     
     If no expid is provided, launches an interactive wizard to select a simulation.
@@ -565,6 +569,7 @@ def delete_simulation(expid: str = None, force: bool = False, output_json: bool 
         tellus simulation delete --force exp001  # Skip confirmation
         tellus simulation delete  # Interactive selection
     """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
         service = _get_simulation_service()
         
@@ -631,8 +636,8 @@ def file():
 @file.command(name="create")
 @click.argument("simulation_id", required=False)
 @click.argument("file_path", required=False)
-@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-def create_simulation_file(simulation_id: str = None, file_path: str = None, output_json: bool = False):
+@click.pass_context
+def create_simulation_file(ctx, simulation_id: str = None, file_path: str = None):
     """Attach a file to a simulation.
     
     If arguments are not provided, launches an interactive wizard.
@@ -641,6 +646,7 @@ def create_simulation_file(simulation_id: str = None, file_path: str = None, out
         tellus simulation file create exp001 /path/to/output.nc
         tellus simulation file create  # Interactive mode
     """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
         service = _get_unified_file_service()
         
@@ -694,12 +700,13 @@ def create_simulation_file(simulation_id: str = None, file_path: str = None, out
 
 @file.command(name="show")
 @click.argument("file_id", required=False)
-@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-def show_simulation_file(file_id: str = None, output_json: bool = False):
+@click.pass_context
+def show_simulation_file(ctx, file_id: str = None):
     """Display details of a file.
     
     If no file-id is provided, launches interactive selection.
     """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
         service = _get_unified_file_service()
         
@@ -724,12 +731,13 @@ def show_simulation_file(file_id: str = None, output_json: bool = False):
 
 @file.command(name="list")
 @click.argument("simulation_id", required=False)
-@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-def list_simulation_files(simulation_id: str = None, output_json: bool = False):
+@click.pass_context
+def list_simulation_files(ctx, simulation_id: str = None):
     """List files associated with a simulation.
     
     If no simulation-id is provided, launches interactive selection.
     """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
         service = _get_unified_file_service()
         
@@ -767,12 +775,13 @@ def list_simulation_files(simulation_id: str = None, output_json: bool = False):
 
 @file.command(name="edit")
 @click.argument("file_id", required=False)
-@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-def edit_simulation_file(file_id: str = None, output_json: bool = False):
+@click.pass_context
+def edit_simulation_file(ctx, file_id: str = None):
     """Edit file metadata.
     
     If no file-id is provided, launches interactive selection.
     """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
         console.print("Edit functionality for simulation files not yet implemented.")
         console.print("This would open an editor for file metadata.")
@@ -783,12 +792,13 @@ def edit_simulation_file(file_id: str = None, output_json: bool = False):
 
 @file.command(name="update")
 @click.argument("file_id", required=False)
-@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-def update_simulation_file(file_id: str = None, output_json: bool = False):
+@click.pass_context
+def update_simulation_file(ctx, file_id: str = None):
     """Update file metadata programmatically.
     
     If no file-id is provided, launches interactive selection.
     """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
         console.print("Update functionality for simulation files not yet implemented.")
         console.print("This would allow programmatic updates to file metadata.")
@@ -800,12 +810,13 @@ def update_simulation_file(file_id: str = None, output_json: bool = False):
 @file.command(name="delete")
 @click.argument("file_id", required=False)
 @click.option("--force", "-f", is_flag=True, help="Skip confirmation prompt")
-@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-def delete_simulation_file(file_id: str = None, force: bool = False, output_json: bool = False):
+@click.pass_context
+def delete_simulation_file(ctx, file_id: str = None, force: bool = False):
     """Remove a file from a simulation.
     
     If no file-id is provided, launches interactive selection.
     """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
         service = _get_unified_file_service()
         
@@ -848,8 +859,8 @@ def archive():
 @archive.command(name="create")
 @click.argument("simulation_id", required=False)
 @click.argument("archive_name", required=False)
-@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-def create_simulation_archive(simulation_id: str = None, archive_name: str = None, output_json: bool = False):
+@click.pass_context
+def create_simulation_archive(ctx, simulation_id: str = None, archive_name: str = None):
     """Create a new archive for a simulation.
     
     If arguments are not provided, launches an interactive wizard.
@@ -858,6 +869,7 @@ def create_simulation_archive(simulation_id: str = None, archive_name: str = Non
         tellus simulation archive create exp001 results_archive
         tellus simulation archive create  # Interactive mode
     """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
         service = _get_unified_file_service()
         
@@ -911,12 +923,13 @@ def create_simulation_archive(simulation_id: str = None, archive_name: str = Non
 
 @archive.command(name="show")
 @click.argument("archive_id", required=False)
-@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-def show_simulation_archive(archive_id: str = None, output_json: bool = False):
+@click.pass_context
+def show_simulation_archive(ctx, archive_id: str = None):
     """Show details of an archive.
     
     If no archive-id is provided, launches interactive selection.
     """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
         service = _get_unified_file_service()
         
@@ -941,12 +954,13 @@ def show_simulation_archive(archive_id: str = None, output_json: bool = False):
 
 @archive.command(name="list")
 @click.argument("simulation_id", required=False)
-@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-def list_simulation_archives(simulation_id: str = None, output_json: bool = False):
+@click.pass_context
+def list_simulation_archives(ctx, simulation_id: str = None):
     """List all archives for a simulation.
     
     If no simulation-id is provided, launches interactive selection.
     """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
         service = _get_unified_file_service()
         
@@ -984,12 +998,13 @@ def list_simulation_archives(simulation_id: str = None, output_json: bool = Fals
 
 @archive.command(name="edit")
 @click.argument("archive_id", required=False)
-@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-def edit_simulation_archive(archive_id: str = None, output_json: bool = False):
+@click.pass_context
+def edit_simulation_archive(ctx, archive_id: str = None):
     """Edit archive metadata.
     
     If no archive-id is provided, launches interactive selection.
     """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
         console.print("Edit functionality for simulation archives not yet implemented.")
         console.print("This would open an editor for archive metadata.")
@@ -1000,12 +1015,13 @@ def edit_simulation_archive(archive_id: str = None, output_json: bool = False):
 
 @archive.command(name="update")
 @click.argument("archive_id", required=False)
-@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-def update_simulation_archive(archive_id: str = None, output_json: bool = False):
+@click.pass_context
+def update_simulation_archive(ctx, archive_id: str = None):
     """Update archive metadata programmatically.
     
     If no archive-id is provided, launches interactive selection.
     """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
         console.print("Update functionality for simulation archives not yet implemented.")
         console.print("This would allow programmatic updates to archive metadata.")
@@ -1017,12 +1033,13 @@ def update_simulation_archive(archive_id: str = None, output_json: bool = False)
 @archive.command(name="delete")
 @click.argument("archive_id", required=False)
 @click.option("--force", "-f", is_flag=True, help="Skip confirmation prompt")
-@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-def delete_simulation_archive(archive_id: str = None, force: bool = False, output_json: bool = False):
+@click.pass_context
+def delete_simulation_archive(ctx, archive_id: str = None, force: bool = False):
     """Delete an archive.
     
     If no archive-id is provided, launches interactive selection.
     """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
         service = _get_unified_file_service()
         

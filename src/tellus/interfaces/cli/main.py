@@ -9,9 +9,13 @@ console = Console()
 # Create the main command group
 @click.group(name="tellus")
 @click.version_option()
-def cli():
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format (global)")
+@click.pass_context
+def cli(ctx, output_json):
     """Tellus - A distributed data management system."""
-    pass
+    # Store the JSON flag in context for subcommands to access
+    ctx.ensure_object(dict)
+    ctx.obj['output_json'] = output_json
 
 
 def create_main_cli():
