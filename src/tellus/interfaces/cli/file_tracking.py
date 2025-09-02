@@ -49,9 +49,24 @@ def find_repository_root() -> Optional[Path]:
 
 
 @click.group()
-def files():
-    """Git-like file tracking for simulation data with DVC integration."""
-    pass
+@click.pass_context
+def files(ctx):
+    """Git-like file tracking for simulation data with DVC integration.
+    
+    Examples:
+        tellus files init                    # Initialize file tracking
+        tellus files add *.nc               # Add NetCDF files
+        tellus files status                 # Check repository status
+        tellus files snapshot "Added data"  # Create snapshot
+        tellus files log                    # View history
+        
+    Use --json flag for machine-readable output:
+        tellus --json files status          # JSON status output
+    """
+    # Get JSON flag from parent context if available
+    if ctx.parent and ctx.parent.obj and ctx.parent.obj.get('output_json'):
+        ctx.ensure_object(dict)
+        ctx.obj['output_json'] = True
 
 
 @files.command()
@@ -147,12 +162,32 @@ def init(
     is_flag=True,
     help="Disable DVC for large files in this operation"
 )
-def add(files_to_add: tuple, force: bool, no_dvc: bool):
-    """Add files to tracking."""
+@click.pass_context
+def add(ctx, files_to_add: tuple, force: bool, no_dvc: bool):
+    """Add files to tracking.
+    
+    Stages files for the next snapshot, similar to 'git add'. Large files 
+    (>50MB) are automatically handled with DVC if enabled.
+    
+    Examples:
+        tellus files add data.nc                    # Add single file
+        tellus files add *.nc *.txt                # Add multiple patterns  
+        tellus files add output/ --force            # Force add directory
+        tellus files add data.nc --no-dvc          # Skip DVC for large file
+        
+    See Also:
+        tellus files status      # Check what will be included
+        tellus files snapshot    # Create snapshot of staged files
+    """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     repo_root = find_repository_root()
     if not repo_root:
-        console.print("[red]Error:[/red] Not in a Tellus repository")
-        console.print("Run [code]tellus files init[/code] to initialize")
+        if output_json:
+            import json
+            console.print(json.dumps({"error": "Not in a Tellus repository", "suggestion": "Run 'tellus files init' to initialize"}, indent=2))
+        else:
+            console.print("[red]Error:[/red] Not in a Tellus repository")
+            console.print("[dim]Tip:[/dim] Run [code]tellus files init[/code] to initialize")
         raise click.Abort()
     
     try:
@@ -167,19 +202,29 @@ def add(files_to_add: tuple, force: bool, no_dvc: bool):
         status = service.add_files(str(repo_root), dto)
         
         # Display results
-        if status.staged_files:
-            console.print(f"[green]Added {len(status.staged_files)} files to tracking:[/]")
-            for file_path in status.staged_files:
-                console.print(f"  [green]✓[/green] {file_path}")
-        
-        if status.untracked_files:
-            console.print(f"\n[yellow]Untracked files ({len(status.untracked_files)} found):[/]")
-            for file_path in status.untracked_files[:5]:  # Show first 5
-                console.print(f"  [yellow]?[/yellow] {file_path}")
-            if len(status.untracked_files) > 5:
-                console.print(f"  ... and {len(status.untracked_files) - 5} more")
-        
-        console.print(f"\n[dim]Use [code]tellus files status[/code] to see full repository status[/]")
+        if output_json:
+            import json
+            result = {
+                "staged_files": list(status.staged_files),
+                "untracked_files": list(status.untracked_files),
+                "added_count": len(status.staged_files),
+                "status": "success"
+            }
+            console.print(json.dumps(result, indent=2))
+        else:
+            if status.staged_files:
+                console.print(f"[green]Added {len(status.staged_files)} files to tracking:[/]")
+                for file_path in status.staged_files:
+                    console.print(f"  [green]✓[/green] {file_path}")
+            
+            if status.untracked_files:
+                console.print(f"\n[yellow]Untracked files ({len(status.untracked_files)} found):[/]")
+                for file_path in status.untracked_files[:5]:  # Show first 5
+                    console.print(f"  [yellow]?[/yellow] {file_path}")
+                if len(status.untracked_files) > 5:
+                    console.print(f"  ... and {len(status.untracked_files) - 5} more")
+            
+            console.print(f"\n[dim]Next step:[/dim] Run [code]tellus files snapshot \"Your message\"[/code] to create snapshot")
         
     except EntityNotFoundError:
         console.print("[red]Error:[/red] Repository not found")
@@ -190,8 +235,28 @@ def add(files_to_add: tuple, force: bool, no_dvc: bool):
 
 
 @files.command()
-def status():
-    """Show repository status."""
+@click.pass_context
+def status(ctx):
+    """Show repository status.
+    
+    Displays the current state of tracked files, similar to 'git status'.
+    Shows staged files ready for snapshot, modified files, and untracked files.
+    
+    Examples:
+        tellus files status                     # Show current status
+        tellus --json files status             # JSON output for scripts
+        
+    Output shows:
+        • Staged files (ready to snapshot)     
+        • Modified files (changes detected)
+        • Untracked files (not yet tracked)
+        • Deleted files (removed from disk)
+        
+    See Also:
+        tellus files add        # Stage files for snapshot
+        tellus files snapshot   # Create snapshot of staged files
+    """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     repo_root = find_repository_root()
     if not repo_root:
         console.print("[red]Error:[/red] Not in a Tellus repository")
