@@ -1,4 +1,4 @@
-"""Clean architecture CLI for location management."""
+"""CLI for location management."""
 
 import rich_click as click
 from rich.console import Console
@@ -46,7 +46,7 @@ def _get_location_service():
 
 @cli.group()
 def location():
-    """Manage locations using clean architecture."""
+    """Manage locations .."""
     pass
 
 

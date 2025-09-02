@@ -1,4 +1,4 @@
-"""CLI commands for file tracking using clean architecture."""
+"""CLI commands for file tracking .."""
 
 from pathlib import Path
 from typing import Optional

@@ -1,4 +1,4 @@
-"""Clean architecture CLI for simulation management."""
+"""CLI for simulation management."""
 
 import rich_click as click
 from rich.console import Console

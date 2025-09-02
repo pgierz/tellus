@@ -7,7 +7,7 @@ from .application.services.location_service import LocationApplicationService
 from .application.services.simulation_service import \
     SimulationApplicationService
 from .domain.entities.location import LocationEntity, LocationKind
-# New clean architecture exports
+# Domain entities
 from .domain.entities.simulation import SimulationEntity
 from .infrastructure.adapters.scoutfs_filesystem import ScoutFSFileSystem
 

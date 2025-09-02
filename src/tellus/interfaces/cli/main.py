@@ -17,14 +17,14 @@ def cli():
 def create_main_cli():
     """Create and configure the main CLI with all subcommands."""
     # Import subcommands here to avoid circular imports
-    # TUI functionality now fixed - using clean architecture
+    # TUI functionality now fixed - .
     # Import extended simulation commands
     from . import simulation_extended  # This registers the additional commands
     # Configuration management
     from .config import config, init_command
-    # File tracking - using clean architecture
+    # File tracking - .
     from .file_tracking import files
-    # File type configuration - using clean architecture
+    # File type configuration - .
     from .file_types import file_types
     from .location import location
     from .simulation import simulation

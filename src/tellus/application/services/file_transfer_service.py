@@ -31,60 +31,16 @@ logger = logging.getLogger(__name__)
 
 class FileTransferApplicationService:
     """
-    Application service for reliable file transfer operations in Earth System Model workflows.
+    File transfer service.
     
-    Orchestrates complex file transfer scenarios including single file operations,
-    batch transfers, and recursive directory transfers with comprehensive error
-    handling, progress tracking, and retry mechanisms. Designed for robustness
-    in scientific computing environments where large datasets are common and
-    network reliability may vary.
+    Transfers files between locations with progress tracking and retry logic.
     
-    This service provides high-level interfaces for transferring simulation data,
-    model outputs, and observational datasets between diverse storage backends
-    including local filesystems, SSH/SFTP servers, and cloud object storage.
+    Args:
+        location_repo: Repository for location lookup
+        progress_service: Optional progress tracking
     
-    Parameters
-    ----------
-    location_repo : ILocationRepository
-        Repository interface for storage location lookup and validation.
-        Must provide access to location configurations, protocol settings,
-        and connectivity information for all supported storage backends.
-    progress_service : IProgressTrackingService, optional
-        Service for tracking and reporting transfer progress. When provided,
-        enables real-time monitoring of transfer operations with throughput
-        metrics, estimated completion times, and error reporting.
-        
-    Attributes
-    ----------
-    default_chunk_size : int
-        Default transfer chunk size in bytes (8MB). Optimized for network
-        transfer efficiency while maintaining reasonable memory usage.
-    progress_update_interval : float
-        Interval in seconds between progress updates (1.0 second).
-    max_retry_attempts : int
-        Maximum number of retry attempts for failed transfers (5).
-    retry_backoff_base : float
-        Base delay in seconds for exponential backoff retries (1.0 second).
-        
-    Examples
-    --------
-    Initialize file transfer service with progress tracking:
-    
-    >>> from tellus.infrastructure.repositories import JsonLocationRepository
-    >>> from tellus.application.services import ProgressTrackingApplicationService
-    >>> location_repo = JsonLocationRepository("/tmp/locations.json")
-    >>> progress_service = ProgressTrackingApplicationService(progress_repo)
-    >>> service = FileTransferApplicationService(
-    ...     location_repo=location_repo,
-    ...     progress_service=progress_service
-    ... )
-    >>> service.default_chunk_size
-    8388608
-    
-    Transfer a NetCDF file between HPC and local storage:
-    
-    >>> from tellus.application.dtos import FileTransferOperationDto
-    >>> transfer_dto = FileTransferOperationDto(
+    def __init__(self, location_repo: ILocationRepository,
+                 progress_service: Optional[IProgressTrackingService] = None):
     ...     source_location="hpc-storage",
     ...     source_path="/scratch/cesm/run001/output/atm.nc",
     ...     dest_location="local-workspace",
