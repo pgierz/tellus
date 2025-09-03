@@ -162,7 +162,13 @@ def simulation_location():
 def add_location(sim_id: str = None, location_name: str = None, context: str = None):
     """Associate a location with a simulation.
     
-    If no arguments are provided, launches an interactive selection wizard.
+    If no arguments are provided, launches an interactive selection wizard
+    with tab completion for path templates.
+    
+    Examples:
+        tellus simulation location add                           # Interactive wizard
+        tellus simulation location add MySim tmp                 # Direct association
+        tellus simulation location add MySim tmp --context '{}'  # With custom context
     """
     try:
         import json
@@ -238,11 +244,31 @@ def add_location(sim_id: str = None, location_name: str = None, context: str = N
                 if existing_sim and hasattr(existing_sim, 'location_contexts') and location_name in existing_sim.location_contexts:
                     existing_context = existing_sim.location_contexts[location_name]
                 
-                # Path prefix configuration
+                # Path prefix configuration with tab completion
                 current_path_prefix = existing_context.get('path_prefix', '')
+                
+                # Try to set up path completion for the selected location
+                completer = None
+                try:
+                    from .completion import SmartPathCompleter
+                    container = get_service_container()
+                    location_service = container.service_factory.location_service
+                    filesystem_wrapper = location_service.get_location_filesystem(location_name)
+                    completer = SmartPathCompleter(filesystem_wrapper, only_directories=True)
+                except Exception:
+                    # If completion setup fails, continue without it
+                    pass
+                
+                # Show different prompts based on whether tab completion is available
+                if completer:
+                    prompt_text = f"Path prefix template (use Tab for completion on {location_name}):"
+                else:
+                    prompt_text = "Path prefix template (e.g., '{model}/{experiment}'):"
+                
                 path_prefix = questionary.text(
-                    "Path prefix template (e.g., '{model}/{experiment}'):",
+                    prompt_text,
                     default=current_path_prefix,
+                    completer=completer,
                     style=questionary.Style([
                         ('question', 'bold'),
                         ('answer', 'fg:#cc5454'),
