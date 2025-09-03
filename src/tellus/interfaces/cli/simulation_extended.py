@@ -260,10 +260,12 @@ def add_location(sim_id: str = None, location_name: str = None, context: str = N
                 completer = None
                 try:
                     from .completion import LocationRelativePathCompleter
-                    location_entity = location_service.get_location(location_name)
+                    # Use get_location_filesystem to get the domain entity, not the DTO
+                    location_entity = location_service.get_location_filesystem(location_name)
                     completer = LocationRelativePathCompleter(location_entity, only_directories=True)
-                except Exception:
+                except Exception as e:
                     # If completion setup fails, continue without it
+                    console.print(f"[dim]Note: Tab completion not available ({str(e)})[/dim]")
                     pass
                 
                 # Show different prompts based on whether tab completion is available
