@@ -238,32 +238,39 @@ def add_location(sim_id: str = None, location_name: str = None, context: str = N
             if not context:
                 console.print(f"\n[dim]Configuring context for location '{location_name}'[/dim]")
                 
+                # Get location info to show base path context
+                container = get_service_container()
+                location_service = container.service_factory.location_service
+                location_info = location_service.get_location(location_name)
+                location_base_path = location_info.path if location_info else "/"
+                
+                console.print(f"[dim]Location base path: {location_base_path}[/dim]")
+                console.print(f"[dim]Your path prefix will be relative to the base path[/dim]")
+                
                 # Check if this location already has a context for this simulation
                 existing_sim = service.get_simulation(sim_id)
                 existing_context = {}
                 if existing_sim and hasattr(existing_sim, 'location_contexts') and location_name in existing_sim.location_contexts:
                     existing_context = existing_sim.location_contexts[location_name]
                 
-                # Path prefix configuration with tab completion
+                # Path prefix configuration with location-aware tab completion
                 current_path_prefix = existing_context.get('path_prefix', '')
                 
-                # Try to set up path completion for the selected location
+                # Try to set up location-relative path completion
                 completer = None
                 try:
-                    from .completion import SmartPathCompleter
-                    container = get_service_container()
-                    location_service = container.service_factory.location_service
-                    filesystem_wrapper = location_service.get_location_filesystem(location_name)
-                    completer = SmartPathCompleter(filesystem_wrapper, only_directories=True)
+                    from .completion import LocationRelativePathCompleter
+                    location_entity = location_service.get_location(location_name)
+                    completer = LocationRelativePathCompleter(location_entity, only_directories=True)
                 except Exception:
                     # If completion setup fails, continue without it
                     pass
                 
                 # Show different prompts based on whether tab completion is available
                 if completer:
-                    prompt_text = f"Path prefix template (use Tab for completion on {location_name}):"
+                    prompt_text = f"Relative path prefix (Tab for dirs under {location_base_path}):"
                 else:
-                    prompt_text = "Path prefix template (e.g., '{model}/{experiment}'):"
+                    prompt_text = "Relative path prefix (e.g., '{experiment}' or 'data/{model}'):"
                 
                 path_prefix = questionary.text(
                     prompt_text,
