@@ -330,6 +330,18 @@ def rm_location(sim_id: str, location_name: str):
     remove_location.callback(sim_id, location_name)
 
 
+@simulation_location.command(name="edit")
+@click.argument("sim_id", required=False, shell_complete=_complete_simulation_id)
+@click.argument("location_name", required=False, shell_complete=_complete_location_name)
+@click.option("--path-prefix", help="Set path prefix template for this simulation-location")
+@click.option("--context", help="JSON string with location context data")
+def edit_location_association(sim_id: str = None, location_name: str = None, 
+                             path_prefix: str = None, context: str = None):
+    """Edit simulation-location association settings (alias for update)."""
+    # Call the update function directly
+    update_location_association.callback(sim_id, location_name, path_prefix, context)
+
+
 @simulation_location.command(name="update")
 @click.argument("sim_id", required=False)
 @click.argument("location_name", required=False) 
