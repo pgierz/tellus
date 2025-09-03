@@ -1,1 +1,0 @@
-- Do not ever launch the TUI, I will test it myself.

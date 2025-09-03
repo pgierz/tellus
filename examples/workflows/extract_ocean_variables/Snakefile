@@ -1,0 +1,258 @@
+"""
+Snakemake workflow for extracting ocean variables from split archive
+Uses tellus commands for data staging and CDO for processing
+
+Usage:
+    snakemake --configfile config.yaml --cores 4
+"""
+
+import os
+from pathlib import Path
+
+# Load configuration with defaults
+configfile: "config.yaml"
+
+# Extract config values
+SIMULATION_ID = config["simulation"]["id"]
+MODEL = config["simulation"]["model"]
+BASE_DIR = config["paths"]["base_dir"]
+STAGING_DIR = config["paths"]["staging_dir"]
+VARIABLES = config["variables"]
+TIMESTAMPS = config["timestamps"]
+ARCHIVE_PARTS = config["archive"]["num_parts"]
+HSM_LOCATION = config["archive"]["location"]
+ARCHIVE_PATTERN = config["archive"]["pattern"]
+INTERNAL_PREFIX = config["archive"]["internal_prefix"]
+STRIP_COMPONENTS = config["extraction"]["strip_components"]
+
+# Directory structure
+OUTDATA_DIR = f"{BASE_DIR}/{SIMULATION_ID}/outdata/{MODEL}"
+ANALYSIS_DIR = f"{BASE_DIR}/{SIMULATION_ID}/analysis/{MODEL}"
+
+# Target rule
+rule all:
+    """Generate all extracted and regridded variable files"""
+    input:
+        expand(f"{ANALYSIS_DIR}/{SIMULATION_ID}_{MODEL}_{{var}}_{{timestamp}}_{config['extraction']['regrid_target']}.nc",
+               var=VARIABLES, timestamp=TIMESTAMPS),
+        f"{ANALYSIS_DIR}/extraction_report.txt"
+
+# Stage archive parts from HSM
+rule stage_archive_parts:
+    """Download split archive parts using tellus"""
+    output:
+        parts = expand(f"{STAGING_DIR}/{SIMULATION_ID}.tar.gz_{{part:04d}}", 
+                      part=range(ARCHIVE_PARTS)),
+        flag = f"{STAGING_DIR}/.staged_{SIMULATION_ID}"
+    params:
+        location = HSM_LOCATION,
+        pattern = ARCHIVE_PATTERN
+    shell:
+        """
+        mkdir -p {STAGING_DIR}
+        
+        # Use tellus to download all parts
+        tellus simulation location mget {SIMULATION_ID} {params.location} \
+            "{params.pattern}" {STAGING_DIR}/
+        
+        # Verify all parts downloaded
+        expected={ARCHIVE_PARTS}
+        actual=$(ls {STAGING_DIR}/{SIMULATION_ID}.tar.gz_* | wc -l)
+        if [ "$actual" -ne "$expected" ]; then
+            echo "ERROR: Expected $expected parts, got $actual"
+            exit 1
+        fi
+        
+        touch {output.flag}
+        """
+
+# Reconstruct the complete archive
+rule reconstruct_archive:
+    """Concatenate split parts into single archive"""
+    input:
+        parts = expand(f"{STAGING_DIR}/{SIMULATION_ID}.tar.gz_{{part:04d}}", 
+                      part=range(ARCHIVE_PARTS)),
+        flag = f"{STAGING_DIR}/.staged_{SIMULATION_ID}"
+    output:
+        archive = f"{STAGING_DIR}/{SIMULATION_ID}.tar.gz",
+        size_info = f"{STAGING_DIR}/{SIMULATION_ID}_size.txt"
+    shell:
+        """
+        cd {STAGING_DIR}
+        
+        # Concatenate all parts
+        cat {SIMULATION_ID}.tar.gz_* > {SIMULATION_ID}.tar.gz
+        
+        # Record size for verification
+        ls -lh {SIMULATION_ID}.tar.gz > {output.size_info}
+        
+        echo "Reconstructed archive:"
+        cat {output.size_info}
+        """
+
+# Extract GRIB files from archive
+rule extract_grib_files:
+    """Extract MPIOM GRIB files with prefix stripping"""
+    input:
+        archive = f"{STAGING_DIR}/{SIMULATION_ID}.tar.gz"
+    output:
+        gribs = expand(f"{OUTDATA_DIR}/{SIMULATION_ID}_{MODEL}_{{timestamp}}.grb",
+                      timestamp=TIMESTAMPS),
+        flag = f"{OUTDATA_DIR}/.extracted_{SIMULATION_ID}"
+    params:
+        strip = STRIP_COMPONENTS,
+        prefix = INTERNAL_PREFIX
+    shell:
+        """
+        mkdir -p {OUTDATA_DIR}
+        cd {STAGING_DIR}
+        
+        # Extract with prefix stripping
+        tar -xzf {SIMULATION_ID}.tar.gz \
+            --strip-components={params.strip} \
+            --wildcards "*outdata/{MODEL}/*.grb" \
+            -C {BASE_DIR}/{SIMULATION_ID}/
+        
+        # Verify extraction
+        if [ ! -f "{output.gribs[0]}" ]; then
+            echo "ERROR: GRIB extraction failed. Trying alternative method..."
+            
+            # Alternative: extract then move
+            tar -xzf {SIMULATION_ID}.tar.gz --wildcards "*outdata/{MODEL}/*.grb"
+            if [ -d "{params.prefix}" ]; then
+                mv {params.prefix}/outdata/{MODEL}/*.grb {OUTDATA_DIR}/
+                rm -rf {params.prefix}
+            fi
+        fi
+        
+        touch {output.flag}
+        """
+
+# Extract individual variables from GRIB
+rule extract_variable:
+    """Extract single variable using CDO with MPIOM variable table"""
+    input:
+        grib = f"{OUTDATA_DIR}/{SIMULATION_ID}_{MODEL}_{{timestamp}}.grb"
+    output:
+        nc = f"{ANALYSIS_DIR}/{SIMULATION_ID}_{MODEL}_{{var}}_{{timestamp}}.nc"
+    params:
+        var_table = config["extraction"]["variable_table"]
+    wildcard_constraints:
+        var = "|".join(VARIABLES)
+    shell:
+        """
+        mkdir -p {ANALYSIS_DIR}
+        
+        # Extract variable with correct naming table
+        cdo -f nc -t {params.var_table} -selvar,{wildcards.var} \
+            {input.grib} {output.nc}
+        
+        # Add metadata
+        ncatted -a variable_name,global,c,c,"{wildcards.var}" \
+                -a source_grib,global,c,c,"{input.grib}" \
+                -a extraction_table,global,c,c,"{params.var_table}" \
+                {output.nc}
+        """
+
+# Regrid to target resolution
+rule regrid_variable:
+    """Regrid to regular lat-lon grid"""
+    input:
+        nc = f"{ANALYSIS_DIR}/{SIMULATION_ID}_{MODEL}_{{var}}_{{timestamp}}.nc"
+    output:
+        regridded = f"{ANALYSIS_DIR}/{SIMULATION_ID}_{MODEL}_{{var}}_{{timestamp}}_{config['extraction']['regrid_target']}.nc"
+    params:
+        method = config["extraction"]["regrid_method"],
+        target = config["extraction"]["regrid_target"]
+    wildcard_constraints:
+        var = "|".join(VARIABLES)
+    shell:
+        """
+        # Regrid using configured method and target
+        cdo {params.method},{params.target} {input.nc} {output.regridded}
+        
+        # Add regridding metadata
+        ncatted -a regrid_method,global,c,c,"{params.method}" \
+                -a regrid_target,global,c,c,"{params.target}" \
+                -a original_grid,global,c,c,"MPIOM native grid" \
+                {output.regridded}
+        """
+
+# Optional: merge all timesteps for each variable
+rule merge_timeseries:
+    """Create single file with all timesteps for each variable"""
+    input:
+        files = expand(f"{ANALYSIS_DIR}/{SIMULATION_ID}_{MODEL}_{{var}}_{{timestamp}}_{config['extraction']['regrid_target']}.nc",
+                      timestamp=TIMESTAMPS)
+    output:
+        merged = f"{ANALYSIS_DIR}/{SIMULATION_ID}_{MODEL}_{{var}}_all_{config['extraction']['regrid_target']}.nc"
+    wildcard_constraints:
+        var = "|".join(VARIABLES)
+    shell:
+        """
+        # Merge all timesteps
+        cdo mergetime {input.files} {output.merged}
+        
+        # Update metadata
+        ncatted -a description,global,c,c,"Merged {wildcards.var} from {SIMULATION_ID}" \
+                -a time_range,global,c,c,"{TIMESTAMPS[0]} to {TIMESTAMPS[-1]}" \
+                {output.merged}
+        """
+
+# Generate extraction report
+rule generate_report:
+    """Create summary report of extraction"""
+    input:
+        regridded = expand(f"{ANALYSIS_DIR}/{SIMULATION_ID}_{MODEL}_{{var}}_{{timestamp}}_{config['extraction']['regrid_target']}.nc",
+                          var=VARIABLES, timestamp=TIMESTAMPS)
+    output:
+        report = f"{ANALYSIS_DIR}/extraction_report.txt"
+    shell:
+        """
+        echo "=====================================" > {output.report}
+        echo "Extraction Report for {SIMULATION_ID}" >> {output.report}
+        echo "=====================================" >> {output.report}
+        echo "" >> {output.report}
+        echo "Configuration:" >> {output.report}
+        echo "  Model: {MODEL}" >> {output.report}
+        echo "  Variables: {VARIABLES}" >> {output.report}
+        echo "  Regrid target: {config[extraction][regrid_target]}" >> {output.report}
+        echo "  Number of timesteps: {len(TIMESTAMPS)}" >> {output.report}
+        echo "" >> {output.report}
+        echo "Files created:" >> {output.report}
+        
+        for f in {input.regridded}; do
+            basename "$f" >> {output.report}
+            ncdump -h "$f" | grep -E "dimensions:|time =|lat =|lon =" >> {output.report}
+            echo "" >> {output.report}
+        done
+        
+        echo "Total disk usage:" >> {output.report}
+        du -sh {ANALYSIS_DIR} >> {output.report}
+        """
+
+# Cleanup staging area
+rule cleanup_staging:
+    """Remove staging files after successful extraction"""
+    input:
+        report = f"{ANALYSIS_DIR}/extraction_report.txt"
+    shell:
+        """
+        if [ "{config[cleanup][remove_staging_archives]}" = "true" ]; then
+            echo "Removing archive parts from staging..."
+            rm -f {STAGING_DIR}/{SIMULATION_ID}.tar.gz_*
+            rm -f {STAGING_DIR}/{SIMULATION_ID}.tar.gz
+        fi
+        
+        if [ "{config[cleanup][remove_staging_dir]}" = "true" ]; then
+            echo "Removing staging directory..."
+            rm -rf {STAGING_DIR}
+        fi
+        
+        if [ "{config[cleanup][keep_original_gribs]}" = "false" ]; then
+            echo "Removing original GRIB files..."
+            rm -f {OUTDATA_DIR}/*.grb
+        fi
+        
+        echo "Cleanup complete"
+        """

@@ -1,0 +1,74 @@
+# Tellus workflow definition for ocean variable extraction
+# This would be executed by: tellus workflow run ocean-extraction
+
+workflow:
+  name: "ocean-variable-extraction"
+  description: "Extract THO and SAO from MPIOM split archives"
+  engine: "snakemake"  # Use Snakemake as execution engine
+  
+# Workflow parameters (can be overridden at runtime)
+parameters:
+  simulation_id: "Eem125-S2"
+  variables:
+    - "THO"
+    - "SAO"
+  regrid_target: "r360x180"
+
+# Workflow stages that tellus orchestrates
+stages:
+  
+  1_discover_archives:
+    description: "Find and register split archives"
+    command: |
+      tellus simulation archive list {simulation_id} --json > archives.json
+      
+  2_stage_archives:
+    description: "Stage archives from remote to local"
+    uses: "snakemake"  # Delegates to Snakemake
+    snakefile: "Snakefile"
+    targets: ["stage_archive_parts"]
+    
+  3_reconstruct:
+    description: "Reconstruct split archives"
+    uses: "snakemake"
+    targets: ["reconstruct_archive"]
+    
+  4_extract_variables:
+    description: "Extract and process ocean variables"
+    uses: "snakemake"
+    targets: ["all"]  # Runs full extraction pipeline
+    
+  5_register_outputs:
+    description: "Register extracted files back to tellus"
+    command: |
+      # Register each extracted file
+      for file in analysis/mpiom/*_r360x180.nc; do
+        tellus simulation files add {simulation_id} \
+          --path "$file" \
+          --content-type output \
+          --metadata "variable:THO,SAO;grid:r360x180"
+      done
+      
+  6_create_catalog:
+    description: "Create intake catalog for extracted data"
+    command: |
+      tellus simulation catalog create {simulation_id} \
+        --pattern "analysis/mpiom/*_r360x180.nc" \
+        --format intake
+
+# Integration with tellus data model
+outputs:
+  - path: "{base_dir}/{simulation_id}/analysis/mpiom/"
+    pattern: "*_{variable}_*_r360x180.nc"
+    register_as: "simulation_file"
+    content_type: "output"
+    
+# Cleanup options
+cleanup:
+  on_success: 
+    - "staging_archives"
+  on_failure:
+    - "none"
+  keep:
+    - "analysis_outputs"
+    - "extraction_report"

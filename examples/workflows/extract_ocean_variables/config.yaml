@@ -1,0 +1,48 @@
+# Configuration for extracting ocean variables (THO/SAO) from split archives
+# Example: Eem125-S2 MPIOM data extraction
+
+simulation:
+  id: "Eem125-S2"
+  model: "mpiom"
+
+archive:
+  location: "hsm.dmawi.de"
+  pattern: "Eem125-S2.tar.gz_*"
+  num_parts: 31
+  # Internal path prefix to strip from archive
+  internal_prefix: "ace/user/pgierz/cosmos-aso-wiso/Eem125-S2"
+
+paths:
+  base_dir: "/work/data"  # Where to create Eem125-S2/outdata and Eem125-S2/analysis
+  staging_dir: "/tmp/staging"
+  
+variables:
+  - "THO"  # Potential temperature
+  - "SAO"  # Salinity
+
+timestamps:
+  # Years to extract - can be auto-detected or explicitly listed
+  - "24900101_24901231"
+  - "24910101_24911231"
+  - "24920101_24921231"
+  - "24930101_24931231"
+  - "24940101_24941231"
+  - "24950101_24951231"
+  - "24960101_24961231"
+  - "24970101_24971231"
+  - "24980101_24981231"
+  - "24990101_24991231"
+
+extraction:
+  # CDO settings
+  variable_table: "mpiom1"  # For -t flag to get correct variable names
+  regrid_target: "r360x180"
+  regrid_method: "remapbil"
+  
+  # Tar extraction options
+  strip_components: 5  # ace/user/pgierz/cosmos-aso-wiso/Eem125-S2 = 5 components
+  
+cleanup:
+  remove_staging_archives: true  # Remove tar.gz files after extraction
+  remove_staging_dir: false       # Keep staging dir for debugging
+  keep_original_gribs: true       # Keep GRIB files in outdata/mpiom
