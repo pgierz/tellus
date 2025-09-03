@@ -106,17 +106,38 @@ class PathResolutionService:
             # Get base path from location
             base_path = location_entity.get_base_path()
             
-            # Find best matching template and resolve it
-            template_path = location_entity.suggest_path(simulation_context)
+            # Check if simulation has a direct path_prefix for this location
+            simulation_entity = self._simulation_service._simulation_repo.get_by_id(simulation_id)
+            template_path = None
+            resolved_base_path = base_path  # Default to location base
             
-            # Build the complete path
+            if (simulation_entity and 
+                location_name in simulation_entity.location_contexts and
+                'path_prefix' in simulation_entity.location_contexts[location_name]):
+                
+                # Use direct path_prefix from simulation-location association
+                configured_prefix = simulation_entity.location_contexts[location_name]['path_prefix']
+                
+                if configured_prefix:
+                    # If the prefix is an absolute path, use it as the complete base
+                    if configured_prefix.startswith('/'):
+                        resolved_base_path = configured_prefix
+                        template_path = None  # No additional template needed
+                    else:
+                        # Relative prefix - use as template with location base
+                        template_path = configured_prefix
+            else:
+                # Fall back to location path templates
+                template_path = location_entity.suggest_path(simulation_context)
+            
+            # Rebuild path components logic
             path_components = []
             
-            # Add base path if it exists
-            if base_path:
-                path_components.append(base_path)
+            # Use resolved base path (either location base or simulation's absolute prefix)
+            if resolved_base_path:
+                path_components.append(resolved_base_path)
             
-            # Add resolved template path if available
+            # Add resolved template path if available (for relative prefixes)
             if template_path:
                 path_components.append(template_path)
             
