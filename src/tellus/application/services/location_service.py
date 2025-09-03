@@ -222,8 +222,8 @@ class LocationApplicationService:
                     location.config.pop("storage_options", None)
             
             
-            if dto.additional_config is not None:
-                for key, value in dto.additional_config.items():
+            if dto.config is not None:
+                for key, value in dto.config.items():
                     location.update_config(key, value)
             
             # Validate protocol-specific configuration after updates
@@ -544,7 +544,7 @@ class LocationApplicationService:
             scoutfs_config = {k: v for k, v in storage_options.items() if k != 'host'}
             scoutfs_config['timeout'] = 30  # Default timeout
             
-            # Pass warning filters from location configuration
+            # Pass warning filters from unified config structure
             warning_filters = location.config.get('warning_filters', {})
             scoutfs_config['warning_filters'] = warning_filters
             
@@ -591,7 +591,7 @@ class LocationApplicationService:
             scoutfs_config['timeout'] = 30  # Default timeout
             
             # Pass warning filters from location configuration  
-            warning_filters = location.config.get('warning_filters', {})
+            warning_filters = location.additional_config.get('warning_filters', {})
             scoutfs_config['warning_filters'] = warning_filters
             
             return ScoutFSFileSystem(host=host, **scoutfs_config)
@@ -798,7 +798,7 @@ class LocationApplicationService:
                 scoutfs_config = {k: v for k, v in storage_options.items() if k != 'host'}
                 scoutfs_config['timeout'] = timeout_seconds
                 
-                # Pass warning filters from location configuration
+                # Pass warning filters from unified config structure
                 warning_filters = location.config.get('warning_filters', {})
                 scoutfs_config['warning_filters'] = warning_filters
                 

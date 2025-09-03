@@ -44,6 +44,19 @@ def _get_unified_file_service():
     return service_container.service_factory.unified_file_service
 
 
+def _get_location_service():
+    """
+    Get location service from the service container.
+    
+    Returns
+    -------
+    LocationApplicationService
+        Configured location service for location operations.
+    """
+    service_container = get_service_container()
+    return service_container.service_factory.location_service
+
+
 @cli.group()
 def simulation():
     """
@@ -984,13 +997,42 @@ def list_simulation_archives(ctx, simulation_id: str = None):
         archives = service.list_simulation_archives(simulation_id)
         
         if output_json:
-            console.print(archives.pretty_json() if hasattr(archives, 'pretty_json') else '[]')
+            import json
+            archive_data = []
+            for archive in archives:
+                archive_data.append({
+                    "archive_id": archive.relative_path,
+                    "location": archive.attributes.get('location', ''),
+                    "pattern": archive.attributes.get('pattern', ''),
+                    "split_parts": archive.attributes.get('split_parts'),
+                    "type": archive.attributes.get('archive_type', ''),
+                    "format": getattr(archive, 'archive_format', '')
+                })
+            console.print(json.dumps(archive_data, indent=2))
         else:
             if not archives:
                 console.print(f"No archives found for simulation '{simulation_id}'")
             else:
                 console.print(f"Archives for simulation '{simulation_id}':")
-                # Display archives in table format
+                
+                from rich.table import Table
+                table = Table()
+                table.add_column("Archive ID")
+                table.add_column("Location")
+                table.add_column("Pattern")
+                table.add_column("Split Parts")
+                table.add_column("Type")
+                
+                for archive in archives:
+                    table.add_row(
+                        archive.relative_path,
+                        archive.attributes.get('location', ''),
+                        archive.attributes.get('pattern', ''),
+                        str(archive.attributes.get('split_parts', '')) if archive.attributes.get('split_parts') else '',
+                        archive.attributes.get('archive_type', '')
+                    )
+                
+                console.print(table)
                 
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")
@@ -1095,10 +1137,37 @@ def add_simulation_archive(ctx, simulation_id: str, location: str, pattern: str 
     output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     
     try:
-        # For now, store the archive metadata
-        # In a full implementation, this would use the UnifiedFileService
+        # Use UnifiedFileService to create archive entry
+        service = _get_unified_file_service()
+        
+        # Create archive file entry
+        from ...domain.entities.simulation_file import FileType
+        
+        # Generate archive ID from pattern/simulation
+        archive_id = f"{simulation_id}_{pattern.replace('*', 'archive').replace('.', '_')}" if pattern else f"{simulation_id}_archive"
+        
+        # Create archive file with metadata
+        archive_file = service.create_file(
+            relative_path=archive_id,
+            file_type=FileType.ARCHIVE,
+            simulation_id=simulation_id,
+            location_name=location,
+            archive_format="tar.gz" if archive_type in ["single", "split-tar"] else "unknown",
+            attributes={
+                "pattern": pattern or "*",
+                "split_parts": split_parts,
+                "archive_type": archive_type,
+                "location": location,
+                "indexed": False,  # Track if contents have been indexed
+                "index_timestamp": None,
+                "file_count": None,
+                "content_summary": {}
+            }
+        )
+        
         archive_info = {
             "simulation_id": simulation_id,
+            "archive_id": archive_file.relative_path,
             "location": location,
             "pattern": pattern or "*",
             "split_parts": split_parts,
@@ -1111,6 +1180,7 @@ def add_simulation_archive(ctx, simulation_id: str, location: str, pattern: str 
             console.print(json.dumps(archive_info, indent=2))
         else:
             console.print(f"[green]✓[/green] Added archive for simulation: {simulation_id}")
+            console.print(f"  Archive ID: {archive_file.relative_path}")
             console.print(f"  Location: {location}")
             console.print(f"  Pattern: {pattern or '*'}")
             if split_parts:
@@ -1143,21 +1213,452 @@ def list_archive_contents(ctx, simulation_id: str, archive_id: str = None, file_
     output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     
     try:
-        # Placeholder implementation - would need actual archive access
-        # In real implementation:
-        # 1. Get archive metadata (location, pattern, split info)
-        # 2. If split archive: cat parts | tar -tz
-        # 3. Apply filters if provided
+        # Get services
+        file_service = _get_unified_file_service()
+        location_service = _get_location_service()
         
-        console.print(f"[yellow]Note:[/yellow] list-contents command needs implementation")
-        console.print(f"Would list contents of archive for simulation: {simulation_id}")
-        if file_filter:
-            console.print(f"  Filter: {file_filter}")
-        if grep:
-            console.print(f"  Grep: {grep}")
+        # Get archives for this simulation
+        archives = file_service.list_simulation_archives(simulation_id)
+        if not archives:
+            error_msg = f"No archives found for simulation '{simulation_id}'"
+            if output_json:
+                import json
+                console.print(json.dumps({"error": error_msg}, indent=2))
+            else:
+                console.print(f"[red]Error:[/red] {error_msg}")
+            return
+            
+        # If specific archive_id provided, find it
+        target_archive = None
+        if archive_id:
+            target_archive = next((a for a in archives if a.relative_path == archive_id), None)
+            if not target_archive:
+                error_msg = f"Archive '{archive_id}' not found for simulation '{simulation_id}'"
+                if output_json:
+                    import json
+                    console.print(json.dumps({"error": error_msg}, indent=2))
+                else:
+                    console.print(f"[red]Error:[/red] {error_msg}")
+                return
+            archives = [target_archive]
+        
+        all_contents = []
+        
+        for archive in archives:
+            archive_name = archive.relative_path
+            pattern = archive.attributes.get('pattern', '*')
+            split_parts = archive.attributes.get('split_parts')
+            archive_type = archive.attributes.get('archive_type', 'single')
+            location_name = archive.attributes.get('location')
+            
+            if not output_json:
+                console.print(f"[cyan]Listing contents of archive: {archive_name}[/cyan]")
+            
+            try:
+                # Get location and create filesystem adapter
+                source_location_entity = location_service.get_location_filesystem(location_name)
+                from ...infrastructure.adapters.fsspec_adapter import FSSpecAdapter
+                source_location = FSSpecAdapter(source_location_entity)
+                
+                # List archive contents
+                contents = _list_archive_files(
+                    source_location, pattern, split_parts, archive_type,
+                    file_filter, grep
+                )
+                
+                archive_contents = {
+                    "archive_id": archive_name,
+                    "location": location_name,
+                    "type": archive_type,
+                    "split_parts": split_parts,
+                    "files": contents
+                }
+                all_contents.append(archive_contents)
+                
+                if not output_json:
+                    _display_archive_contents(archive_contents, file_filter, grep)
+                    
+            except Exception as e:
+                error_msg = f"Failed to list contents of archive {archive_name}: {str(e)}"
+                if output_json:
+                    all_contents.append({
+                        "archive_id": archive_name,
+                        "error": error_msg
+                    })
+                else:
+                    console.print(f"[red]Error:[/red] {error_msg}")
+                continue
+        
+        if output_json:
+            import json
+            console.print(json.dumps({"simulation_id": simulation_id, "archives": all_contents}, indent=2))
             
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")
+
+
+def _list_archive_files(source_location, pattern: str, split_parts: int, archive_type: str, 
+                       file_filter: str = None, grep: str = None) -> list:
+    """List files in an archive."""
+    import tempfile
+    import subprocess
+    import os
+    import fnmatch
+    
+    try:
+        source_fs = source_location.fs
+        source_base_path = source_location.location.get_base_path() or ""
+        
+        if archive_type == 'split-tar' and split_parts:
+            # Handle split archive by reconstructing temporarily and listing
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # Download and concatenate parts
+                temp_archive = os.path.join(temp_dir, "temp_archive.tar.gz")
+                
+                with open(temp_archive, 'wb') as output:
+                    for part_num in range(split_parts):
+                        part_pattern = pattern.replace('*', f'{part_num:04d}')
+                        source_part_path = os.path.join(source_base_path, part_pattern) if source_base_path else part_pattern
+                        
+                        # Find the actual part file
+                        matching_parts = list(source_fs.glob(source_part_path))
+                        if not matching_parts:
+                            continue
+                        
+                        source_part = matching_parts[0]
+                        
+                        # Stream part content to concatenated archive
+                        with source_fs.open(source_part, 'rb') as src:
+                            while True:
+                                chunk = src.read(8192)
+                                if not chunk:
+                                    break
+                                output.write(chunk)
+                
+                # List contents of concatenated archive
+                result = subprocess.run(['tar', '-tzf', temp_archive], 
+                                      capture_output=True, text=True, check=True)
+                files = result.stdout.strip().split('\n')
+                
+        else:
+            # Handle single archive
+            source_pattern = os.path.join(source_base_path, pattern) if source_base_path else pattern
+            matching_files = list(source_fs.glob(source_pattern))
+            
+            if not matching_files:
+                return []
+            
+            # For single archive, download temporarily and list
+            source_file = matching_files[0]
+            
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_archive = os.path.join(temp_dir, "temp_archive")
+                
+                # Download archive
+                with source_fs.open(source_file, 'rb') as src:
+                    with open(temp_archive, 'wb') as dst:
+                        while True:
+                            chunk = src.read(8192)
+                            if not chunk:
+                                break
+                            dst.write(chunk)
+                
+                # Determine archive format and list contents
+                if source_file.endswith(('.tar.gz', '.tgz')):
+                    cmd = ['tar', '-tzf', temp_archive]
+                elif source_file.endswith('.tar.bz2'):
+                    cmd = ['tar', '-tjf', temp_archive]
+                elif source_file.endswith('.tar'):
+                    cmd = ['tar', '-tf', temp_archive]
+                elif source_file.endswith('.zip'):
+                    cmd = ['unzip', '-l', temp_archive]
+                else:
+                    # Try tar as default
+                    cmd = ['tar', '-tzf', temp_archive]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                
+                if source_file.endswith('.zip'):
+                    # Parse zip output format
+                    lines = result.stdout.strip().split('\n')[3:-2]  # Skip header/footer
+                    files = [line.split()[-1] for line in lines if line.strip()]
+                else:
+                    files = result.stdout.strip().split('\n')
+        
+        # Filter files if needed
+        if files and files != ['']:
+            if file_filter:
+                files = [f for f in files if fnmatch.fnmatch(f, file_filter)]
+            
+            if grep:
+                files = [f for f in files if grep.lower() in f.lower()]
+        else:
+            files = []
+            
+        return files
+        
+    except subprocess.CalledProcessError as e:
+        raise Exception(f"Failed to list archive contents: {e.stderr}")
+    except Exception as e:
+        raise Exception(f"Archive listing error: {str(e)}")
+
+
+def _display_archive_contents(archive_contents: dict, file_filter: str = None, grep: str = None):
+    """Display archive contents in a formatted way."""
+    files = archive_contents['files']
+    
+    if not files:
+        console.print("  [dim]No files found[/dim]")
+        return
+    
+    # Show summary
+    total_files = len(files)
+    console.print(f"  [dim]Found {total_files} file(s)[/dim]")
+    
+    if file_filter:
+        console.print(f"  [dim]Filtered by: {file_filter}[/dim]")
+    if grep:
+        console.print(f"  [dim]Grep: {grep}[/dim]")
+    
+    console.print()
+    
+    # Display files in columns if many files
+    if total_files > 20:
+        console.print("  [dim]Showing first 20 files (use --json for complete list):[/dim]")
+        files = files[:20]
+    
+    for file_path in files:
+        console.print(f"    {file_path}")
+    
+    if total_files > 20:
+        console.print(f"    [dim]... and {total_files - 20} more files[/dim]")
+    
+    console.print()
+
+
+@archive.command(name="index")
+@click.argument("simulation_id", required=True)
+@click.argument("archive_id", required=False)
+@click.option("--force", is_flag=True, help="Force re-indexing even if already indexed")
+@click.pass_context
+def index_archive_contents(ctx, simulation_id: str, archive_id: str = None, force: bool = False):
+    """Create content index for archives.
+    
+    Analyzes archive contents and stores metadata for fast querying without
+    needing to download/extract archives.
+    
+    Examples:
+        # Index all archives for a simulation
+        tellus simulation archive index Eem125-S2
+        
+        # Index specific archive
+        tellus simulation archive index Eem125-S2 specific_archive_id
+        
+        # Force re-indexing
+        tellus simulation archive index Eem125-S2 --force
+    """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
+    
+    try:
+        # Get services
+        file_service = _get_unified_file_service()
+        location_service = _get_location_service()
+        
+        # Get archives for this simulation
+        archives = file_service.list_simulation_archives(simulation_id)
+        if not archives:
+            error_msg = f"No archives found for simulation '{simulation_id}'"
+            if output_json:
+                import json
+                console.print(json.dumps({"error": error_msg}, indent=2))
+            else:
+                console.print(f"[red]Error:[/red] {error_msg}")
+            return
+            
+        # Filter to specific archive if requested
+        if archive_id:
+            target_archive = next((a for a in archives if a.relative_path == archive_id), None)
+            if not target_archive:
+                error_msg = f"Archive '{archive_id}' not found for simulation '{simulation_id}'"
+                if output_json:
+                    import json
+                    console.print(json.dumps({"error": error_msg}, indent=2))
+                else:
+                    console.print(f"[red]Error:[/red] {error_msg}")
+                return
+            archives = [target_archive]
+        
+        indexed_archives = []
+        skipped_archives = []
+        
+        if not output_json:
+            console.print(f"[cyan]Indexing {len(archives)} archive(s) for simulation: {simulation_id}[/cyan]")
+        
+        from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, DownloadColumn, TransferSpeedColumn, TimeRemainingColumn
+        
+        # Create progress with transfer rate and size columns
+        progress_columns = [
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            DownloadColumn(),
+            TransferSpeedColumn(),
+            TimeRemainingColumn(),
+        ]
+        
+        with Progress(*progress_columns, console=console, disable=output_json, refresh_per_second=4) as progress:
+            main_task = progress.add_task("Indexing archives...", total=len(archives))
+            
+            for archive in archives:
+                archive_name = archive.relative_path
+                
+                # Check if already indexed and not forcing
+                if not force and archive.attributes.get('indexed', False):
+                    skipped_archives.append(archive_name)
+                    if not output_json:
+                        console.print(f"  [dim]Skipping {archive_name} (already indexed, use --force to re-index)[/dim]")
+                    progress.advance(main_task)
+                    continue
+                
+                progress.update(main_task, description=f"Indexing {archive_name}")
+                
+                try:
+                    # Get location and create filesystem adapter
+                    location_name = archive.attributes.get('location')
+                    source_location_entity = location_service.get_location_filesystem(location_name)
+                    from ...infrastructure.adapters.fsspec_adapter import FSSpecAdapter
+                    source_location = FSSpecAdapter(source_location_entity)
+                    
+                    # Create index
+                    index_data = _create_archive_index(
+                        source_location, 
+                        archive.attributes.get('pattern', '*'),
+                        archive.attributes.get('split_parts'),
+                        archive.attributes.get('archive_type', 'single')
+                    )
+                    
+                    # Update archive metadata with index
+                    archive.attributes.update({
+                        "indexed": True,
+                        "index_timestamp": _get_current_timestamp(),
+                        "file_count": len(index_data['files']),
+                        "content_summary": index_data['summary']
+                    })
+                    
+                    # Save updated archive
+                    file_service.create_file_from_entity(archive)
+                    
+                    indexed_archives.append({
+                        "archive_id": archive_name,
+                        "file_count": len(index_data['files']),
+                        "content_summary": index_data['summary']
+                    })
+                    
+                    if not output_json:
+                        console.print(f"  [green]✓[/green] Indexed {archive_name}: {len(index_data['files'])} files")
+                        for file_type, count in index_data['summary'].items():
+                            console.print(f"    {file_type}: {count}")
+                    
+                except Exception as e:
+                    if not output_json:
+                        console.print(f"  [red]✗[/red] Failed to index {archive_name}: {str(e)}")
+                    continue
+                
+                progress.advance(main_task)
+        
+        # Prepare results
+        index_info = {
+            "simulation_id": simulation_id,
+            "indexed_archives": indexed_archives,
+            "skipped_archives": skipped_archives,
+            "status": "completed" if indexed_archives else "no_new_indexes"
+        }
+        
+        if output_json:
+            import json
+            console.print(json.dumps(index_info, indent=2))
+        else:
+            console.print(f"\n[green]✓[/green] Indexing complete:")
+            console.print(f"  Indexed: {len(indexed_archives)} archives")
+            console.print(f"  Skipped: {len(skipped_archives)} archives")
+            
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+def _create_archive_index(source_location, pattern: str, split_parts: int, archive_type: str) -> dict:
+    """Create content index for an archive."""
+    import tempfile
+    import subprocess
+    import os
+    from collections import defaultdict
+    
+    try:
+        source_fs = source_location.fs
+        source_base_path = source_location.location.get_base_path() or ""
+        
+        # Get archive contents (reuse from list-contents functionality)
+        files = _list_archive_files(source_location, pattern, split_parts, archive_type)
+        
+        # Analyze file types and create summary
+        content_summary = defaultdict(int)
+        file_details = []
+        
+        for file_path in files:
+            # Categorize by file extension and path patterns
+            if file_path.endswith(('.grb', '.grib', '.grib2')):
+                content_summary['grib_files'] += 1
+            elif file_path.endswith(('.nc', '.netcdf')):
+                content_summary['netcdf_files'] += 1
+            elif file_path.endswith('.txt'):
+                content_summary['text_files'] += 1
+            elif '/outdata/' in file_path:
+                content_summary['outdata_files'] += 1
+            elif '/analysis/' in file_path:
+                content_summary['analysis_files'] += 1
+            elif file_path.endswith('/'):
+                content_summary['directories'] += 1
+            else:
+                content_summary['other_files'] += 1
+            
+            # Store file details (could be expanded with size, timestamp, etc.)
+            file_details.append({
+                "path": file_path,
+                "type": _classify_file_type(file_path)
+            })
+        
+        return {
+            "files": file_details,
+            "summary": dict(content_summary),
+            "total_files": len(files)
+        }
+        
+    except Exception as e:
+        raise Exception(f"Index creation error: {str(e)}")
+
+
+def _classify_file_type(file_path: str) -> str:
+    """Classify a file by its path and extension."""
+    if file_path.endswith(('.grb', '.grib', '.grib2')):
+        return 'grib'
+    elif file_path.endswith(('.nc', '.netcdf')):
+        return 'netcdf'
+    elif file_path.endswith('.txt'):
+        return 'text'
+    elif '/outdata/' in file_path:
+        return 'outdata'
+    elif '/analysis/' in file_path:
+        return 'analysis'
+    elif file_path.endswith('/'):
+        return 'directory'
+    else:
+        return 'other'
+
+
+def _get_current_timestamp() -> str:
+    """Get current timestamp in ISO format."""
+    import datetime
+    return datetime.datetime.now().isoformat()
 
 
 @archive.command(name="stage")
@@ -1182,26 +1683,503 @@ def stage_simulation_archive(ctx, simulation_id: str, from_location: str, to_loc
     output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     
     try:
+        # Get services
+        file_service = _get_unified_file_service()
+        location_service = _get_location_service()
+        
+        # Get archives for this simulation
+        archives = file_service.list_simulation_archives(simulation_id)
+        if not archives:
+            error_msg = f"No archives found for simulation '{simulation_id}'"
+            if output_json:
+                import json
+                console.print(json.dumps({"error": error_msg}, indent=2))
+            else:
+                console.print(f"[red]Error:[/red] {error_msg}")
+            return
+            
+        # Get location objects
+        try:
+            source_location_entity = location_service.get_location_filesystem(from_location)
+            dest_location_entity = location_service.get_location_filesystem(to_location)
+            
+            # Create filesystem adapters
+            from ...infrastructure.adapters.fsspec_adapter import FSSpecAdapter
+            source_location = FSSpecAdapter(source_location_entity)
+            dest_location = FSSpecAdapter(dest_location_entity)
+            
+        except Exception as e:
+            error_msg = f"Location not found: {str(e)}"
+            if output_json:
+                import json
+                console.print(json.dumps({"error": error_msg}, indent=2))
+            else:
+                console.print(f"[red]Error:[/red] {error_msg}")
+            return
+        
+        staged_files = []
+        total_archives = len(archives)
+        
+        if not output_json:
+            console.print(f"[cyan]Staging {total_archives} archive(s) for simulation: {simulation_id}[/cyan]")
+            console.print(f"  From: {from_location}")
+            console.print(f"  To: {to_location}")
+            if reconstruct:
+                console.print(f"  [yellow]Will reconstruct split archives[/yellow]")
+        
+        from rich.progress import Progress, TaskID, SpinnerColumn, TextColumn, BarColumn, DownloadColumn, TransferSpeedColumn, TimeRemainingColumn
+        from pathlib import Path
+        import tempfile
+        import os
+        
+        # Create progress with transfer rate and size columns
+        progress_columns = [
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            DownloadColumn(),
+            TransferSpeedColumn(),
+            TimeRemainingColumn(),
+        ]
+        
+        with Progress(*progress_columns, console=console, disable=output_json, refresh_per_second=4) as progress:
+            main_task = progress.add_task(f"Staging archives...", total=total_archives)
+            
+            for archive in archives:
+                archive_name = archive.relative_path
+                pattern = archive.attributes.get('pattern', '*')
+                split_parts = archive.attributes.get('split_parts')
+                archive_type = archive.attributes.get('archive_type', 'single')
+                
+                progress.update(main_task, description=f"Staging {archive_name}")
+                
+                try:
+                    if archive_type == 'split-tar' and split_parts:
+                        # Handle split archive
+                        staged_file = _stage_split_archive(
+                            source_location, dest_location, pattern, split_parts, 
+                            reconstruct, progress
+                        )
+                    else:
+                        # Handle single archive
+                        staged_file = _stage_single_archive(
+                            source_location, dest_location, pattern, progress
+                        )
+                    
+                    if staged_file:
+                        staged_files.append(staged_file)
+                        
+                except Exception as e:
+                    if not output_json:
+                        console.print(f"[red]Failed to stage {archive_name}:[/red] {str(e)}")
+                    continue
+                    
+                progress.advance(main_task)
+        
+        # Prepare results
         staging_info = {
             "simulation_id": simulation_id,
             "from_location": from_location,
             "to_location": to_location,
-            "reconstruct": reconstruct
+            "reconstruct": reconstruct,
+            "staged_files": staged_files,
+            "status": "completed" if staged_files else "failed"
         }
         
         if output_json:
             import json
-            staging_info["status"] = "staging_initiated"
             console.print(json.dumps(staging_info, indent=2))
         else:
-            console.print(f"[green]✓[/green] Staging archive for simulation: {simulation_id}")
-            console.print(f"  From: {from_location}")
-            console.print(f"  To: {to_location}")
-            if reconstruct:
-                console.print(f"  [cyan]Will reconstruct split archives[/cyan]")
+            if staged_files:
+                console.print(f"[green]✓[/green] Successfully staged {len(staged_files)} file(s)")
+                for file_path in staged_files:
+                    console.print(f"  → {file_path}")
+            else:
+                console.print(f"[red]✗[/red] No files were staged")
             
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")
+
+
+def _stage_single_archive(source_location, dest_location, pattern: str, progress) -> str:
+    """Stage a single archive file."""
+    from pathlib import Path
+    import os
+    
+    try:
+        # Get filesystem objects from locations
+        source_fs = source_location.fs
+        dest_fs = dest_location.fs
+        
+        # Find files matching the pattern on source location
+        source_base_path = source_location.location.get_base_path() or ""
+        source_pattern = os.path.join(source_base_path, pattern) if source_base_path else pattern
+        
+        # Find matching files
+        matching_files = list(source_fs.glob(source_pattern))
+        
+        if not matching_files:
+            console.print(f"[yellow]Warning:[/yellow] No files found matching pattern: {pattern}")
+            return None
+        
+        # For single archive, take the first match
+        source_file = matching_files[0]
+        dest_base_path = dest_location.location.get_base_path() or ""
+        dest_file = os.path.join(dest_base_path, os.path.basename(source_file)) if dest_base_path else os.path.basename(source_file)
+        
+        # Get file size for progress
+        file_size = source_fs.size(source_file)
+        
+        # Create progress tracker
+        from ...infrastructure.adapters.fsspec_adapter import ProgressTracker, FSSpecProgressCallback
+        tracker = ProgressTracker("download", total_size=file_size, total_files=1)
+        callback = FSSpecProgressCallback(tracker)
+        
+        # Transfer the file
+        console.print(f"[dim]Copying {source_file} to {dest_file} ({file_size} bytes)[/dim]")
+        
+        # Create progress task for this file
+        file_task = progress.add_task(f"Transferring {os.path.basename(source_file)}", total=file_size)
+        bytes_transferred = 0
+        
+        # Use get_file if available, otherwise try copy
+        if hasattr(source_fs, 'get_file'):
+            # Create local temp file first, then upload to destination
+            import tempfile
+            with tempfile.NamedTemporaryFile() as tmp_file:
+                # Download with progress tracking
+                with source_fs.open(source_file, 'rb') as src:
+                    while True:
+                        chunk = src.read(8192)
+                        if not chunk:
+                            break
+                        tmp_file.write(chunk)
+                        bytes_transferred += len(chunk)
+                        progress.update(file_task, completed=bytes_transferred)
+                
+                tmp_file.flush()
+                # Upload to destination (could add progress here too if needed)
+                dest_fs.put_file(tmp_file.name, dest_file)
+        else:
+            # Direct copy between filesystems with progress
+            with source_fs.open(source_file, 'rb') as src:
+                with dest_fs.open(dest_file, 'wb') as dst:
+                    while True:
+                        chunk = src.read(8192)  # 8KB chunks
+                        if not chunk:
+                            break
+                        dst.write(chunk)
+                        bytes_transferred += len(chunk)
+                        progress.update(file_task, completed=bytes_transferred)
+        
+        progress.remove_task(file_task)
+        
+        return dest_file
+        
+    except Exception as e:
+        console.print(f"[red]Error staging single archive:[/red] {str(e)}")
+        return None
+
+
+def _stage_split_archive(source_location, dest_location, pattern: str, split_parts: int, reconstruct: bool, progress) -> str:
+    """Stage and optionally reconstruct a split archive."""
+    from pathlib import Path
+    import tempfile
+    import os
+    import subprocess
+    
+    try:
+        # Get filesystem objects
+        source_fs = source_location.fs  
+        dest_fs = dest_location.fs
+        
+        # Get base paths
+        source_base_path = source_location.location.get_base_path() or ""
+        dest_base_path = dest_location.location.get_base_path() or ""
+        
+        from ...infrastructure.adapters.fsspec_adapter import ProgressTracker, FSSpecProgressCallback
+        
+        if reconstruct:
+            # Stage all parts and reconstruct into single archive
+            base_name = pattern.replace('_*', '').replace('*', 'archive')
+            base_name = base_name.rstrip('._')
+            if not base_name.endswith(('.tar.gz', '.tgz', '.tar')):
+                base_name += '.tar.gz'
+            
+            dest_file = os.path.join(dest_base_path, base_name) if dest_base_path else base_name
+            
+            # Calculate total size for all parts
+            total_archive_size = 0
+            part_sizes = []
+            for part_num in range(split_parts):
+                part_pattern = pattern.replace('*', f'{part_num:04d}')
+                source_part_path = os.path.join(source_base_path, part_pattern) if source_base_path else part_pattern
+                matching_parts = list(source_fs.glob(source_part_path))
+                if matching_parts:
+                    part_size = source_fs.size(matching_parts[0])
+                    part_sizes.append(part_size)
+                    total_archive_size += part_size
+                else:
+                    part_sizes.append(0)
+            
+            # Create subtask for reconstruction with total bytes
+            subtask = progress.add_task(f"Reconstructing {base_name}...", total=total_archive_size)
+            
+            # Download all parts to temporary directory and reconstruct
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_parts = []
+                total_size = 0
+                
+                # Step 1: Download all parts in parallel
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                import threading
+                
+                # Thread lock for progress updates
+                progress_lock = threading.Lock()
+                
+                # Pre-create progress tasks for all parts (but only show active ones)
+                part_tasks = {}
+                
+                def download_part(part_info):
+                    """Download a single part with progress tracking."""
+                    part_num, part_pattern, source_part_path, part_size = part_info
+                    
+                    if part_size == 0:
+                        return None, 0, part_num
+                    
+                    # Find the actual part file
+                    matching_parts = list(source_fs.glob(source_part_path))
+                    if not matching_parts:
+                        with progress_lock:
+                            console.print(f"[yellow]Warning:[/yellow] Part {part_num + 1} not found: {part_pattern}")
+                        return None, 0, part_num
+                    
+                    source_part = matching_parts[0]
+                    temp_part_path = os.path.join(temp_dir, f"part_{part_num:04d}")
+                    
+                    # Create task for this download
+                    with progress_lock:
+                        part_task = progress.add_task(
+                            f"Part {part_num + 1}/{split_parts}", 
+                            total=part_size
+                        )
+                        part_tasks[part_num] = part_task
+                    
+                    bytes_transferred = 0
+                    
+                    try:
+                        with source_fs.open(source_part, 'rb') as src:
+                            with open(temp_part_path, 'wb') as dst:
+                                while True:
+                                    chunk = src.read(8192)
+                                    if not chunk:
+                                        break
+                                    dst.write(chunk)
+                                    bytes_transferred += len(chunk)
+                                    # Update progress
+                                    with progress_lock:
+                                        progress.update(part_task, completed=bytes_transferred)
+                        
+                        # Mark as complete
+                        with progress_lock:
+                            progress.update(part_task, completed=part_size)
+                        return temp_part_path, part_size, part_num
+                    except Exception as e:
+                        with progress_lock:
+                            console.print(f"[red]Error downloading part {part_num + 1}:[/red] {str(e)}")
+                        return None, 0, part_num
+                
+                # Prepare download tasks
+                download_tasks = []
+                subtask_bytes_completed = 0
+                
+                for part_num in range(split_parts):
+                    part_pattern = pattern.replace('*', f'{part_num:04d}')
+                    source_part_path = os.path.join(source_base_path, part_pattern) if source_base_path else part_pattern
+                    part_size = part_sizes[part_num]
+                    
+                    if part_size > 0:
+                        download_tasks.append((part_num, part_pattern, source_part_path, part_size))
+                        total_size += part_size
+                
+                # Execute downloads in parallel (limit concurrent downloads to avoid overwhelming the server)
+                max_workers = min(8, len(download_tasks))  # Max 8 concurrent downloads
+                completed_parts = {}
+                
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    # Submit all download tasks
+                    future_to_part = {executor.submit(download_part, task): task[0] for task in download_tasks}
+                    
+                    # Process completed downloads
+                    for future in as_completed(future_to_part):
+                        part_num = future_to_part[future]
+                        try:
+                            temp_part_path, part_size_actual, part_num_result = future.result()
+                            if temp_part_path:
+                                completed_parts[part_num_result] = temp_part_path
+                                subtask_bytes_completed += part_size_actual
+                                progress.update(subtask, completed=subtask_bytes_completed)
+                                console.print(f"[dim]  Downloaded part {part_num_result + 1}/{split_parts} ({part_size_actual} bytes)[/dim]")
+                        except Exception as e:
+                            console.print(f"[red]Error downloading part {part_num + 1}:[/red] {str(e)}")
+                
+                # Sort parts by number and create temp_parts list
+                temp_parts = []
+                for part_num in sorted(completed_parts.keys()):
+                    temp_parts.append(completed_parts[part_num])
+                
+                # Step 2: Reconstruct by concatenating parts
+                console.print(f"[dim]  Concatenating {len(temp_parts)} parts into {dest_file}[/dim]")
+                reconstructed_path = os.path.join(temp_dir, "reconstructed.tar.gz")
+                
+                with open(reconstructed_path, 'wb') as output:
+                    for part_path in temp_parts:
+                        with open(part_path, 'rb') as part:
+                            while True:
+                                chunk = part.read(8192)
+                                if not chunk:
+                                    break
+                                output.write(chunk)
+                
+                # Step 3: Upload reconstructed file to destination
+                upload_task = progress.add_task(f"Uploading reconstructed archive", total=total_size)
+                bytes_uploaded = 0
+                
+                with open(reconstructed_path, 'rb') as src:
+                    with dest_fs.open(dest_file, 'wb') as dst:
+                        while True:
+                            chunk = src.read(8192)
+                            if not chunk:
+                                break
+                            dst.write(chunk)
+                            bytes_uploaded += len(chunk)
+                            progress.update(upload_task, completed=bytes_uploaded)
+                
+                progress.remove_task(upload_task)
+                progress.remove_task(subtask)
+                
+                console.print(f"[dim]Reconstructed archive: {dest_file} ({total_size} bytes total)[/dim]")
+                return dest_file
+            
+        else:
+            # Stage all parts separately without reconstruction
+            parts_dir = f"{pattern}_parts"
+            dest_parts_path = os.path.join(dest_base_path, parts_dir) if dest_base_path else parts_dir
+            
+            # Ensure parts directory exists
+            try:
+                dest_fs.makedirs(dest_parts_path, exist_ok=True)
+            except:
+                pass  # Some filesystems don't support makedirs
+            
+            # Calculate total size for progress tracking
+            total_parts_size = 0
+            parts_info = []
+            for part_num in range(split_parts):
+                part_pattern = pattern.replace('*', f'{part_num:04d}')
+                source_part_path = os.path.join(source_base_path, part_pattern) if source_base_path else part_pattern
+                matching_parts = list(source_fs.glob(source_part_path))
+                if matching_parts:
+                    part_size = source_fs.size(matching_parts[0])
+                    parts_info.append((matching_parts[0], part_size))
+                    total_parts_size += part_size
+                else:
+                    parts_info.append((None, 0))
+            
+            subtask = progress.add_task(f"Downloading parts...", total=total_parts_size)
+            downloaded_parts = []
+            subtask_bytes_completed = 0
+            
+            # Thread-safe parallel download for parts staging
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            import threading
+            
+            # Thread lock for progress updates
+            progress_lock = threading.Lock()
+            
+            def download_part_to_dest(part_info):
+                """Download a part directly to destination with progress tracking."""
+                part_num, source_part, part_size = part_info
+                
+                if source_part is None or part_size == 0:
+                    return None, 0, part_num
+                
+                dest_part = os.path.join(dest_parts_path, os.path.basename(source_part))
+                
+                # Create task for this download
+                with progress_lock:
+                    part_task = progress.add_task(
+                        f"Part {part_num + 1}/{split_parts}",
+                        total=part_size
+                    )
+                
+                bytes_transferred = 0
+                
+                try:
+                    with source_fs.open(source_part, 'rb') as src:
+                        with dest_fs.open(dest_part, 'wb') as dst:
+                            while True:
+                                chunk = src.read(8192)
+                                if not chunk:
+                                    break
+                                dst.write(chunk)
+                                bytes_transferred += len(chunk)
+                                # Update progress
+                                with progress_lock:
+                                    progress.update(part_task, completed=bytes_transferred)
+                    
+                    # Mark as complete
+                    with progress_lock:
+                        progress.update(part_task, completed=part_size)
+                    return dest_part, part_size, part_num
+                except Exception as e:
+                    with progress_lock:
+                        console.print(f"[red]Error downloading part {part_num + 1}:[/red] {str(e)}")
+                    return None, 0, part_num
+            
+            # Prepare download tasks for parts that exist
+            parts_tasks = []
+            for part_num, (source_part, part_size) in enumerate(parts_info):
+                if source_part is not None and part_size > 0:
+                    parts_tasks.append((part_num, source_part, part_size))
+                elif source_part is None:
+                    part_pattern = pattern.replace('*', f'{part_num:04d}')
+                    console.print(f"[yellow]Warning:[/yellow] Part {part_num + 1} not found: {part_pattern}")
+            
+            # Execute downloads in parallel
+            max_workers = min(8, len(parts_tasks))  # Max 8 concurrent downloads
+            completed_downloads = {}
+            
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Submit all download tasks
+                future_to_part = {executor.submit(download_part_to_dest, task): task[0] for task in parts_tasks}
+                
+                # Process completed downloads
+                for future in as_completed(future_to_part):
+                    part_num = future_to_part[future]
+                    try:
+                        dest_part, part_size_actual, part_num_result = future.result()
+                        if dest_part:
+                            completed_downloads[part_num_result] = dest_part
+                            subtask_bytes_completed += part_size_actual
+                            progress.update(subtask, completed=subtask_bytes_completed)
+                            console.print(f"[dim]  Downloaded part {part_num_result + 1}/{split_parts}: {os.path.basename(dest_part)} ({part_size_actual} bytes)[/dim]")
+                    except Exception as e:
+                        console.print(f"[red]Error downloading part {part_num + 1}:[/red] {str(e)}")
+            
+            # Create downloaded_parts list in order
+            for part_num in sorted(completed_downloads.keys()):
+                downloaded_parts.append(completed_downloads[part_num])
+            
+            progress.remove_task(subtask)
+            console.print(f"[dim]Downloaded {len(downloaded_parts)} parts to {dest_parts_path}[/dim]")
+            return dest_parts_path
+            
+    except Exception as e:
+        console.print(f"[red]Error staging split archive:[/red] {str(e)}")
+        import traceback
+        console.print(f"[red]Traceback:[/red] {traceback.format_exc()}")
+        return None
 
 
 @archive.command(name="extract")
@@ -1227,25 +2205,282 @@ def extract_from_archive(ctx, simulation_id: str, location: str, variables: str 
     output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     
     try:
+        # Get services
+        file_service = _get_unified_file_service()
+        location_service = _get_location_service()
+        
+        # Get archives for this simulation
+        archives = file_service.list_simulation_archives(simulation_id)
+        if not archives:
+            error_msg = f"No archives found for simulation '{simulation_id}'"
+            if output_json:
+                import json
+                console.print(json.dumps({"error": error_msg}, indent=2))
+            else:
+                console.print(f"[red]Error:[/red] {error_msg}")
+            return
+        
+        # Get location for staged files
+        try:
+            dest_location_entity = location_service.get_location_filesystem(location)
+            from ...infrastructure.adapters.fsspec_adapter import FSSpecAdapter
+            dest_location = FSSpecAdapter(dest_location_entity)
+        except Exception as e:
+            error_msg = f"Location '{location}' not found: {str(e)}"
+            if output_json:
+                import json
+                console.print(json.dumps({"error": error_msg}, indent=2))
+            else:
+                console.print(f"[red]Error:[/red] {error_msg}")
+            return
+        
+        # Parse variables
+        var_list = variables.split(",") if variables else None
+        if var_list:
+            var_list = [v.strip() for v in var_list]
+        
+        # Set up output path
+        if not output_path:
+            dest_base_path = dest_location.location.get_base_path() or ""
+            output_path = f"{simulation_id}_extracted"
+            if dest_base_path:
+                output_path = f"{dest_base_path}/{output_path}"
+        
+        extracted_files = []
+        total_archives = len(archives)
+        
+        if not output_json:
+            console.print(f"[cyan]Extracting from {total_archives} archive(s) for simulation: {simulation_id}[/cyan]")
+            console.print(f"  Location: {location}")
+            if var_list:
+                console.print(f"  Variables: {', '.join(var_list)}")
+            console.print(f"  Output format: {output_format}")
+            console.print(f"  Output path: {output_path}")
+        
+        from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, DownloadColumn, TransferSpeedColumn, TimeRemainingColumn
+        
+        # Create progress with transfer rate and size columns  
+        progress_columns = [
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            DownloadColumn(),
+            TransferSpeedColumn(),
+            TimeRemainingColumn(),
+        ]
+        
+        with Progress(*progress_columns, console=console, disable=output_json) as progress:
+            main_task = progress.add_task("Extracting archives...", total=total_archives)
+            
+            for archive in archives:
+                archive_name = archive.relative_path
+                pattern = archive.attributes.get('pattern', '*')
+                split_parts = archive.attributes.get('split_parts')
+                archive_type = archive.attributes.get('archive_type', 'single')
+                source_location_name = archive.attributes.get('location')
+                
+                progress.update(main_task, description=f"Extracting {archive_name}")
+                
+                try:
+                    # Get source location
+                    source_location_entity = location_service.get_location_filesystem(source_location_name)
+                    source_location = FSSpecAdapter(source_location_entity)
+                    
+                    # Extract files from this archive
+                    archive_extracted_files = _extract_archive_files(
+                        source_location, dest_location, pattern, split_parts, archive_type,
+                        output_path, var_list, output_format, progress
+                    )
+                    
+                    extracted_files.extend(archive_extracted_files)
+                    
+                except Exception as e:
+                    if not output_json:
+                        console.print(f"[red]Failed to extract from {archive_name}:[/red] {str(e)}")
+                    continue
+                
+                progress.advance(main_task)
+        
+        # Prepare results
         extraction_info = {
             "simulation_id": simulation_id,
             "location": location,
-            "variables": variables.split(",") if variables else None,
+            "variables": var_list,
             "output_format": output_format,
-            "output_path": output_path or f"./{simulation_id}_extracted"
+            "output_path": output_path,
+            "extracted_files": extracted_files,
+            "status": "completed" if extracted_files else "failed"
         }
         
         if output_json:
             import json
-            extraction_info["status"] = "extraction_initiated"
             console.print(json.dumps(extraction_info, indent=2))
         else:
-            console.print(f"[green]✓[/green] Extracting from archive for simulation: {simulation_id}")
-            console.print(f"  Location: {location}")
-            if variables:
-                console.print(f"  Variables: {variables}")
-            console.print(f"  Output format: {output_format}")
-            console.print(f"  Output path: {extraction_info['output_path']}")
+            if extracted_files:
+                console.print(f"[green]✓[/green] Successfully extracted {len(extracted_files)} file(s)")
+                for file_path in extracted_files:
+                    console.print(f"  → {file_path}")
+            else:
+                console.print(f"[red]✗[/red] No files were extracted")
             
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")
+
+
+def _extract_archive_files(source_location, dest_location, pattern: str, split_parts: int, 
+                          archive_type: str, output_path: str, variables: list = None,
+                          output_format: str = "netcdf", progress = None) -> list:
+    """Extract files from an archive."""
+    import tempfile
+    import subprocess
+    import os
+    from pathlib import Path
+    
+    try:
+        source_fs = source_location.fs
+        dest_fs = dest_location.fs
+        source_base_path = source_location.location.get_base_path() or ""
+        
+        extracted_files = []
+        
+        # Ensure output directory exists
+        try:
+            dest_fs.makedirs(output_path, exist_ok=True)
+        except:
+            pass  # Some filesystems don't support makedirs
+        
+        if archive_type == 'split-tar' and split_parts:
+            # Handle split archive by reconstructing and extracting
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # Download and concatenate parts
+                temp_archive = os.path.join(temp_dir, "temp_archive.tar.gz")
+                extraction_dir = os.path.join(temp_dir, "extracted")
+                os.makedirs(extraction_dir)
+                
+                # Reconstruct archive
+                with open(temp_archive, 'wb') as output:
+                    for part_num in range(split_parts):
+                        part_pattern = pattern.replace('*', f'{part_num:04d}')
+                        source_part_path = os.path.join(source_base_path, part_pattern) if source_base_path else part_pattern
+                        
+                        matching_parts = list(source_fs.glob(source_part_path))
+                        if not matching_parts:
+                            continue
+                        
+                        source_part = matching_parts[0]
+                        with source_fs.open(source_part, 'rb') as src:
+                            while True:
+                                chunk = src.read(8192)
+                                if not chunk:
+                                    break
+                                output.write(chunk)
+                
+                # Extract archive contents
+                result = subprocess.run(['tar', '-xzf', temp_archive, '-C', extraction_dir], 
+                                      capture_output=True, text=True, check=True)
+                
+                # Process extracted files
+                extracted_files = _process_extracted_files(
+                    extraction_dir, dest_fs, output_path, variables, output_format
+                )
+                
+        else:
+            # Handle single archive
+            source_pattern = os.path.join(source_base_path, pattern) if source_base_path else pattern
+            matching_files = list(source_fs.glob(source_pattern))
+            
+            if not matching_files:
+                return []
+            
+            source_file = matching_files[0]
+            
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_archive = os.path.join(temp_dir, "temp_archive")
+                extraction_dir = os.path.join(temp_dir, "extracted")
+                os.makedirs(extraction_dir)
+                
+                # Download archive
+                with source_fs.open(source_file, 'rb') as src:
+                    with open(temp_archive, 'wb') as dst:
+                        while True:
+                            chunk = src.read(8192)
+                            if not chunk:
+                                break
+                            dst.write(chunk)
+                
+                # Extract based on archive format
+                if source_file.endswith(('.tar.gz', '.tgz')):
+                    cmd = ['tar', '-xzf', temp_archive, '-C', extraction_dir]
+                elif source_file.endswith('.tar.bz2'):
+                    cmd = ['tar', '-xjf', temp_archive, '-C', extraction_dir]
+                elif source_file.endswith('.tar'):
+                    cmd = ['tar', '-xf', temp_archive, '-C', extraction_dir]
+                elif source_file.endswith('.zip'):
+                    cmd = ['unzip', '-q', temp_archive, '-d', extraction_dir]
+                else:
+                    # Try tar.gz as default
+                    cmd = ['tar', '-xzf', temp_archive, '-C', extraction_dir]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                
+                # Process extracted files
+                extracted_files = _process_extracted_files(
+                    extraction_dir, dest_fs, output_path, variables, output_format
+                )
+        
+        return extracted_files
+        
+    except subprocess.CalledProcessError as e:
+        raise Exception(f"Failed to extract archive: {e.stderr}")
+    except Exception as e:
+        raise Exception(f"Extraction error: {str(e)}")
+
+
+def _process_extracted_files(extraction_dir: str, dest_fs, output_path: str, 
+                           variables: list = None, output_format: str = "netcdf") -> list:
+    """Process and upload extracted files to destination."""
+    import os
+    import shutil
+    from pathlib import Path
+    
+    extracted_files = []
+    
+    try:
+        # Walk through extracted files
+        for root, dirs, files in os.walk(extraction_dir):
+            for file in files:
+                local_file_path = os.path.join(root, file)
+                relative_path = os.path.relpath(local_file_path, extraction_dir)
+                
+                # Apply variable filtering for scientific data
+                if variables and file.endswith(('.grb', '.nc', '.grib', '.grib2')):
+                    # For GRIB files, check if any variables are needed
+                    # This is a simplified check - real implementation would inspect the file
+                    include_file = any(var.lower() in file.lower() for var in variables)
+                    if not include_file:
+                        # Skip files that don't contain requested variables
+                        continue
+                
+                # Determine destination path
+                dest_file_path = os.path.join(output_path, relative_path)
+                
+                # Create destination directory structure
+                dest_dir = os.path.dirname(dest_file_path)
+                if dest_dir:
+                    try:
+                        dest_fs.makedirs(dest_dir, exist_ok=True)
+                    except:
+                        pass
+                
+                # Upload file to destination
+                with open(local_file_path, 'rb') as src:
+                    with dest_fs.open(dest_file_path, 'wb') as dst:
+                        shutil.copyfileobj(src, dst)
+                
+                extracted_files.append(dest_file_path)
+        
+        return extracted_files
+        
+    except Exception as e:
+        raise Exception(f"File processing error: {str(e)}")
+

@@ -193,7 +193,7 @@ class UpdateLocationDto(JsonSerializable):
     protocol: Optional[str] = None
     path: Optional[str] = None
     storage_options: Optional[Dict[str, Any]] = None
-    additional_config: Optional[Dict[str, Any]] = None
+    config: Optional[Dict[str, Any]] = None
 
 
 @dataclass

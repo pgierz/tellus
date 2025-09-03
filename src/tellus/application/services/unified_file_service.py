@@ -430,6 +430,18 @@ class UnifiedFileService:
             simulation_id=simulation_id
         )
     
+    def list_simulation_archives(self, simulation_id: str) -> List[SimulationFile]:
+        """
+        List archive files associated with a simulation (alias for get_simulation_archives).
+        
+        Args:
+            simulation_id: Simulation ID
+            
+        Returns:
+            List of associated archive files
+        """
+        return self.get_simulation_archives(simulation_id)
+    
     # === Statistics and Summary ===
     
     def get_file_statistics(self) -> Dict[str, Union[int, Dict[str, int]]]:

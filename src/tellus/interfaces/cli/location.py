@@ -235,6 +235,11 @@ def delete_location(ctx, location_ids: tuple = (), force: bool = False):
 @click.option(
     "--path", help="Update path on the location", shell_complete=_complete_location_path
 )
+@click.option(
+    "--config",
+    multiple=True,
+    help="Update config values (format: key=value or nested.key=value)",
+)
 def update_location(
     name: str = None,
     protocol: str = None,
@@ -242,6 +247,7 @@ def update_location(
     remove_kind: tuple = (),
     host: str = None,
     path: str = None,
+    config: tuple = (),
 ):
     """Update an existing location.
 
@@ -299,7 +305,7 @@ def update_location(
                 console.print(f"  Storage.{key}: {value}")
 
         # Interactive updates if no options provided
-        if not any([protocol, add_kind, remove_kind, host, path]):
+        if not any([protocol, add_kind, remove_kind, host, path, config]):
             import questionary
 
             console.print("\n[cyan]Select what you'd like to update:[/cyan]")
@@ -408,6 +414,43 @@ def update_location(
             if "storage_options" not in updates:
                 updates["storage_options"] = existing_loc.storage_options or {}
             updates["storage_options"]["host"] = host
+
+        # Handle config updates
+        if config:
+            for config_item in config:
+                if "=" not in config_item:
+                    console.print(f"[red]Error:[/red] Invalid config format: {config_item}")
+                    console.print("Use format: key=value or nested.key=value")
+                    return
+                
+                key, value = config_item.split("=", 1)
+                
+                # Handle nested config (e.g., warning_filters.suppress=InsecureRequestWarning)
+                if "." in key:
+                    if "config" not in updates:
+                        # Get existing config from the location
+                        existing_config = getattr(existing_loc, "config", {}) or {}
+                        updates["config"] = existing_config.copy()
+                    
+                    # Handle deeply nested keys in config
+                    current_dict = updates["config"]
+                    nested_parts = key.split(".")
+                    for part in nested_parts[:-1]:
+                        if part not in current_dict:
+                            current_dict[part] = {}
+                        current_dict = current_dict[part]
+                    
+                    # Special handling for list values (comma-separated)
+                    if "," in value:
+                        current_dict[nested_parts[-1]] = [v.strip() for v in value.split(",")]
+                    else:
+                        current_dict[nested_parts[-1]] = value
+                else:
+                    # Direct key update
+                    if key in ["storage_options", "additional_config"]:
+                        console.print(f"[red]Error:[/red] Cannot directly set {key}, use nested format")
+                        return
+                    updates[key] = value
 
         # Handle kinds
         current_kinds = set(

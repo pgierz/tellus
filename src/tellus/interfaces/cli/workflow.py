@@ -86,6 +86,7 @@ def _get_execution_service():
     container = get_service_container()
     location_service = container.service_factory.location_service
     
+    workflow_service, run_repo = _get_workflow_services()
     execution_service = WorkflowExecutionService(
         workflow_repository=workflow_service._workflow_repository,
         run_repository=run_repo,
@@ -292,9 +293,15 @@ def create_from_template(template_id: str, workflow_id: str, parameters: Optiona
         if parameters:
             params = json.loads(parameters)
         
-        workflow = workflow_service.create_workflow_from_template(
-            template_id, workflow_id, params
+        workflow_service, _ = _get_workflow_services()
+        from ...application.dtos import WorkflowInstantiationDto
+        
+        instantiation_dto = WorkflowInstantiationDto(
+            template_id=template_id,
+            workflow_id=workflow_id,
+            parameters=params
         )
+        workflow = workflow_service.instantiate_workflow_from_template(instantiation_dto)
         
         console.print(f"[green]✓[/green] Workflow '{workflow_id}' created from template '{template_id}'")
         
@@ -461,6 +468,7 @@ def delete_workflow(workflow_id: str, force: bool):
             return
     
     try:
+        workflow_service, _ = _get_workflow_services()
         workflow_service.delete_workflow(workflow_id)
         console.print(f"[green]✓[/green] Workflow '{workflow_id}' deleted successfully!")
         
@@ -626,6 +634,7 @@ def template_commands():
 def list_templates():
     """List available workflow templates."""
     try:
+        workflow_service, _ = _get_workflow_services()
         templates = workflow_service.list_templates()
         
         if not templates:
@@ -659,6 +668,7 @@ def list_templates():
 def show_template(template_id: str):
     """Show template details."""
     try:
+        workflow_service, _ = _get_workflow_services()
         template = workflow_service.get_template(template_id)
         
         if not template:

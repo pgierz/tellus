@@ -19,6 +19,22 @@ from loguru import logger
 from rich.console import Console
 from rich.text import Text
 
+# Comprehensive warning suppression for ScoutFS
+import urllib3
+from urllib3.exceptions import InsecureRequestWarning
+
+# Disable all urllib3 warnings globally
+urllib3.disable_warnings()
+urllib3.disable_warnings(InsecureRequestWarning)
+
+# Also suppress via warnings module
+warnings.filterwarnings('ignore', category=InsecureRequestWarning)
+
+# Suppress requests SSL warnings
+import requests.packages.urllib3 as requests_urllib3
+requests_urllib3.disable_warnings()
+requests_urllib3.disable_warnings(InsecureRequestWarning)
+
 
 class ScoutFSFileSystem(fsspec.implementations.sftp.SFTPFileSystem):
     """Filesystem implementation for ScoutFS with tape staging support.
@@ -38,43 +54,21 @@ class ScoutFSFileSystem(fsspec.implementations.sftp.SFTPFileSystem):
         """
         self._scoutfs_config = kwargs.pop("scoutfs_config", {})
         
-        # Extract warning filter configuration
+        # Extract warning filter configuration (kept for compatibility)
         self._warning_filters = kwargs.pop("warning_filters", {})
         
         ssh_kwargs = kwargs
+        
+        # Initialize with global warning suppression already in effect
         super().__init__(host, **ssh_kwargs)
 
     @contextmanager
     def _filtered_warnings(self):
-        """Context manager to apply warning filters for this filesystem instance."""
-        if not self._warning_filters:
-            # No filters configured, just yield
-            yield
-            return
-            
-        # Apply warning filters
-        suppress_warnings = self._warning_filters.get("suppress", [])
-        original_filters = warnings.filters[:]
+        """Context manager to apply warning filters for this filesystem instance.
         
-        try:
-            for warning_type in suppress_warnings:
-                if warning_type == "InsecureRequestWarning":
-                    # Handle urllib3 InsecureRequestWarning specifically
-                    import urllib3
-                    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-                elif warning_type == "SSLVerificationWarning":
-                    # Handle requests SSL verification warnings
-                    import requests.packages.urllib3 as urllib3
-                    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-                else:
-                    # Handle other warning types generically
-                    warnings.filterwarnings("ignore", category=UserWarning, message=f".*{warning_type}.*")
-            
-            yield
-            
-        finally:
-            # Restore original warning filters
-            warnings.filters[:] = original_filters
+        Since warnings are now suppressed globally, this is a no-op.
+        """
+        yield
 
     # --- ScoutFS API Methods ---
 
