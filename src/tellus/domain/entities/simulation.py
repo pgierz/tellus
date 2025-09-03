@@ -190,10 +190,16 @@ class SimulationEntity:
             
         self.associated_locations.add(location_name)
         
+        # Always ensure location is in location_contexts for persistence
+        # Use empty dict if no context provided
         if context is not None:
             if not isinstance(context, dict):
                 raise ValueError("Location context must be a dictionary")
             self.location_contexts[location_name] = copy.deepcopy(context)
+        else:
+            # Ensure location exists in contexts even with empty context
+            if location_name not in self.location_contexts:
+                self.location_contexts[location_name] = {}
     
     def disassociate_location(self, location_name: str) -> bool:
         """

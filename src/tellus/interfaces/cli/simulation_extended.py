@@ -14,6 +14,29 @@ from .main import console
 from .simulation import _get_simulation_service, simulation
 
 
+def _complete_simulation_id(ctx, param, incomplete):
+    """Shell completion for simulation IDs."""
+    try:
+        service = _get_simulation_service()
+        simulations = service.list_simulations()
+        sim_ids = [sim.simulation_id for sim in simulations.simulations if sim.simulation_id.startswith(incomplete)]
+        return sim_ids
+    except Exception:
+        return []
+
+
+def _complete_location_name(ctx, param, incomplete):
+    """Shell completion for location names."""
+    try:
+        container = get_service_container()
+        location_service = container.service_factory.location_service
+        locations = location_service.list_locations()
+        loc_names = [loc.name for loc in locations.locations if loc.name.startswith(incomplete)]
+        return loc_names
+    except Exception:
+        return []
+
+
 def _handle_simulation_not_found(sim_id: str, service):
     """Handle simulation not found error with fuzzy matching suggestions."""
     console.print(f"[red]Error:[/red] Simulation '{sim_id}' not found")
@@ -133,8 +156,8 @@ def simulation_location():
 
 
 @simulation_location.command(name="add")
-@click.argument("sim_id", required=False)
-@click.argument("location_name", required=False)
+@click.argument("sim_id", required=False, shell_complete=_complete_simulation_id)
+@click.argument("location_name", required=False, shell_complete=_complete_location_name)
 @click.option("--context", help="JSON string with location context data")
 def add_location(sim_id: str = None, location_name: str = None, context: str = None):
     """Associate a location with a simulation.
@@ -149,6 +172,13 @@ def add_location(sim_id: str = None, location_name: str = None, context: str = N
         # Interactive mode when no arguments provided
         if not sim_id or not location_name:
             import questionary
+            import sys
+            
+            # Check if we can use interactive mode
+            if not sys.stdin.isatty():
+                console.print("[red]Error:[/red] Interactive mode requires arguments when not run in a terminal")
+                console.print("Usage: tellus simulation location add <sim_id> <location_name>")
+                return
 
             # Get simulation ID if not provided
             if not sim_id:
@@ -197,14 +227,57 @@ def add_location(sim_id: str = None, location_name: str = None, context: str = N
                 if not location_name:
                     console.print("[yellow]No location selected[/yellow]")
                     return
-        
-        location_context = {}
-        if context:
-            try:
-                location_context = json.loads(context)
-            except json.JSONDecodeError:
-                console.print(f"[red]Error:[/red] Invalid JSON in context: {context}")
-                return
+            
+            # Interactive context configuration if no context provided
+            if not context:
+                console.print(f"\n[dim]Configuring context for location '{location_name}'[/dim]")
+                
+                # Check if this location already has a context for this simulation
+                existing_sim = service.get_simulation(sim_id)
+                existing_context = {}
+                if existing_sim and hasattr(existing_sim, 'location_contexts') and location_name in existing_sim.location_contexts:
+                    existing_context = existing_sim.location_contexts[location_name]
+                
+                # Path prefix configuration
+                current_path_prefix = existing_context.get('path_prefix', '')
+                path_prefix = questionary.text(
+                    "Path prefix template (e.g., '{model}/{experiment}'):",
+                    default=current_path_prefix,
+                    style=questionary.Style([
+                        ('question', 'bold'),
+                        ('answer', 'fg:#cc5454'),
+                    ])
+                ).ask()
+                
+                if path_prefix is None:  # User cancelled
+                    console.print("[yellow]Operation cancelled[/yellow]")
+                    return
+                
+                # Build context
+                location_context = {
+                    'path_prefix': path_prefix,
+                    'overrides': existing_context.get('overrides', {}),
+                    'metadata': existing_context.get('metadata', {})
+                }
+                
+                # Ask if user wants to add custom metadata
+                if questionary.confirm("Add custom metadata?", default=False).ask():
+                    while True:
+                        key = questionary.text("Metadata key (empty to finish):").ask()
+                        if not key or not key.strip():
+                            break
+                        value = questionary.text(f"Value for '{key}':").ask()
+                        if value is not None:
+                            location_context['metadata'][key] = value
+        else:
+            # Handle provided context string
+            location_context = {}
+            if context:
+                try:
+                    location_context = json.loads(context)
+                except json.JSONDecodeError:
+                    console.print(f"[red]Error:[/red] Invalid JSON in context: {context}")
+                    return
         
         dto = SimulationLocationAssociationDto(
             simulation_id=sim_id,
@@ -220,17 +293,41 @@ def add_location(sim_id: str = None, location_name: str = None, context: str = N
 
 
 @simulation_location.command(name="remove")
-@click.argument("sim_id")
-@click.argument("location_name")
+@click.argument("sim_id", shell_complete=_complete_simulation_id)
+@click.argument("location_name", shell_complete=_complete_location_name)
 def remove_location(sim_id: str, location_name: str):
     """Remove a location association from a simulation."""
     try:
         service = _get_simulation_service()
-        result = service.disassociate_simulation_from_location(sim_id, location_name)
+        
+        # Get the simulation and remove the location association
+        simulation = service.get_simulation(sim_id)
+        if simulation is None:
+            console.print(f"[red]Error:[/red] Simulation '{sim_id}' not found")
+            return
+            
+        if location_name not in simulation.associated_locations:
+            console.print(f"[yellow]Warning:[/yellow] Location '{location_name}' is not associated with simulation '{sim_id}'")
+            return
+        
+        # Use the entity method to disassociate
+        simulation_entity = service._simulation_repo.get_by_id(sim_id)
+        simulation_entity.disassociate_location(location_name)
+        service._simulation_repo.save(simulation_entity)
+        
         console.print(f"[green]✓[/green] Removed location '{location_name}' from simulation '{sim_id}'")
         
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@simulation_location.command(name="rm")
+@click.argument("sim_id", shell_complete=_complete_simulation_id)
+@click.argument("location_name", shell_complete=_complete_location_name)  
+def rm_location(sim_id: str, location_name: str):
+    """Remove a location association from a simulation (alias for remove)."""
+    # Call the remove_location function directly
+    remove_location.callback(sim_id, location_name)
 
 
 @simulation_location.command(name="update")
