@@ -256,13 +256,17 @@ def add_location(sim_id: str = None, location_name: str = None, context: str = N
                 # Path prefix configuration with location-aware tab completion
                 current_path_prefix = existing_context.get('path_prefix', '')
                 
-                # Try to set up location-relative path completion
+                # If no current prefix, start with the location's base path
+                if not current_path_prefix:
+                    current_path_prefix = location_base_path
+                
+                # Try to set up standard path completion (starting from base path)
                 completer = None
                 try:
-                    from .completion import LocationRelativePathCompleter
-                    # Use get_location_filesystem to get the domain entity, not the DTO
+                    from .completion import SmartPathCompleter
+                    # Use get_location_filesystem to get the domain entity
                     location_entity = location_service.get_location_filesystem(location_name)
-                    completer = LocationRelativePathCompleter(location_entity, only_directories=True)
+                    completer = SmartPathCompleter(location_entity, only_directories=True)
                 except Exception as e:
                     # If completion setup fails, continue without it
                     console.print(f"[dim]Note: Tab completion not available ({str(e)})[/dim]")
@@ -270,9 +274,9 @@ def add_location(sim_id: str = None, location_name: str = None, context: str = N
                 
                 # Show different prompts based on whether tab completion is available
                 if completer:
-                    prompt_text = f"Relative path prefix (Tab for dirs under {location_base_path}):"
+                    prompt_text = f"Path prefix (Tab completion available, starts at {location_base_path}):"
                 else:
-                    prompt_text = "Relative path prefix (e.g., '{experiment}' or 'data/{model}'):"
+                    prompt_text = f"Path prefix (base: {location_base_path}):"
                 
                 path_prefix = questionary.text(
                     prompt_text,
