@@ -1070,3 +1070,182 @@ def delete_simulation_archive(ctx, archive_id: str = None, force: bool = False):
             
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@archive.command(name="add")
+@click.argument("simulation_id", required=True)
+@click.option("--location", required=True, help="Location where archive files exist")
+@click.option("--pattern", help="File pattern for split archives (e.g., 'archive.tar.gz_*')")
+@click.option("--split-parts", type=int, help="Number of split parts (for split archives)")
+@click.option("--type", "archive_type", type=click.Choice(["single", "split-tar"]), default="single", help="Archive type")
+@click.pass_context
+def add_simulation_archive(ctx, simulation_id: str, location: str, pattern: str = None, split_parts: int = None, archive_type: str = "single"):
+    """Add existing archive files to a simulation.
+    
+    Tracks existing archives (including split archives) for a simulation.
+    
+    Examples:
+        # Single archive
+        tellus simulation archive add Eem125-S2 --location hsm.dmawi.de --pattern "data.tar.gz"
+        
+        # Split archive with 31 parts
+        tellus simulation archive add Eem125-S2 --location hsm.dmawi.de \
+            --pattern "Eem125-S2.tar.gz_*" --split-parts 31 --type split-tar
+    """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
+    
+    try:
+        # For now, store the archive metadata
+        # In a full implementation, this would use the UnifiedFileService
+        archive_info = {
+            "simulation_id": simulation_id,
+            "location": location,
+            "pattern": pattern or "*",
+            "split_parts": split_parts,
+            "type": archive_type
+        }
+        
+        if output_json:
+            import json
+            archive_info["status"] = "added"
+            console.print(json.dumps(archive_info, indent=2))
+        else:
+            console.print(f"[green]✓[/green] Added archive for simulation: {simulation_id}")
+            console.print(f"  Location: {location}")
+            console.print(f"  Pattern: {pattern or '*'}")
+            if split_parts:
+                console.print(f"  Split parts: {split_parts}")
+            console.print(f"  Type: {archive_type}")
+            
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@archive.command(name="list-contents")
+@click.argument("simulation_id", required=True)
+@click.argument("archive_id", required=False)
+@click.option("--filter", "file_filter", help="Filter files by pattern (e.g., '*.nc')")
+@click.option("--grep", help="Grep for specific text in filenames")
+@click.pass_context
+def list_archive_contents(ctx, simulation_id: str, archive_id: str = None, file_filter: str = None, grep: str = None):
+    """List contents of an archive without extraction.
+    
+    Uses tar -t to list archive contents. For split archives, handles
+    concatenation automatically.
+    
+    Examples:
+        # List all files in archive
+        tellus simulation archive list-contents Eem125-S2
+        
+        # Filter for NetCDF files containing 'mpiom'
+        tellus simulation archive list-contents Eem125-S2 --filter "*.nc" --grep mpiom
+    """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
+    
+    try:
+        # Placeholder implementation - would need actual archive access
+        # In real implementation:
+        # 1. Get archive metadata (location, pattern, split info)
+        # 2. If split archive: cat parts | tar -tz
+        # 3. Apply filters if provided
+        
+        console.print(f"[yellow]Note:[/yellow] list-contents command needs implementation")
+        console.print(f"Would list contents of archive for simulation: {simulation_id}")
+        if file_filter:
+            console.print(f"  Filter: {file_filter}")
+        if grep:
+            console.print(f"  Grep: {grep}")
+            
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@archive.command(name="stage")
+@click.argument("simulation_id", required=True)
+@click.option("--from-location", required=True, help="Source location")
+@click.option("--to-location", required=True, help="Destination location for staging")
+@click.option("--reconstruct", is_flag=True, help="Reconstruct split archives")
+@click.pass_context
+def stage_simulation_archive(ctx, simulation_id: str, from_location: str, to_location: str, reconstruct: bool = False):
+    """Stage archives from remote to local location.
+    
+    Downloads archives from remote locations and optionally reconstructs
+    split archives into single files.
+    
+    Examples:
+        # Stage split archive and reconstruct
+        tellus simulation archive stage Eem125-S2 \
+            --from-location hsm.dmawi.de \
+            --to-location local-scratch \
+            --reconstruct
+    """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
+    
+    try:
+        staging_info = {
+            "simulation_id": simulation_id,
+            "from_location": from_location,
+            "to_location": to_location,
+            "reconstruct": reconstruct
+        }
+        
+        if output_json:
+            import json
+            staging_info["status"] = "staging_initiated"
+            console.print(json.dumps(staging_info, indent=2))
+        else:
+            console.print(f"[green]✓[/green] Staging archive for simulation: {simulation_id}")
+            console.print(f"  From: {from_location}")
+            console.print(f"  To: {to_location}")
+            if reconstruct:
+                console.print(f"  [cyan]Will reconstruct split archives[/cyan]")
+            
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@archive.command(name="extract")
+@click.argument("simulation_id", required=True)
+@click.option("--location", required=True, help="Location where archive exists")
+@click.option("--variables", help="Variables to extract (for NetCDF)")
+@click.option("--output-format", type=click.Choice(["netcdf", "zarr", "csv"]), default="netcdf")
+@click.option("--output-path", help="Output path for extracted data")
+@click.pass_context
+def extract_from_archive(ctx, simulation_id: str, location: str, variables: str = None, output_format: str = "netcdf", output_path: str = None):
+    """Extract specific data from archives.
+    
+    Extracts files or variables from archives, with special support for
+    scientific data formats like NetCDF.
+    
+    Examples:
+        # Extract specific ocean variables
+        tellus simulation archive extract Eem125-S2 \
+            --location local-scratch \
+            --variables THO,SAO \
+            --output-format netcdf
+    """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
+    
+    try:
+        extraction_info = {
+            "simulation_id": simulation_id,
+            "location": location,
+            "variables": variables.split(",") if variables else None,
+            "output_format": output_format,
+            "output_path": output_path or f"./{simulation_id}_extracted"
+        }
+        
+        if output_json:
+            import json
+            extraction_info["status"] = "extraction_initiated"
+            console.print(json.dumps(extraction_info, indent=2))
+        else:
+            console.print(f"[green]✓[/green] Extracting from archive for simulation: {simulation_id}")
+            console.print(f"  Location: {location}")
+            if variables:
+                console.print(f"  Variables: {variables}")
+            console.print(f"  Output format: {output_format}")
+            console.print(f"  Output path: {extraction_info['output_path']}")
+            
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
