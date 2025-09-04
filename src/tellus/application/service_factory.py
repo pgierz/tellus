@@ -253,6 +253,10 @@ class ApplicationServiceFactory:
             
         except Exception as e:
             raise ConfigurationError("ServiceFactory", f"Configuration validation failed: {str(e)}")
+    
+    def get_location_repository(self) -> ILocationRepository:
+        """Get the location repository instance."""
+        return self._location_repo
 
 
 class SimulationWorkflowCoordinator:
