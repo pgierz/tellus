@@ -467,6 +467,83 @@ class CreateWorkflowDto:
     author: Optional[str] = None
 
 
+# Network Topology DTOs
+
+@dataclass  
+class BandwidthMeasurementDto(JsonSerializable):
+    """DTO for bandwidth measurements."""
+    bytes_per_second: float
+    measurement_time: str
+    quality_score: float = 1.0
+    utilization_percent: Optional[float] = None
+
+
+@dataclass
+class LatencyMeasurementDto(JsonSerializable):
+    """DTO for latency measurements."""
+    milliseconds: float
+    measurement_time: str
+    packet_loss_percent: float = 0.0
+    jitter_ms: float = 0.0
+
+
+@dataclass
+class NetworkConnectionDto(JsonSerializable):
+    """DTO for network connections."""
+    source_location_id: str
+    destination_location_id: str
+    connection_type: str
+    bandwidth: Optional[BandwidthMeasurementDto] = None
+    latency: Optional[LatencyMeasurementDto] = None
+    is_bidirectional: bool = True
+    health_status: str = "UNKNOWN"
+
+
+@dataclass
+class NetworkPathDto(JsonSerializable):
+    """DTO for network paths."""
+    hops: List[str]
+    total_cost: float
+    estimated_bandwidth_bps: Optional[float] = None
+    estimated_latency_ms: Optional[float] = None
+
+
+@dataclass
+class TopologyBenchmarkDto(JsonSerializable):
+    """DTO for topology benchmark requests."""
+    source_locations: List[str]
+    destination_locations: List[str]
+    test_size_mb: int = 100
+    timeout_seconds: int = 300
+    force_refresh: bool = False
+
+
+@dataclass
+class OptimalRouteRequestDto(JsonSerializable):
+    """DTO for optimal route requests."""
+    source_location_id: str
+    destination_location_id: str
+    optimization_criteria: str = "bandwidth"  # bandwidth, latency, cost
+    constraints: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class OptimalRouteResponseDto(JsonSerializable):
+    """DTO for optimal route responses."""
+    path: NetworkPathDto
+    reasoning: str
+    alternatives: List[NetworkPathDto] = field(default_factory=list)
+    estimated_transfer_time_seconds: Optional[float] = None
+
+
+@dataclass
+class CreateNetworkTopologyDto(JsonSerializable):
+    """DTO for creating network topology."""
+    topology_id: str
+    connections: List[NetworkConnectionDto] = field(default_factory=list)
+    auto_discover: bool = True
+
+
 @dataclass
 class UpdateWorkflowDto:
     """DTO for updating an existing workflow."""
