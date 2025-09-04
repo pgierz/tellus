@@ -190,12 +190,13 @@ release-prod = { cmd = "cz bump && python -m build && python -m twine upload dis
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version_scheme = "pep440"
+version_scheme = "pep440" 
 version_provider = "scm"
 update_changelog_on_bump = true
 major_version_zero = true  
 tag_format = "v$version"
 bump_message = "bump: version $current_version → $new_version"
-# Force all releases to be alpha for now
+# Keep everything as alpha releases for now
 prerelease = "alpha"
+increment_types = ["feat:alpha", "fix:alpha", "!:alpha"]
 
