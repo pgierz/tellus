@@ -149,6 +149,7 @@ nc-time-axis = ">=1.4.1,<2"
 nbconvert = ">=7.16.6,<8"
 papermill = ">=2.6.0,<3"
 textual = ">=5.3.0,<6"
+networkx = ">=3.0.0,<4"
 
 [tool.pixi.feature.docs.dependencies]
 jupyter-book = "*"
