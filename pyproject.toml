@@ -172,8 +172,8 @@ setuptools-scm = "*"
 [tool.pixi.feature.build.tasks]
 # Version management
 version-current = { cmd = "cz version --project", description = "Show current version" }
-version-dry-run = { cmd = "cz bump --dry-run", description = "Preview what version bump would do" }
-version-bump = { cmd = "cz bump", description = "Bump version based on conventional commits" }
+version-dry-run = { cmd = "cz bump --dry-run --prerelease alpha", description = "Preview what version bump would do" }
+version-bump = { cmd = "cz bump --prerelease alpha", description = "Bump version based on conventional commits" }
 
 # Building and publishing  
 build-dist = "python -m build"
@@ -181,9 +181,9 @@ upload-test = "python -m twine upload --repository testpypi dist/*"
 upload = "python -m twine upload dist/*"
 
 # Complete release workflows
-release = { cmd = "cz bump && python -m build", description = "Bump version, create tag, and build package" }
-release-test = { cmd = "cz bump && python -m build && python -m twine upload --repository testpypi dist/*", description = "Full release to TestPyPI" }
-release-prod = { cmd = "cz bump && python -m build && python -m twine upload dist/*", description = "Full release to PyPI" }
+release = { cmd = "cz bump --prerelease alpha && python -m build", description = "Bump version, create tag, and build package" }
+release-test = { cmd = "cz bump --prerelease alpha && python -m build && python -m twine upload --repository testpypi dist/*", description = "Full release to TestPyPI" }
+release-prod = { cmd = "cz bump --prerelease alpha && python -m build && python -m twine upload dist/*", description = "Full release to PyPI" }
 
 [tool.setuptools_scm]
 # Dynamic versioning from git tags
@@ -196,7 +196,6 @@ update_changelog_on_bump = true
 major_version_zero = true  
 tag_format = "v$version"
 bump_message = "bump: version $current_version → $new_version"
-# Keep everything as alpha releases for now
+# Stay in prerelease alpha mode (--prerelease alpha flag in tasks handles this)
 prerelease = "alpha"
-increment_types = ["feat:alpha", "fix:alpha", "!:alpha"]
 
