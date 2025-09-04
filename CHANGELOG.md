@@ -1,3 +1,13 @@
+## v0.1.0a3 (2025-09-04)
+
+### Feat
+
+- add new test suite based on CLI specification
+
+### Fix
+
+- clarify THO/SAO variables are MPIOM (not FESOM) ocean variables
+
 ## v0.1.0a2 (2025-09-04)
 
 ### Feat
