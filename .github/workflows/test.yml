@@ -10,4 +10,5 @@ jobs:
       - uses: prefix-dev/setup-pixi@v0
         with:
           environments: ${{ matrix.environment }}
+          frozen: true
       - run: pixi run -e ${{ matrix.environment }} test
