@@ -2,7 +2,7 @@
 authors = [{name = "Paul Gierz", email = "pgierz@awi.de"}]
 name = "tellus"
 requires-python = ">= 3.11"
-version = "0.1.0"
+dynamic = ["version"]
 
 [project.optional-dependencies]
 # Removed chat dependencies
@@ -57,11 +57,14 @@ filterwarnings = [
 # timeout_method = "thread"
 
 [build-system]
-build-backend = "hatchling.build"
-requires = ["hatchling"]
+build-backend = "hatchling.build"  
+requires = ["hatchling", "hatch-vcs"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tellus"]
+
+[tool.hatch.version]
+source = "vcs"
 
 [tool.pixi.workspace]
 channels = ["conda-forge", "bioconda"]
@@ -123,6 +126,7 @@ test = ["test"]
 test-py311 = ["py311", "test"]
 test-py312 = ["py312", "test"]
 docs = ["docs"]
+build = ["build"]
 
 [tool.pixi.dependencies]
 python = "*"
@@ -158,3 +162,39 @@ jupyter = "*"
 docs-build = "jupyter-book build docs"
 docs-clean = "jupyter-book clean docs"
 docs-serve = { cmd = "python -m http.server 8000", cwd = "docs/_build/html", description = "Serve documentation locally" }
+
+[tool.pixi.feature.build.pypi-dependencies]
+build = "*"
+twine = "*"
+commitizen = "*"
+setuptools-scm = "*"
+
+[tool.pixi.feature.build.tasks]
+# Version management
+version-current = { cmd = "cz version --project", description = "Show current version" }
+version-dry-run = { cmd = "cz bump --dry-run", description = "Preview what version bump would do" }
+version-bump = { cmd = "cz bump", description = "Bump version based on conventional commits" }
+
+# Building and publishing  
+build-dist = "python -m build"
+upload-test = "python -m twine upload --repository testpypi dist/*"
+upload = "python -m twine upload dist/*"
+
+[tool.setuptools_scm]
+# Dynamic versioning from git tags
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version_scheme = "pep440"
+version_provider = "scm"
+update_changelog_on_bump = true
+major_version_zero = true  
+tag_format = "v$version"
+bump_message = "bump: version $current_version → $new_version"
+# Force all releases to be alpha for now
+prerelease = "alpha"
+
+# Complete release workflow
+release = { cmd = "cz bump && python -m build", description = "Bump version, create tag, and build package" }
+release-test = { cmd = "cz bump && python -m build && python -m twine upload --repository testpypi dist/*", description = "Full release to TestPyPI" }
+release-prod = { cmd = "cz bump && python -m build && python -m twine upload dist/*", description = "Full release to PyPI" }
