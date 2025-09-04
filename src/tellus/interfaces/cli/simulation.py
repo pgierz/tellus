@@ -2196,7 +2196,7 @@ def extract_from_archive(ctx, simulation_id: str, location: str, variables: str 
     scientific data formats like NetCDF.
     
     Examples:
-        # Extract specific ocean variables
+        # Extract specific MPIOM ocean variables (temperature/salinity)
         tellus simulation archive extract Eem125-S2 \
             --location local-scratch \
             --variables THO,SAO \
