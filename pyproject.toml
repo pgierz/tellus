@@ -73,7 +73,7 @@ platforms = ["osx-arm64", "linux-64"]
 [tool.pixi.pypi-dependencies]
 tellus = { path = ".", editable = true }
 tellus-chat = { path = "./src/tellus_chat", editable = true }
-animavox = { path = "./vendor/animavox", editable = true }
+# animavox = { path = "./vendor/animavox", editable = true }  # Future work: CRDT P2P sharing
 # snakemake-storage-plugin-fsspec = { git = "git+https://github.com/pgierz/snakemake-storage-plugin-fsspec.git" }
 # snakemake-storage-plugin-fsspec = { git = "git+https://github.com/pgierz/snakemake-storage-plugin-fsspec.git" }
 
