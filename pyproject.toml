@@ -180,6 +180,11 @@ build-dist = "python -m build"
 upload-test = "python -m twine upload --repository testpypi dist/*"
 upload = "python -m twine upload dist/*"
 
+# Complete release workflows
+release = { cmd = "cz bump && python -m build", description = "Bump version, create tag, and build package" }
+release-test = { cmd = "cz bump && python -m build && python -m twine upload --repository testpypi dist/*", description = "Full release to TestPyPI" }
+release-prod = { cmd = "cz bump && python -m build && python -m twine upload dist/*", description = "Full release to PyPI" }
+
 [tool.setuptools_scm]
 # Dynamic versioning from git tags
 
@@ -194,7 +199,3 @@ bump_message = "bump: version $current_version → $new_version"
 # Force all releases to be alpha for now
 prerelease = "alpha"
 
-# Complete release workflow
-release = { cmd = "cz bump && python -m build", description = "Bump version, create tag, and build package" }
-release-test = { cmd = "cz bump && python -m build && python -m twine upload --repository testpypi dist/*", description = "Full release to TestPyPI" }
-release-prod = { cmd = "cz bump && python -m build && python -m twine upload dist/*", description = "Full release to PyPI" }
