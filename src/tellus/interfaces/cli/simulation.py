@@ -1674,9 +1674,9 @@ def _get_current_timestamp() -> str:
               default='bandwidth',
               help="Optimization criteria for route selection")
 @click.pass_context
-async def stage_simulation_archive(ctx, simulation_id: str, from_location: str, to_location: str, reconstruct: bool = False, 
-                                 optimize_route: bool = False, via: str = None, show_route: bool = False, 
-                                 optimize_for: str = 'bandwidth'):
+def stage_simulation_archive(ctx, simulation_id: str, from_location: str, to_location: str, reconstruct: bool = False, 
+                           optimize_route: bool = False, via: str = None, show_route: bool = False, 
+                           optimize_for: str = 'bandwidth'):
     """Stage archives from remote to local location.
     
     Downloads archives from remote locations and optionally reconstructs
@@ -1711,6 +1711,17 @@ async def stage_simulation_archive(ctx, simulation_id: str, from_location: str, 
             --optimize-route \
             --optimize-for latency
     """
+    import asyncio
+    return asyncio.run(_stage_simulation_archive_async(
+        ctx, simulation_id, from_location, to_location, reconstruct,
+        optimize_route, via, show_route, optimize_for
+    ))
+
+
+async def _stage_simulation_archive_async(ctx, simulation_id: str, from_location: str, to_location: str, reconstruct: bool = False, 
+                                        optimize_route: bool = False, via: str = None, show_route: bool = False, 
+                                        optimize_for: str = 'bandwidth'):
+    """Async implementation of stage_simulation_archive."""
     output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     
     try:
