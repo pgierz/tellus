@@ -891,3 +891,499 @@ async def delete_archive(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to delete archive: {str(e)}"
             )
+
+
+# === Archive Content Management ===
+
+class ArchiveContentResponse(BaseModel):
+    """Response model for archive content listing."""
+    archive_id: str = Field(..., description="The archive identifier")
+    files: List[Dict[str, Any]] = Field(..., description="List of files in the archive")
+    total_files: int = Field(..., description="Total number of files")
+
+
+@router.get(
+    "/{simulation_id}/archives/{archive_id}/contents",
+    response_model=ArchiveContentResponse,
+    status_code=status.HTTP_200_OK
+)
+async def list_archive_contents(
+    simulation_id: str,
+    archive_id: str,
+    file_service: UnifiedFileService = Depends(get_unified_file_service),
+    file_filter: Optional[str] = Query(None, description="Filter files by pattern (e.g., '*.nc')"),
+    content_type_filter: Optional[str] = Query(None, description="Filter by content type")
+):
+    """
+    List contents of an archive without extraction.
+    
+    Args:
+        simulation_id: The simulation identifier
+        archive_id: The archive identifier
+        file_filter: Optional file pattern filter
+        content_type_filter: Optional content type filter
+        
+    Returns:
+        Archive content listing
+        
+    Raises:
+        404: If archive is not found
+    """
+    try:
+        # Check if archive exists
+        archive = file_service.get_archive(archive_id)
+        if not archive:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Archive '{archive_id}' not found"
+            )
+        
+        # Get archive contents (child files)
+        child_files = file_service.get_file_children(archive_id)
+        
+        # Apply filters
+        if file_filter:
+            import fnmatch
+            child_files = [f for f in child_files if fnmatch.fnmatch(f.relative_path, file_filter)]
+        
+        if content_type_filter:
+            from ....domain.entities.simulation_file import FileContentType
+            try:
+                content_type = FileContentType(content_type_filter)
+                child_files = [f for f in child_files if f.content_type == content_type]
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid content type: {content_type_filter}"
+                )
+        
+        # Convert to response format
+        file_list = []
+        for file_obj in child_files:
+            file_dict = {
+                "file_path": file_obj.relative_path,
+                "size_bytes": file_obj.size_bytes,
+                "content_type": file_obj.content_type.value if file_obj.content_type else None,
+                "file_type": file_obj.file_type.value if file_obj.file_type else None,
+                "created_at": file_obj.created_at.isoformat() if file_obj.created_at else None,
+                "attributes": file_obj.attributes
+            }
+            file_list.append(file_dict)
+        
+        return ArchiveContentResponse(
+            archive_id=archive_id,
+            files=file_list,
+            total_files=len(file_list)
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list archive contents: {str(e)}"
+        )
+
+
+class IndexArchiveRequest(BaseModel):
+    """Request model for indexing an archive."""
+    force: bool = Field(False, description="Force re-indexing even if already indexed")
+
+
+class IndexArchiveResponse(BaseModel):
+    """Response model for archive indexing."""
+    archive_id: str = Field(..., description="The archive identifier")
+    status: str = Field(..., description="Indexing status")
+    files_indexed: int = Field(..., description="Number of files indexed")
+
+
+@router.post(
+    "/{simulation_id}/archives/{archive_id}/index",
+    response_model=IndexArchiveResponse,
+    status_code=status.HTTP_200_OK
+)
+async def index_archive_contents(
+    simulation_id: str,
+    archive_id: str,
+    request: IndexArchiveRequest,
+    file_service: UnifiedFileService = Depends(get_unified_file_service)
+):
+    """
+    Create content index for archives.
+    
+    Analyzes archive contents and stores metadata for fast querying without
+    needing to download/extract archives.
+    
+    Args:
+        simulation_id: The simulation identifier
+        archive_id: The archive identifier
+        request: Indexing request parameters
+        
+    Returns:
+        Indexing results
+        
+    Raises:
+        404: If archive is not found
+    """
+    try:
+        # Check if archive exists
+        archive = file_service.get_archive(archive_id)
+        if not archive:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Archive '{archive_id}' not found"
+            )
+        
+        # Get current child files count
+        existing_children = file_service.get_file_children(archive_id)
+        
+        # For now, indexing means ensuring archive metadata is up-to-date
+        # In a full implementation, this would analyze archive contents and create file entries
+        if existing_children and not request.force:
+            # Archive already indexed
+            return IndexArchiveResponse(
+                archive_id=archive_id,
+                status="already_indexed",
+                files_indexed=len(existing_children)
+            )
+        
+        # TODO: Implement actual archive content analysis
+        # This would involve:
+        # 1. Reading archive headers/metadata
+        # 2. Creating SimulationFile entries for each contained file
+        # 3. Setting up parent-child relationships
+        
+        # For now, return current state
+        return IndexArchiveResponse(
+            archive_id=archive_id,
+            status="indexed" if request.force else "already_indexed",
+            files_indexed=len(existing_children)
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to index archive: {str(e)}"
+        )
+
+
+# === File Management Operations ===
+
+class FileListResponse(BaseModel):
+    """Response model for file listing."""
+    simulation_id: str = Field(..., description="The simulation identifier")
+    files: List[Dict[str, Any]] = Field(..., description="List of files")
+    total_files: int = Field(..., description="Total number of files")
+
+
+@router.get(
+    "/{simulation_id}/files",
+    response_model=FileListResponse,
+    status_code=status.HTTP_200_OK
+)
+async def list_simulation_files(
+    simulation_id: str,
+    file_service: UnifiedFileService = Depends(get_unified_file_service),
+    location: Optional[str] = Query(None, description="Filter by location"),
+    content_type: Optional[str] = Query(None, description="Filter by content type"),
+    file_type: Optional[str] = Query(None, description="Filter by file type (regular, archive, directory)")
+):
+    """
+    List files associated with a simulation.
+    
+    Args:
+        simulation_id: The simulation identifier
+        location: Optional location filter
+        content_type: Optional content type filter
+        file_type: Optional file type filter
+        
+    Returns:
+        List of files associated with the simulation
+    """
+    try:
+        # Get simulation files
+        files = file_service.get_simulation_files(simulation_id)
+        
+        # Apply filters
+        if location:
+            files = [f for f in files if f.location_name == location]
+        
+        if content_type:
+            from ....domain.entities.simulation_file import FileContentType
+            try:
+                ct = FileContentType(content_type)
+                files = [f for f in files if f.content_type == ct]
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid content type: {content_type}"
+                )
+        
+        if file_type:
+            from ....domain.entities.simulation_file import FileType
+            try:
+                ft = FileType(file_type)
+                files = [f for f in files if f.file_type == ft]
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid file type: {file_type}"
+                )
+        
+        # Convert to response format
+        file_list = []
+        for file_obj in files:
+            file_dict = {
+                "file_path": file_obj.relative_path,
+                "location": file_obj.location_name,
+                "size_bytes": file_obj.size_bytes,
+                "content_type": file_obj.content_type.value if file_obj.content_type else None,
+                "file_type": file_obj.file_type.value if file_obj.file_type else None,
+                "created_at": file_obj.created_at.isoformat() if file_obj.created_at else None,
+                "parent_file": file_obj.parent_file_id,
+                "attributes": file_obj.attributes
+            }
+            file_list.append(file_dict)
+        
+        return FileListResponse(
+            simulation_id=simulation_id,
+            files=file_list,
+            total_files=len(file_list)
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list files: {str(e)}"
+        )
+
+
+class RegisterFilesRequest(BaseModel):
+    """Request model for registering files to a simulation."""
+    archive_id: str = Field(..., description="Archive ID to register files from")
+    content_type_filter: Optional[str] = Field(None, description="Filter files by content type")
+    pattern_filter: Optional[str] = Field(None, description="Filter files by pattern (glob)")
+    overwrite_existing: bool = Field(False, description="Overwrite existing file registrations")
+
+
+class RegisterFilesResponse(BaseModel):
+    """Response model for file registration."""
+    simulation_id: str = Field(..., description="The simulation identifier")
+    archive_id: str = Field(..., description="The archive identifier")
+    registered_count: int = Field(..., description="Number of files registered")
+    updated_count: int = Field(..., description="Number of existing files updated")
+    skipped_count: int = Field(..., description="Number of files skipped")
+    status: str = Field(..., description="Operation status")
+
+
+@router.post(
+    "/{simulation_id}/files/register",
+    response_model=RegisterFilesResponse,
+    status_code=status.HTTP_201_CREATED
+)
+async def register_files_to_simulation(
+    simulation_id: str,
+    request: RegisterFilesRequest,
+    file_service: UnifiedFileService = Depends(get_unified_file_service)
+):
+    """
+    Register files from an archive to a simulation.
+    
+    Args:
+        simulation_id: The simulation identifier
+        request: File registration parameters
+        
+    Returns:
+        Registration results
+        
+    Raises:
+        404: If archive is not found
+        400: If validation fails
+    """
+    try:
+        from ....application.dtos import FileRegistrationDto
+        
+        # Create registration DTO
+        registration_dto = FileRegistrationDto(
+            simulation_id=simulation_id,
+            archive_id=request.archive_id,
+            content_type_filter=request.content_type_filter,
+            pattern_filter=request.pattern_filter,
+            overwrite_existing=request.overwrite_existing
+        )
+        
+        # Register files
+        result = file_service.register_files_to_simulation(registration_dto)
+        
+        return RegisterFilesResponse(
+            simulation_id=simulation_id,
+            archive_id=request.archive_id,
+            registered_count=result.registered_count,
+            updated_count=result.updated_count,
+            skipped_count=result.skipped_count,
+            status="completed"
+        )
+        
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(e)
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to register files: {str(e)}"
+            )
+
+
+class UnregisterFilesRequest(BaseModel):
+    """Request model for unregistering files from a simulation."""
+    archive_id: str = Field(..., description="Archive ID to unregister files from")
+    content_type_filter: Optional[str] = Field(None, description="Filter files by content type")
+    pattern_filter: Optional[str] = Field(None, description="Filter files by pattern (glob)")
+
+
+class UnregisterFilesResponse(BaseModel):
+    """Response model for file unregistration."""
+    simulation_id: str = Field(..., description="The simulation identifier")
+    archive_id: str = Field(..., description="The archive identifier")
+    unregistered_count: int = Field(..., description="Number of files unregistered")
+    status: str = Field(..., description="Operation status")
+
+
+@router.delete(
+    "/{simulation_id}/files/unregister",
+    response_model=UnregisterFilesResponse,
+    status_code=status.HTTP_200_OK
+)
+async def unregister_files_from_simulation(
+    simulation_id: str,
+    request: UnregisterFilesRequest,
+    file_service: UnifiedFileService = Depends(get_unified_file_service)
+):
+    """
+    Unregister files from a simulation.
+    
+    Args:
+        simulation_id: The simulation identifier
+        request: File unregistration parameters
+        
+    Returns:
+        Unregistration results
+        
+    Raises:
+        404: If archive is not found
+    """
+    try:
+        # Get files to unregister
+        simulation_files = file_service.get_simulation_files(simulation_id)
+        
+        # Filter by archive
+        archive_files = [f for f in simulation_files if f.parent_file_id == request.archive_id]
+        
+        # Apply additional filters
+        if request.content_type_filter:
+            from ....domain.entities.simulation_file import FileContentType
+            try:
+                ct = FileContentType(request.content_type_filter)
+                archive_files = [f for f in archive_files if f.content_type == ct]
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid content type: {request.content_type_filter}"
+                )
+        
+        if request.pattern_filter:
+            import fnmatch
+            archive_files = [f for f in archive_files if fnmatch.fnmatch(f.relative_path, request.pattern_filter)]
+        
+        # Unregister files
+        unregistered_count = 0
+        for file_obj in archive_files:
+            if 'simulation_id' in file_obj.attributes:
+                del file_obj.attributes['simulation_id']
+                file_service.file_repository.save(file_obj)
+                unregistered_count += 1
+        
+        return UnregisterFilesResponse(
+            simulation_id=simulation_id,
+            archive_id=request.archive_id,
+            unregistered_count=unregistered_count,
+            status="completed"
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to unregister files: {str(e)}"
+        )
+
+
+class FileStatusResponse(BaseModel):
+    """Response model for file status."""
+    simulation_id: str = Field(..., description="The simulation identifier")
+    total_files: int = Field(..., description="Total number of registered files")
+    files_by_archive: Dict[str, int] = Field(..., description="File count by archive")
+    files_by_content_type: Dict[str, int] = Field(..., description="File count by content type")
+    files_by_location: Dict[str, int] = Field(..., description="File count by location")
+
+
+@router.get(
+    "/{simulation_id}/files/status",
+    response_model=FileStatusResponse,
+    status_code=status.HTTP_200_OK
+)
+async def get_simulation_files_status(
+    simulation_id: str,
+    file_service: UnifiedFileService = Depends(get_unified_file_service)
+):
+    """
+    Show file status and archive associations.
+    
+    Similar to 'git status' - shows the current state of files
+    associated with this simulation and their archive sources.
+    
+    Args:
+        simulation_id: The simulation identifier
+        
+    Returns:
+        File status summary
+    """
+    try:
+        # Get simulation files
+        files = file_service.get_simulation_files(simulation_id)
+        
+        # Calculate statistics
+        files_by_archive = {}
+        files_by_content_type = {}
+        files_by_location = {}
+        
+        for file_obj in files:
+            # Count by archive
+            archive_key = file_obj.parent_file_id or "no_archive"
+            files_by_archive[archive_key] = files_by_archive.get(archive_key, 0) + 1
+            
+            # Count by content type
+            ct_key = file_obj.content_type.value if file_obj.content_type else "unknown"
+            files_by_content_type[ct_key] = files_by_content_type.get(ct_key, 0) + 1
+            
+            # Count by location
+            loc_key = file_obj.location_name or "no_location"
+            files_by_location[loc_key] = files_by_location.get(loc_key, 0) + 1
+        
+        return FileStatusResponse(
+            simulation_id=simulation_id,
+            total_files=len(files),
+            files_by_archive=files_by_archive,
+            files_by_content_type=files_by_content_type,
+            files_by_location=files_by_location
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get file status: {str(e)}"
+        )

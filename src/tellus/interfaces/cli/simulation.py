@@ -1291,7 +1291,53 @@ def list_archive_contents(ctx, simulation_id: str, archive_id: str = None, file_
     output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     
     try:
-        # Get services
+        # Check if we should use REST API
+        use_rest_api = os.getenv('TELLUS_CLI_USE_REST_API', 'false').lower() == 'true'
+        
+        if use_rest_api and archive_id:
+            from .rest_client import get_rest_simulation_service
+            console.print("✨ Using REST API backend")
+            
+            rest_service = get_rest_simulation_service()
+            
+            # Map grep to content_type_filter if provided
+            content_type_filter = None
+            if grep and grep.lower() in ['output', 'input', 'log', 'config']:
+                content_type_filter = grep.lower()
+            
+            result = rest_service.list_archive_contents(
+                simulation_id, 
+                archive_id, 
+                file_filter=file_filter,
+                content_type_filter=content_type_filter
+            )
+            
+            if output_json:
+                import json
+                console.print(json.dumps(result, indent=2))
+            else:
+                console.print(f"\n[cyan]Archive:[/cyan] {result['archive_id']}")
+                console.print(f"[cyan]Total Files:[/cyan] {result['total_files']}")
+                
+                if result['files']:
+                    table = Table(title="Archive Contents")
+                    table.add_column("File Path", style="cyan")
+                    table.add_column("Size", style="green") 
+                    table.add_column("Type", style="yellow")
+                    table.add_column("Content Type", style="magenta")
+                    
+                    for file_info in result['files']:
+                        size_str = str(file_info.get('size_bytes', 0)) if file_info.get('size_bytes') else '-'
+                        file_type_str = file_info.get('file_type', '-') or '-'
+                        content_type_str = file_info.get('content_type', '-') or '-'
+                        table.add_row(file_info['file_path'], size_str, file_type_str, content_type_str)
+                    
+                    console.print(table)
+                else:
+                    console.print("[yellow]No files found[/yellow]")
+            return
+        
+        # Fall back to direct service
         file_service = _get_unified_file_service()
         location_service = _get_location_service()
         
@@ -1538,7 +1584,31 @@ def index_archive_contents(ctx, simulation_id: str, archive_id: str = None, forc
     output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     
     try:
-        # Get services
+        # Check if we should use REST API
+        use_rest_api = os.getenv('TELLUS_CLI_USE_REST_API', 'false').lower() == 'true'
+        
+        if use_rest_api and archive_id:
+            from .rest_client import get_rest_simulation_service
+            console.print("✨ Using REST API backend")
+            
+            rest_service = get_rest_simulation_service()
+            result = rest_service.index_archive_contents(simulation_id, archive_id, force=force)
+            
+            if output_json:
+                import json
+                console.print(json.dumps(result, indent=2))
+            else:
+                console.print(f"\n[cyan]Archive:[/cyan] {result['archive_id']}")
+                console.print(f"[cyan]Status:[/cyan] {result['status']}")
+                console.print(f"[cyan]Files Indexed:[/cyan] {result['files_indexed']}")
+                
+                if result['status'] == 'already_indexed' and not force:
+                    console.print("[yellow]Archive already indexed. Use --force to re-index.[/yellow]")
+                elif result['status'] == 'indexed':
+                    console.print("[green]✓ Archive successfully indexed[/green]")
+            return
+            
+        # Fall back to direct service
         file_service = _get_unified_file_service()
         location_service = _get_location_service()
         

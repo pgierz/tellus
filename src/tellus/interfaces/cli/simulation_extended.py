@@ -2381,6 +2381,47 @@ def simulation_files():
 def list_files(sim_id: str, location: str = None, content_type: str = None, type: str = None):
     """List files associated with a simulation."""
     try:
+        # Check if we should use REST API
+        use_rest_api = os.getenv('TELLUS_CLI_USE_REST_API', 'false').lower() == 'true'
+        
+        if use_rest_api:
+            from .rest_client import get_rest_simulation_service
+            console.print("✨ Using REST API backend")
+            
+            rest_service = get_rest_simulation_service()
+            files = rest_service.get_simulation_files(
+                sim_id, 
+                location=location, 
+                content_type=content_type, 
+                file_type=type
+            )
+            
+            if not files:
+                console.print(f"No files associated with simulation '{sim_id}'")
+                return
+                
+            # Display files in table format
+            table = Table(title=f"Files for Simulation: {sim_id}")
+            table.add_column("File Path", style="cyan")
+            table.add_column("Location", style="green")
+            table.add_column("Size", style="yellow") 
+            table.add_column("Content Type", style="magenta")
+            table.add_column("Parent Archive", style="dim")
+            
+            for file_info in files:
+                size_str = str(file_info.get('size_bytes', 0)) if file_info.get('size_bytes') else '-'
+                table.add_row(
+                    file_info.get('file_path', '-'),
+                    file_info.get('location', '-') or '-',
+                    size_str,
+                    file_info.get('content_type', '-') or '-',
+                    file_info.get('parent_file', '-') or '-'
+                )
+            
+            console.print(table)
+            return
+        
+        # Fall back to direct service
         simulation_service = _get_simulation_service()
         
         # Verify simulation exists
@@ -2543,6 +2584,30 @@ def add_files(sim_id: str, from_archive: str, content_type: str = None, pattern:
         tellus simulation files add my-sim --from-archive my-archive --dry-run
     """
     try:
+        # Check if we should use REST API
+        use_rest_api = os.getenv('TELLUS_CLI_USE_REST_API', 'false').lower() == 'true'
+        
+        if use_rest_api and not dry_run:
+            from .rest_client import get_rest_simulation_service
+            console.print("✨ Using REST API backend")
+            
+            rest_service = get_rest_simulation_service()
+            result = rest_service.register_files_to_simulation(
+                sim_id,
+                from_archive,
+                content_type_filter=content_type,
+                pattern_filter=pattern,
+                overwrite_existing=overwrite
+            )
+            
+            console.print(f"[green]✓ File registration completed[/green]")
+            console.print(f"  Registered: {result['registered_count']} files")
+            console.print(f"  Updated: {result['updated_count']} files")  
+            console.print(f"  Skipped: {result['skipped_count']} files")
+            console.print(f"  Archive: {result['archive_id']}")
+            return
+        
+        # Fall back to direct service
         container = get_service_container()
         unified_service = container.service_factory.unified_file_service
         simulation_service = container.service_factory.simulation_service
@@ -2717,6 +2782,42 @@ def status_files(sim_id: str, show_archives: bool = False, content_type: str = N
         tellus simulation files status my-sim --content-type output
     """
     try:
+        # Check if we should use REST API
+        use_rest_api = os.getenv('TELLUS_CLI_USE_REST_API', 'false').lower() == 'true'
+        
+        if use_rest_api:
+            from .rest_client import get_rest_simulation_service
+            console.print("✨ Using REST API backend")
+            
+            rest_service = get_rest_simulation_service()
+            status = rest_service.get_simulation_files_status(sim_id)
+            
+            console.print(f"\n[cyan]File Status for Simulation:[/cyan] {status['simulation_id']}")
+            console.print(f"[cyan]Total Files:[/cyan] {status['total_files']}")
+            
+            # Show files by archive
+            if status['files_by_archive']:
+                console.print("\n[yellow]Files by Archive:[/yellow]")
+                for archive, count in status['files_by_archive'].items():
+                    archive_display = archive if archive != 'no_archive' else '[no archive]'
+                    console.print(f"  {archive_display}: {count} files")
+            
+            # Show files by content type
+            if status['files_by_content_type']:
+                console.print("\n[yellow]Files by Content Type:[/yellow]")
+                for content_type, count in status['files_by_content_type'].items():
+                    console.print(f"  {content_type}: {count} files")
+            
+            # Show files by location
+            if status['files_by_location']:
+                console.print("\n[yellow]Files by Location:[/yellow]")
+                for location, count in status['files_by_location'].items():
+                    location_display = location if location != 'no_location' else '[no location]'
+                    console.print(f"  {location_display}: {count} files")
+            
+            return
+        
+        # Fall back to direct service
         container = get_service_container()
         simulation_service = container.service_factory.simulation_service
         

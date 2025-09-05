@@ -293,10 +293,19 @@ class RestSimulationService:
         data = self.client._handle_response(response)
         return SimulationDto.model_validate(data)
 
-    def get_simulation_files(self, simulation_id: str) -> List[Dict[str, Any]]:
+    def get_simulation_files(self, simulation_id: str, location: str = None, content_type: str = None, file_type: str = None) -> List[Dict[str, Any]]:
         """Get simulation files via REST API."""
+        params = {}
+        if location:
+            params['location'] = location
+        if content_type:
+            params['content_type'] = content_type
+        if file_type:
+            params['file_type'] = file_type
+            
         response = self.client.client.get(
-            urljoin(self.client.base_url, f'simulations/{simulation_id}/files')
+            urljoin(self.client.base_url, f'simulations/{simulation_id}/files'),
+            params=params
         )
         data = self.client._handle_response(response)
         return data.get('files', [])
@@ -345,6 +354,76 @@ class RestSimulationService:
         """Delete an archive via REST API."""
         response = self.client.client.delete(
             urljoin(self.client.base_url, f'simulations/{simulation_id}/archives/{archive_id}')
+        )
+        return self.client._handle_response(response)
+
+    # Archive content operations
+    def list_archive_contents(self, simulation_id: str, archive_id: str, 
+                            file_filter: Optional[str] = None, 
+                            content_type_filter: Optional[str] = None) -> Dict[str, Any]:
+        """List contents of an archive without extraction via REST API."""
+        params = {}
+        if file_filter:
+            params['file_filter'] = file_filter
+        if content_type_filter:
+            params['content_type_filter'] = content_type_filter
+            
+        response = self.client.client.get(
+            urljoin(self.client.base_url, f'simulations/{simulation_id}/archives/{archive_id}/contents'),
+            params=params
+        )
+        return self.client._handle_response(response)
+
+    def index_archive_contents(self, simulation_id: str, archive_id: str, force: bool = False) -> Dict[str, Any]:
+        """Create content index for archives via REST API."""
+        payload = {'force': force}
+        response = self.client.client.post(
+            urljoin(self.client.base_url, f'simulations/{simulation_id}/archives/{archive_id}/index'),
+            json=payload
+        )
+        return self.client._handle_response(response)
+
+    # File management operations
+    def register_files_to_simulation(self, simulation_id: str, archive_id: str,
+                                   content_type_filter: Optional[str] = None,
+                                   pattern_filter: Optional[str] = None,
+                                   overwrite_existing: bool = False) -> Dict[str, Any]:
+        """Register files from an archive to a simulation via REST API."""
+        payload = {
+            'archive_id': archive_id,
+            'overwrite_existing': overwrite_existing
+        }
+        if content_type_filter:
+            payload['content_type_filter'] = content_type_filter
+        if pattern_filter:
+            payload['pattern_filter'] = pattern_filter
+            
+        response = self.client.client.post(
+            urljoin(self.client.base_url, f'simulations/{simulation_id}/files/register'),
+            json=payload
+        )
+        return self.client._handle_response(response)
+
+    def unregister_files_from_simulation(self, simulation_id: str, archive_id: str,
+                                       content_type_filter: Optional[str] = None,
+                                       pattern_filter: Optional[str] = None) -> Dict[str, Any]:
+        """Unregister files from a simulation via REST API."""
+        payload = {'archive_id': archive_id}
+        if content_type_filter:
+            payload['content_type_filter'] = content_type_filter
+        if pattern_filter:
+            payload['pattern_filter'] = pattern_filter
+            
+        response = self.client.client.delete(
+            urljoin(self.client.base_url, f'simulations/{simulation_id}/files/unregister'),
+            json=payload
+        )
+        return self.client._handle_response(response)
+
+    def get_simulation_files_status(self, simulation_id: str) -> Dict[str, Any]:
+        """Get file status and archive associations via REST API."""
+        response = self.client.client.get(
+            urljoin(self.client.base_url, f'simulations/{simulation_id}/files/status')
         )
         return self.client._handle_response(response)
 

@@ -861,3 +861,329 @@ class TestSimulationArchives:
         assert response.status_code == 500
         data = response.json()
         assert "Failed to delete archive" in data["detail"]
+
+
+# === Archive Content Tests ===
+
+class TestArchiveContent:
+    """Test archive content management endpoints."""
+
+    def test_list_archive_contents_success(self, client, mock_file_service):
+        """Test successful archive content listing."""
+        # Mock archive exists
+        mock_archive = SimulationFile(
+            relative_path="test_archive",
+            file_type=FileType.ARCHIVE,
+            created_at=datetime.now()
+        )
+        mock_file_service.get_archive.return_value = mock_archive
+        
+        # Mock child files
+        child_files = [
+            SimulationFile(
+                relative_path="file1.nc",
+                file_type=FileType.REGULAR,
+                size_bytes=1024,
+                content_type=FileContentType.OUTPUT,
+                created_at=datetime.now(),
+                attributes={}
+            ),
+            SimulationFile(
+                relative_path="file2.nc",
+                file_type=FileType.REGULAR,
+                size_bytes=2048,
+                content_type=FileContentType.OUTPUT,
+                created_at=datetime.now(),
+                attributes={}
+            )
+        ]
+        mock_file_service.get_file_children.return_value = child_files
+        
+        response = client.get("/simulations/sim-001/archives/test_archive/contents")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["archive_id"] == "test_archive"
+        assert data["total_files"] == 2
+        assert len(data["files"]) == 2
+        assert data["files"][0]["file_path"] == "file1.nc"
+        assert data["files"][0]["size_bytes"] == 1024
+
+    def test_list_archive_contents_with_filters(self, client, mock_file_service):
+        """Test archive content listing with filters."""
+        # Mock archive exists
+        mock_archive = SimulationFile(
+            relative_path="test_archive",
+            file_type=FileType.ARCHIVE,
+            created_at=datetime.now()
+        )
+        mock_file_service.get_archive.return_value = mock_archive
+        
+        # Mock child files (with different types)
+        child_files = [
+            SimulationFile(
+                relative_path="output.nc",
+                file_type=FileType.REGULAR,
+                content_type=FileContentType.OUTPUT,
+                created_at=datetime.now(),
+                attributes={}
+            ),
+            SimulationFile(
+                relative_path="input.txt",
+                file_type=FileType.REGULAR,
+                content_type=FileContentType.INPUT,
+                created_at=datetime.now(),
+                attributes={}
+            )
+        ]
+        mock_file_service.get_file_children.return_value = child_files
+        
+        # Test with file_filter
+        response = client.get("/simulations/sim-001/archives/test_archive/contents?file_filter=*.nc")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total_files"] == 1
+        assert data["files"][0]["file_path"] == "output.nc"
+
+    def test_list_archive_contents_not_found(self, client, mock_file_service):
+        """Test listing contents of non-existent archive."""
+        mock_file_service.get_archive.return_value = None
+        
+        response = client.get("/simulations/sim-001/archives/nonexistent/contents")
+        
+        assert response.status_code == 404
+        data = response.json()
+        assert "Archive 'nonexistent' not found" in data["detail"]
+
+    def test_index_archive_success(self, client, mock_file_service):
+        """Test successful archive indexing."""
+        # Mock archive exists
+        mock_archive = SimulationFile(
+            relative_path="test_archive",
+            file_type=FileType.ARCHIVE,
+            created_at=datetime.now()
+        )
+        mock_file_service.get_archive.return_value = mock_archive
+        
+        # Mock existing children (already indexed)
+        existing_children = [
+            SimulationFile(relative_path="file1.nc", file_type=FileType.REGULAR, created_at=datetime.now())
+        ]
+        mock_file_service.get_file_children.return_value = existing_children
+        
+        response = client.post("/simulations/sim-001/archives/test_archive/index", json={"force": False})
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["archive_id"] == "test_archive"
+        assert data["status"] == "already_indexed"
+        assert data["files_indexed"] == 1
+
+    def test_index_archive_force(self, client, mock_file_service):
+        """Test forced archive indexing."""
+        # Mock archive exists
+        mock_archive = SimulationFile(
+            relative_path="test_archive",
+            file_type=FileType.ARCHIVE,
+            created_at=datetime.now()
+        )
+        mock_file_service.get_archive.return_value = mock_archive
+        mock_file_service.get_file_children.return_value = []
+        
+        response = client.post("/simulations/sim-001/archives/test_archive/index", json={"force": True})
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["archive_id"] == "test_archive"
+        assert data["status"] == "indexed"
+
+    def test_index_archive_not_found(self, client, mock_file_service):
+        """Test indexing non-existent archive."""
+        mock_file_service.get_archive.return_value = None
+        
+        response = client.post("/simulations/sim-001/archives/nonexistent/index", json={"force": False})
+        
+        assert response.status_code == 404
+        data = response.json()
+        assert "Archive 'nonexistent' not found" in data["detail"]
+
+
+# === File Management Tests ===
+
+class TestFileManagement:
+    """Test file management endpoints."""
+
+    def test_list_simulation_files_success(self, client, mock_file_service):
+        """Test successful file listing."""
+        # Mock files
+        files = [
+            SimulationFile(
+                relative_path="output.nc",
+                location_name="local",
+                size_bytes=1024,
+                content_type=FileContentType.OUTPUT,
+                file_type=FileType.REGULAR,
+                parent_file_id="archive1",
+                created_at=datetime.now(),
+                attributes={}
+            ),
+            SimulationFile(
+                relative_path="input.txt",
+                location_name="remote",
+                size_bytes=512,
+                content_type=FileContentType.INPUT,
+                file_type=FileType.REGULAR,
+                created_at=datetime.now(),
+                attributes={}
+            )
+        ]
+        mock_file_service.get_simulation_files.return_value = files
+        
+        response = client.get("/simulations/sim-001/files")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["simulation_id"] == "sim-001"
+        assert data["total_files"] == 2
+        assert len(data["files"]) == 2
+        assert data["files"][0]["file_path"] == "output.nc"
+        assert data["files"][0]["location"] == "local"
+        assert data["files"][0]["parent_file"] == "archive1"
+
+    def test_list_simulation_files_with_filters(self, client, mock_file_service):
+        """Test file listing with filters."""
+        # Mock files with different content types
+        files = [
+            SimulationFile(
+                relative_path="output.nc",
+                location_name="local",
+                content_type=FileContentType.OUTPUT,
+                file_type=FileType.REGULAR,
+                created_at=datetime.now(),
+                attributes={}
+            )
+        ]
+        mock_file_service.get_simulation_files.return_value = files
+        
+        # Test with content_type filter
+        response = client.get("/simulations/sim-001/files?content_type=output")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total_files"] == 1
+
+    def test_register_files_success(self, client, mock_file_service):
+        """Test successful file registration."""
+        from tellus.application.dtos import FileRegistrationResultDto
+        
+        # Mock registration result
+        result = FileRegistrationResultDto(
+            registered_count=5,
+            updated_count=2,
+            skipped_count=1
+        )
+        mock_file_service.register_files_to_simulation.return_value = result
+        
+        request_data = {
+            "archive_id": "test_archive",
+            "content_type_filter": "output",
+            "overwrite_existing": True
+        }
+        
+        response = client.post("/simulations/sim-001/files/register", json=request_data)
+        
+        assert response.status_code == 201
+        data = response.json()
+        assert data["simulation_id"] == "sim-001"
+        assert data["archive_id"] == "test_archive"
+        assert data["registered_count"] == 5
+        assert data["updated_count"] == 2
+        assert data["skipped_count"] == 1
+        assert data["status"] == "completed"
+
+    def test_register_files_archive_not_found(self, client, mock_file_service):
+        """Test file registration with non-existent archive."""
+        from tellus.application.exceptions import EntityNotFoundError
+        
+        mock_file_service.register_files_to_simulation.side_effect = EntityNotFoundError("Archive", "nonexistent")
+        
+        request_data = {"archive_id": "nonexistent"}
+        
+        response = client.post("/simulations/sim-001/files/register", json=request_data)
+        
+        assert response.status_code == 404
+
+    def test_unregister_files_success(self, client, mock_file_service):
+        """Test successful file unregistration."""
+        # Mock simulation files
+        files = [
+            SimulationFile(
+                relative_path="file1.nc",
+                parent_file_id="test_archive",
+                attributes={"simulation_id": "sim-001"},
+                created_at=datetime.now()
+            ),
+            SimulationFile(
+                relative_path="file2.nc",
+                parent_file_id="test_archive",
+                attributes={"simulation_id": "sim-001"},
+                created_at=datetime.now()
+            )
+        ]
+        mock_file_service.get_simulation_files.return_value = files
+        
+        request_data = {"archive_id": "test_archive"}
+        
+        response = client.delete("/simulations/sim-001/files/unregister", json=request_data)
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["simulation_id"] == "sim-001"
+        assert data["archive_id"] == "test_archive"
+        assert data["unregistered_count"] == 2
+        assert data["status"] == "completed"
+
+    def test_get_files_status_success(self, client, mock_file_service):
+        """Test successful file status retrieval."""
+        # Mock files with different attributes
+        files = [
+            SimulationFile(
+                relative_path="file1.nc",
+                parent_file_id="archive1",
+                content_type=FileContentType.OUTPUT,
+                location_name="local",
+                created_at=datetime.now(),
+                attributes={}
+            ),
+            SimulationFile(
+                relative_path="file2.txt",
+                parent_file_id="archive1",
+                content_type=FileContentType.INPUT,
+                location_name="remote",
+                created_at=datetime.now(),
+                attributes={}
+            ),
+            SimulationFile(
+                relative_path="file3.log",
+                content_type=FileContentType.LOG,
+                location_name="local",
+                created_at=datetime.now(),
+                attributes={}
+            )
+        ]
+        mock_file_service.get_simulation_files.return_value = files
+        
+        response = client.get("/simulations/sim-001/files/status")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["simulation_id"] == "sim-001"
+        assert data["total_files"] == 3
+        assert data["files_by_archive"]["archive1"] == 2
+        assert data["files_by_archive"]["no_archive"] == 1
+        assert data["files_by_content_type"]["output"] == 1
+        assert data["files_by_content_type"]["input"] == 1
+        assert data["files_by_content_type"]["log"] == 1
+        assert data["files_by_location"]["local"] == 2
+        assert data["files_by_location"]["remote"] == 1
