@@ -267,7 +267,14 @@ def mock_location_service():
 
 
 @pytest.fixture
-def mock_service_container(mock_simulation_service, mock_location_service):
+def mock_file_service():
+    """Mock unified file service for testing."""
+    service = MagicMock()
+    return service
+
+
+@pytest.fixture
+def mock_service_container(mock_simulation_service, mock_location_service, mock_file_service):
     """Mock service container for dependency injection."""
     container = MagicMock(spec=ServiceContainer)
     
@@ -275,6 +282,7 @@ def mock_service_container(mock_simulation_service, mock_location_service):
     mock_factory = MagicMock()
     mock_factory.simulation_service = mock_simulation_service
     mock_factory.location_service = mock_location_service
+    mock_factory.unified_file_service = mock_file_service
     container.service_factory = mock_factory
     
     return container

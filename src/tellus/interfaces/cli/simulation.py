@@ -909,7 +909,8 @@ def create_simulation_archive(ctx, simulation_id: str = None, archive_name: str 
     """
     output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
-        service = _get_unified_file_service()
+        # Check if we should use REST API
+        use_rest_api = os.getenv('TELLUS_CLI_USE_REST_API', 'false').lower() == 'true'
         
         # Interactive mode if arguments missing
         if not simulation_id or not archive_name:
@@ -936,24 +937,43 @@ def create_simulation_archive(ctx, simulation_id: str = None, archive_name: str 
                     console.print("[dim]No archive name provided[/dim]")
                     return
         
-        # Create archive using unified file service (archives are SimulationFiles with file_type=ARCHIVE)
-        from ...application.dtos import FileRegistrationDto
-        from ...domain.entities.simulation_file import FileContentType, FileImportance
-        
-        registration_dto = FileRegistrationDto(
-            simulation_id=simulation_id,
-            file_path=f"archives/{archive_name}.tar.gz",  # Default archive path
-            content_type=FileContentType.ARCHIVE,
-            importance=FileImportance.HIGH,  # Archives are typically important
-            description=f"Archive created via CLI: {archive_name}"
-        )
-        
-        result = service.register_file(registration_dto)
+        if use_rest_api:
+            # Use REST API for archive creation
+            sim_service = _get_simulation_service()  # This will be RestSimulationService
+            result = sim_service.create_simulation_archive(
+                simulation_id=simulation_id,
+                archive_name=archive_name,
+                description=f"Archive created via CLI: {archive_name}",
+                archive_type="single"
+            )
+        else:
+            # Use unified file service (archives are SimulationFiles with file_type=ARCHIVE)
+            service = _get_unified_file_service()
+            from ...application.dtos import FileRegistrationDto
+            from ...domain.entities.simulation_file import FileContentType, FileImportance
+            
+            registration_dto = FileRegistrationDto(
+                simulation_id=simulation_id,
+                file_path=f"archives/{archive_name}.tar.gz",  # Default archive path
+                content_type=FileContentType.ARCHIVE,
+                importance=FileImportance.HIGH,  # Archives are typically important
+                description=f"Archive created via CLI: {archive_name}"
+            )
+            
+            result = service.register_file(registration_dto)
         
         if output_json:
-            console.print(result.pretty_json() if hasattr(result, 'pretty_json') else '{"status": "created"}')
+            if use_rest_api:
+                import json
+                console.print(json.dumps(result, indent=2))
+            else:
+                console.print(result.pretty_json() if hasattr(result, 'pretty_json') else '{"status": "created"}')
         else:
-            console.print(f"[green]✓[/green] Created archive '{archive_name}' for simulation '{simulation_id}'")
+            if use_rest_api:
+                archive_id = result.get('archive_id', archive_name)
+                console.print(f"[green]✓[/green] Created archive '{archive_name}' (ID: {archive_id}) for simulation '{simulation_id}'")
+            else:
+                console.print(f"[green]✓[/green] Created archive '{archive_name}' for simulation '{simulation_id}'")
             
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")
@@ -1000,7 +1020,8 @@ def list_simulation_archives(ctx, simulation_id: str = None):
     """
     output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
-        service = _get_unified_file_service()
+        # Check if we should use REST API
+        use_rest_api = os.getenv('TELLUS_CLI_USE_REST_API', 'false').lower() == 'true'
         
         if not simulation_id:
             import questionary
@@ -1017,23 +1038,32 @@ def list_simulation_archives(ctx, simulation_id: str = None):
             if not simulation_id:
                 console.print("[dim]No simulation selected[/dim]")
                 return
-                
-        # List archives for simulation (filter SimulationFiles by file_type=ARCHIVE)
-        archives = service.list_simulation_archives(simulation_id)
+        
+        if use_rest_api:
+            # Use REST API for listing archives
+            sim_service = _get_simulation_service()  # This will be RestSimulationService
+            archives = sim_service.list_simulation_archives(simulation_id)
+        else:
+            # Use unified file service
+            service = _get_unified_file_service()
+            archives = service.list_simulation_archives(simulation_id)
         
         if output_json:
             import json
-            archive_data = []
-            for archive in archives:
-                archive_data.append({
-                    "archive_id": archive.relative_path,
-                    "location": archive.attributes.get('location', ''),
-                    "pattern": archive.attributes.get('pattern', ''),
-                    "split_parts": archive.attributes.get('split_parts'),
-                    "type": archive.attributes.get('archive_type', ''),
-                    "format": getattr(archive, 'archive_format', '')
-                })
-            console.print(json.dumps(archive_data, indent=2))
+            if use_rest_api:
+                console.print(json.dumps(archives, indent=2))
+            else:
+                archive_data = []
+                for archive in archives:
+                    archive_data.append({
+                        "archive_id": archive.relative_path,
+                        "location": archive.attributes.get('location', ''),
+                        "pattern": archive.attributes.get('pattern', ''),
+                        "split_parts": archive.attributes.get('split_parts'),
+                        "type": archive.attributes.get('archive_type', ''),
+                        "format": getattr(archive, 'archive_format', '')
+                    })
+                console.print(json.dumps(archive_data, indent=2))
         else:
             if not archives:
                 console.print(f"No archives found for simulation '{simulation_id}'")
@@ -1048,14 +1078,24 @@ def list_simulation_archives(ctx, simulation_id: str = None):
                 table.add_column("Split Parts")
                 table.add_column("Type")
                 
-                for archive in archives:
-                    table.add_row(
-                        archive.relative_path,
-                        archive.attributes.get('location', ''),
-                        archive.attributes.get('pattern', ''),
-                        str(archive.attributes.get('split_parts', '')) if archive.attributes.get('split_parts') else '',
-                        archive.attributes.get('archive_type', '')
-                    )
+                if use_rest_api:
+                    for archive in archives:
+                        table.add_row(
+                            archive.get('archive_id', ''),
+                            archive.get('location', ''),
+                            archive.get('pattern', ''),
+                            str(archive.get('split_parts', '')) if archive.get('split_parts') else '',
+                            archive.get('archive_type', '')
+                        )
+                else:
+                    for archive in archives:
+                        table.add_row(
+                            archive.relative_path,
+                            archive.attributes.get('location', ''),
+                            archive.attributes.get('pattern', ''),
+                            str(archive.attributes.get('split_parts', '')) if archive.attributes.get('split_parts') else '',
+                            archive.attributes.get('archive_type', '')
+                        )
                 
                 console.print(table)
                 
@@ -1108,7 +1148,8 @@ def delete_simulation_archive(ctx, archive_id: str = None, force: bool = False):
     """
     output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
-        service = _get_unified_file_service()
+        # Check if we should use REST API
+        use_rest_api = os.getenv('TELLUS_CLI_USE_REST_API', 'false').lower() == 'true'
         
         if not archive_id:
             import questionary
@@ -1124,8 +1165,20 @@ def delete_simulation_archive(ctx, archive_id: str = None, force: bool = False):
                 console.print("[dim]Operation cancelled[/dim]")
                 return
                 
-        # Delete archive using unified file service (archives are SimulationFiles)
-        service.remove_file(archive_id)
+        if use_rest_api:
+            # For REST API, we need to get the simulation_id from the archive first
+            sim_service = _get_simulation_service()
+            # First, we need to find the simulation that owns this archive
+            # This is a limitation of the current REST API design - we need simulation_id
+            # For now, we'll fall back to unified service for delete operations
+            console.print("[yellow]Warning:[/yellow] Archive deletion via REST API not fully supported yet.")
+            console.print("Falling back to direct service...")
+            service = _get_unified_file_service()
+            service.remove_file(archive_id)
+        else:
+            # Delete archive using unified file service (archives are SimulationFiles)
+            service = _get_unified_file_service()
+            service.remove_file(archive_id)
         
         if output_json:
             import json

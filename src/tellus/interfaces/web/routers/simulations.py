@@ -20,7 +20,8 @@ from ....application.dtos import (
     SimulationLocationAssociationDto
 )
 from ....application.services.simulation_service import SimulationApplicationService
-from ..dependencies import get_simulation_service
+from ....application.services.unified_file_service import UnifiedFileService
+from ..dependencies import get_simulation_service, get_unified_file_service
 
 router = APIRouter()
 
@@ -42,6 +43,42 @@ class AttributesResponse(BaseModel):
     """Response model for all attributes of a simulation."""
     simulation_id: str = Field(..., description="The simulation identifier")
     attributes: Dict[str, Any] = Field(..., description="All simulation attributes")
+
+
+# Pydantic models for archive API
+class CreateArchiveRequest(BaseModel):
+    """Request model for creating an archive."""
+    archive_name: str = Field(..., description="Name of the archive")
+    description: Optional[str] = Field(None, description="Optional archive description")
+    location: Optional[str] = Field(None, description="Location where archive files exist")
+    pattern: Optional[str] = Field(None, description="File pattern for archive files")
+    split_parts: Optional[int] = Field(None, description="Number of split parts for split archives")
+    archive_type: str = Field("single", description="Archive type (single, split-tar)")
+
+
+class ArchiveResponse(BaseModel):
+    """Response model for an archive."""
+    archive_id: str = Field(..., description="The archive identifier")
+    archive_name: str = Field(..., description="The archive name")
+    simulation_id: str = Field(..., description="Associated simulation ID")
+    location: Optional[str] = Field(None, description="Archive location")
+    pattern: Optional[str] = Field(None, description="File pattern")
+    split_parts: Optional[int] = Field(None, description="Number of split parts")
+    archive_type: str = Field(..., description="Archive type")
+    description: Optional[str] = Field(None, description="Archive description")
+    created_at: Optional[str] = Field(None, description="Creation timestamp")
+
+
+class ArchiveListResponse(BaseModel):
+    """Response model for listing archives."""
+    simulation_id: str = Field(..., description="The simulation identifier")
+    archives: List[ArchiveResponse] = Field(..., description="List of archives")
+
+
+class ArchiveDeleteResponse(BaseModel):
+    """Response model for archive deletion."""
+    archive_id: str = Field(..., description="The deleted archive identifier")
+    status: str = Field(..., description="Deletion status")
 
 
 @router.get("/", response_model=SimulationListDto)
@@ -627,4 +664,230 @@ async def get_simulation_files(
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to get simulation files: {str(e)}"
+            )
+
+
+# Archive management endpoints
+@router.post("/{simulation_id}/archives", response_model=ArchiveResponse, status_code=status.HTTP_201_CREATED)
+async def create_archive(
+    simulation_id: str,
+    request: CreateArchiveRequest,
+    file_service: UnifiedFileService = Depends(get_unified_file_service)
+):
+    """
+    Create a new archive for a simulation.
+    
+    Args:
+        simulation_id: The simulation identifier
+        request: Archive creation parameters
+        
+    Returns:
+        Created archive information
+        
+    Raises:
+        404: If simulation is not found
+        409: If archive already exists
+    """
+    try:
+        from ....application.dtos import CreateArchiveDto
+        from ....domain.entities.simulation_file import FileContentType, FileImportance
+        
+        # Create archive using the unified file service
+        create_dto = CreateArchiveDto(
+            simulation_id=simulation_id,
+            archive_name=request.archive_name,
+            archive_description=request.description,
+            location=request.location,
+            file_pattern=request.pattern,
+            split_parts=request.split_parts,
+            archive_type=request.archive_type
+        )
+        
+        archive = file_service.create_archive(create_dto)
+        
+        return ArchiveResponse(
+            archive_id=archive.relative_path,
+            archive_name=request.archive_name,
+            simulation_id=simulation_id,
+            location=request.location,
+            pattern=request.pattern,
+            split_parts=request.split_parts,
+            archive_type=request.archive_type,
+            description=request.description,
+            created_at=archive.created_at.isoformat() if archive.created_at else None
+        )
+        
+    except Exception as e:
+        if "already exists" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Archive '{request.archive_name}' already exists for simulation '{simulation_id}'"
+            )
+        elif "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Simulation '{simulation_id}' not found"
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to create archive: {str(e)}"
+            )
+
+
+@router.get("/{simulation_id}/archives", response_model=ArchiveListResponse)
+async def list_archives(
+    simulation_id: str,
+    file_service: UnifiedFileService = Depends(get_unified_file_service)
+):
+    """
+    List all archives for a simulation.
+    
+    Args:
+        simulation_id: The simulation identifier
+        
+    Returns:
+        List of archives for the simulation
+        
+    Raises:
+        404: If simulation is not found
+    """
+    try:
+        archives = file_service.list_simulation_archives(simulation_id)
+        
+        archive_responses = []
+        for archive in archives:
+            archive_responses.append(ArchiveResponse(
+                archive_id=archive.relative_path,
+                archive_name=archive.attributes.get('archive_name', archive.relative_path),
+                simulation_id=simulation_id,
+                location=archive.attributes.get('location'),
+                pattern=archive.attributes.get('pattern'),
+                split_parts=archive.attributes.get('split_parts'),
+                archive_type=archive.attributes.get('archive_type', 'single'),
+                description=archive.attributes.get('description'),
+                created_at=archive.created_at.isoformat() if archive.created_at else None
+            ))
+        
+        return ArchiveListResponse(
+            simulation_id=simulation_id,
+            archives=archive_responses
+        )
+        
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Simulation '{simulation_id}' not found"
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to list archives: {str(e)}"
+            )
+
+
+@router.get("/{simulation_id}/archives/{archive_id}", response_model=ArchiveResponse)
+async def get_archive(
+    simulation_id: str,
+    archive_id: str,
+    file_service: UnifiedFileService = Depends(get_unified_file_service)
+):
+    """
+    Get details of a specific archive.
+    
+    Args:
+        simulation_id: The simulation identifier
+        archive_id: The archive identifier
+        
+    Returns:
+        Archive details
+        
+    Raises:
+        404: If simulation or archive is not found
+    """
+    try:
+        archive = file_service.get_archive(archive_id)
+        
+        if not archive:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Archive '{archive_id}' not found"
+            )
+        
+        return ArchiveResponse(
+            archive_id=archive.relative_path,
+            archive_name=archive.attributes.get('archive_name', archive.relative_path),
+            simulation_id=simulation_id,
+            location=archive.attributes.get('location'),
+            pattern=archive.attributes.get('pattern'),
+            split_parts=archive.attributes.get('split_parts'),
+            archive_type=archive.attributes.get('archive_type', 'single'),
+            description=archive.attributes.get('description'),
+            created_at=archive.created_at.isoformat() if archive.created_at else None
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Archive '{archive_id}' not found"
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to get archive: {str(e)}"
+            )
+
+
+@router.delete("/{simulation_id}/archives/{archive_id}", response_model=ArchiveDeleteResponse)
+async def delete_archive(
+    simulation_id: str,
+    archive_id: str,
+    file_service: UnifiedFileService = Depends(get_unified_file_service)
+):
+    """
+    Delete an archive.
+    
+    Args:
+        simulation_id: The simulation identifier
+        archive_id: The archive identifier
+        
+    Returns:
+        Deletion confirmation
+        
+    Raises:
+        404: If simulation or archive is not found
+    """
+    try:
+        # Check if archive exists first
+        archive = file_service.get_archive(archive_id)
+        if not archive:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Archive '{archive_id}' not found"
+            )
+        
+        # Delete the archive
+        file_service.remove_file(archive_id)
+        
+        return ArchiveDeleteResponse(
+            archive_id=archive_id,
+            status="deleted"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Archive '{archive_id}' not found"
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to delete archive: {str(e)}"
             )

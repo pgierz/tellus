@@ -577,3 +577,287 @@ class TestSimulationFiles:
         assert response.status_code == 404
         data = response.json()
         assert "not found" in data["detail"].lower()
+
+
+class TestSimulationArchives:
+    """Test simulation archive management endpoints."""
+    
+    def test_create_archive(self, client: TestClient, mock_simulation_service, mock_file_service):
+        """Test creating an archive for a simulation."""
+        from tellus.domain.entities.simulation_file import SimulationFile, FileType
+        from datetime import datetime
+        
+        # Mock archive creation
+        mock_archive = SimulationFile(
+            relative_path="test_archive_123",
+            file_type=FileType.ARCHIVE,
+            created_at=datetime.now()
+        )
+        mock_archive.attributes = {
+            'archive_name': 'test_archive',
+            'archive_type': 'single',
+            'description': 'Test archive'
+        }
+        mock_file_service.create_archive.return_value = mock_archive
+        
+        # Test data
+        request_data = {
+            "archive_name": "test_archive",
+            "description": "Test archive",
+            "archive_type": "single"
+        }
+        
+        response = client.post("/simulations/sim-001/archives", json=request_data)
+        
+        assert response.status_code == 201
+        data = response.json()
+        assert data["archive_name"] == "test_archive"
+        assert data["simulation_id"] == "sim-001"
+        assert data["archive_type"] == "single"
+        assert data["description"] == "Test archive"
+        mock_file_service.create_archive.assert_called_once()
+    
+    def test_create_archive_with_location(self, client: TestClient, mock_simulation_service, mock_file_service):
+        """Test creating an archive with location and pattern."""
+        from tellus.domain.entities.simulation_file import SimulationFile, FileType
+        from datetime import datetime
+        
+        # Mock archive creation
+        mock_archive = SimulationFile(
+            relative_path="split_archive_456",
+            file_type=FileType.ARCHIVE,
+            created_at=datetime.now()
+        )
+        mock_archive.attributes = {
+            'archive_name': 'split_archive',
+            'location': 'storage_location',
+            'pattern': '*.tar.gz_*',
+            'split_parts': 5,
+            'archive_type': 'split-tar'
+        }
+        mock_file_service.create_archive.return_value = mock_archive
+        
+        # Test data
+        request_data = {
+            "archive_name": "split_archive",
+            "location": "storage_location",
+            "pattern": "*.tar.gz_*",
+            "split_parts": 5,
+            "archive_type": "split-tar"
+        }
+        
+        response = client.post("/simulations/sim-001/archives", json=request_data)
+        
+        assert response.status_code == 201
+        data = response.json()
+        assert data["archive_name"] == "split_archive"
+        assert data["location"] == "storage_location"
+        assert data["pattern"] == "*.tar.gz_*"
+        assert data["split_parts"] == 5
+        assert data["archive_type"] == "split-tar"
+    
+    def test_create_archive_conflict(self, client: TestClient, mock_simulation_service, mock_file_service):
+        """Test creating an archive that already exists."""
+        mock_file_service.create_archive.side_effect = ValueError("Archive already exists")
+        
+        request_data = {
+            "archive_name": "existing_archive",
+            "archive_type": "single"
+        }
+        
+        response = client.post("/simulations/sim-001/archives", json=request_data)
+        
+        assert response.status_code == 409
+        data = response.json()
+        assert "already exists" in data["detail"]
+    
+    def test_create_archive_simulation_not_found(self, client: TestClient, mock_simulation_service, mock_file_service):
+        """Test creating archive for nonexistent simulation."""
+        mock_file_service.create_archive.side_effect = ValueError("Simulation not found")
+        
+        request_data = {
+            "archive_name": "test_archive",
+            "archive_type": "single"
+        }
+        
+        response = client.post("/simulations/nonexistent/archives", json=request_data)
+        
+        assert response.status_code == 404
+        data = response.json()
+        assert "not found" in data["detail"].lower()
+    
+    def test_list_archives(self, client: TestClient, mock_simulation_service, mock_file_service):
+        """Test listing archives for a simulation."""
+        from tellus.domain.entities.simulation_file import SimulationFile, FileType
+        from datetime import datetime
+        
+        # Mock archives
+        mock_archives = [
+            SimulationFile(
+                relative_path="archive1",
+                file_type=FileType.ARCHIVE,
+                created_at=datetime.now()
+            ),
+            SimulationFile(
+                relative_path="archive2", 
+                file_type=FileType.ARCHIVE,
+                created_at=datetime.now()
+            )
+        ]
+        
+        # Set attributes
+        mock_archives[0].attributes = {
+            'archive_name': 'archive1',
+            'archive_type': 'single',
+            'location': 'loc1'
+        }
+        mock_archives[1].attributes = {
+            'archive_name': 'archive2',
+            'archive_type': 'split-tar',
+            'location': 'loc2',
+            'split_parts': 3
+        }
+        
+        mock_file_service.list_simulation_archives.return_value = mock_archives
+        
+        response = client.get("/simulations/sim-001/archives")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["simulation_id"] == "sim-001"
+        assert len(data["archives"]) == 2
+        
+        # Check first archive
+        archive1 = data["archives"][0]
+        assert archive1["archive_name"] == "archive1"
+        assert archive1["archive_type"] == "single"
+        assert archive1["location"] == "loc1"
+        
+        # Check second archive
+        archive2 = data["archives"][1]
+        assert archive2["archive_name"] == "archive2"
+        assert archive2["archive_type"] == "split-tar"
+        assert archive2["split_parts"] == 3
+        
+        mock_file_service.list_simulation_archives.assert_called_once_with("sim-001")
+    
+    def test_list_archives_empty(self, client: TestClient, mock_simulation_service, mock_file_service):
+        """Test listing archives when none exist."""
+        mock_file_service.list_simulation_archives.return_value = []
+        
+        response = client.get("/simulations/sim-001/archives")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["simulation_id"] == "sim-001"
+        assert len(data["archives"]) == 0
+    
+    def test_list_archives_simulation_not_found(self, client: TestClient, mock_simulation_service, mock_file_service):
+        """Test listing archives for nonexistent simulation."""
+        mock_file_service.list_simulation_archives.side_effect = ValueError("Simulation not found")
+        
+        response = client.get("/simulations/nonexistent/archives")
+        
+        assert response.status_code == 404
+        data = response.json()
+        assert "not found" in data["detail"].lower()
+    
+    def test_get_archive(self, client: TestClient, mock_simulation_service, mock_file_service):
+        """Test getting details of a specific archive."""
+        from tellus.domain.entities.simulation_file import SimulationFile, FileType
+        from datetime import datetime
+        
+        # Mock archive
+        mock_archive = SimulationFile(
+            relative_path="specific_archive",
+            file_type=FileType.ARCHIVE,
+            created_at=datetime.now()
+        )
+        mock_archive.attributes = {
+            'archive_name': 'specific_archive',
+            'archive_type': 'single',
+            'location': 'test_location',
+            'description': 'Detailed archive'
+        }
+        
+        mock_file_service.get_archive.return_value = mock_archive
+        
+        response = client.get("/simulations/sim-001/archives/specific_archive")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["archive_id"] == "specific_archive"
+        assert data["archive_name"] == "specific_archive"
+        assert data["simulation_id"] == "sim-001"
+        assert data["archive_type"] == "single"
+        assert data["location"] == "test_location"
+        assert data["description"] == "Detailed archive"
+        
+        mock_file_service.get_archive.assert_called_once_with("specific_archive")
+    
+    def test_get_archive_not_found(self, client: TestClient, mock_simulation_service, mock_file_service):
+        """Test getting details of nonexistent archive."""
+        mock_file_service.get_archive.return_value = None
+        
+        response = client.get("/simulations/sim-001/archives/nonexistent")
+        
+        assert response.status_code == 404
+        data = response.json()
+        assert "not found" in data["detail"]
+    
+    def test_delete_archive(self, client: TestClient, mock_simulation_service, mock_file_service):
+        """Test deleting an archive."""
+        from tellus.domain.entities.simulation_file import SimulationFile, FileType
+        from datetime import datetime
+        
+        # Mock archive exists
+        mock_archive = SimulationFile(
+            relative_path="archive_to_delete",
+            file_type=FileType.ARCHIVE,
+            created_at=datetime.now()
+        )
+        mock_file_service.get_archive.return_value = mock_archive
+        mock_file_service.remove_file.return_value = None
+        
+        response = client.delete("/simulations/sim-001/archives/archive_to_delete")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["archive_id"] == "archive_to_delete"
+        assert data["status"] == "deleted"
+        
+        mock_file_service.get_archive.assert_called_once_with("archive_to_delete")
+        mock_file_service.remove_file.assert_called_once_with("archive_to_delete")
+    
+    def test_delete_archive_not_found(self, client: TestClient, mock_simulation_service, mock_file_service):
+        """Test deleting nonexistent archive."""
+        mock_file_service.get_archive.return_value = None
+        
+        response = client.delete("/simulations/sim-001/archives/nonexistent")
+        
+        assert response.status_code == 404
+        data = response.json()
+        assert "not found" in data["detail"]
+        
+        # Should not attempt to delete
+        mock_file_service.remove_file.assert_not_called()
+    
+    def test_delete_archive_service_error(self, client: TestClient, mock_simulation_service, mock_file_service):
+        """Test delete archive with service error."""
+        from tellus.domain.entities.simulation_file import SimulationFile, FileType
+        from datetime import datetime
+        
+        # Mock archive exists
+        mock_archive = SimulationFile(
+            relative_path="problematic_archive",
+            file_type=FileType.ARCHIVE,
+            created_at=datetime.now()
+        )
+        mock_file_service.get_archive.return_value = mock_archive
+        mock_file_service.remove_file.side_effect = Exception("Deletion failed")
+        
+        response = client.delete("/simulations/sim-001/archives/problematic_archive")
+        
+        assert response.status_code == 500
+        data = response.json()
+        assert "Failed to delete archive" in data["detail"]

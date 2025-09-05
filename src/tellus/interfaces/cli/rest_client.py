@@ -300,6 +300,53 @@ class RestSimulationService:
         )
         data = self.client._handle_response(response)
         return data.get('files', [])
+    
+    # Archive operations
+    def create_simulation_archive(self, simulation_id: str, archive_name: str, 
+                                description: Optional[str] = None, location: Optional[str] = None,
+                                pattern: Optional[str] = None, split_parts: Optional[int] = None,
+                                archive_type: str = "single") -> Dict[str, Any]:
+        """Create an archive for a simulation via REST API."""
+        payload = {
+            'archive_name': archive_name,
+            'archive_type': archive_type
+        }
+        if description:
+            payload['description'] = description
+        if location:
+            payload['location'] = location
+        if pattern:
+            payload['pattern'] = pattern
+        if split_parts:
+            payload['split_parts'] = split_parts
+            
+        response = self.client.client.post(
+            urljoin(self.client.base_url, f'simulations/{simulation_id}/archives'),
+            json=payload
+        )
+        return self.client._handle_response(response)
+    
+    def list_simulation_archives(self, simulation_id: str) -> List[Dict[str, Any]]:
+        """List archives for a simulation via REST API."""
+        response = self.client.client.get(
+            urljoin(self.client.base_url, f'simulations/{simulation_id}/archives')
+        )
+        data = self.client._handle_response(response)
+        return data.get('archives', [])
+    
+    def get_simulation_archive(self, simulation_id: str, archive_id: str) -> Dict[str, Any]:
+        """Get details of a specific archive via REST API."""
+        response = self.client.client.get(
+            urljoin(self.client.base_url, f'simulations/{simulation_id}/archives/{archive_id}')
+        )
+        return self.client._handle_response(response)
+    
+    def delete_simulation_archive(self, simulation_id: str, archive_id: str) -> Dict[str, Any]:
+        """Delete an archive via REST API."""
+        response = self.client.client.delete(
+            urljoin(self.client.base_url, f'simulations/{simulation_id}/archives/{archive_id}')
+        )
+        return self.client._handle_response(response)
 
 
 class RestLocationService:
