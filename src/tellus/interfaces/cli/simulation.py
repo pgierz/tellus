@@ -1,5 +1,6 @@
 """CLI for simulation management."""
 
+import os
 import rich_click as click
 from rich.console import Console
 from rich.panel import Panel
@@ -10,16 +11,17 @@ from ...application.dtos import (CreateSimulationDto,
                                  SimulationLocationAssociationDto,
                                  UpdateSimulationDto)
 from .main import cli, console
+from .rest_client import get_rest_simulation_service, get_rest_location_service, RestClientError, handle_rest_errors
 
 
 def _get_simulation_service():
     """
-    Get simulation service from the service container.
+    Get simulation service from the service container or REST API.
     
     Returns
     -------
-    SimulationApplicationService
-        Configured simulation service instance with repository dependencies.
+    SimulationApplicationService or RestSimulationService
+        Configured simulation service instance. Uses REST API if TELLUS_CLI_USE_REST_API=true.
         
     Examples
     --------
@@ -27,8 +29,14 @@ def _get_simulation_service():
     >>> service is not None
     True
     """
-    service_container = get_service_container()
-    return service_container.service_factory.simulation_service
+    use_rest_api = os.getenv('TELLUS_CLI_USE_REST_API', 'false').lower() == 'true'
+    
+    if use_rest_api:
+        console.print("✨ [dim]Using REST API backend[/dim]")
+        return get_rest_simulation_service()
+    else:
+        service_container = get_service_container()
+        return service_container.service_factory.simulation_service
 
 
 def _get_unified_file_service():
@@ -46,15 +54,20 @@ def _get_unified_file_service():
 
 def _get_location_service():
     """
-    Get location service from the service container.
+    Get location service from the service container or REST API.
     
     Returns
     -------
-    LocationApplicationService
-        Configured location service for location operations.
+    LocationApplicationService or RestLocationService
+        Configured location service for location operations. Uses REST API if TELLUS_CLI_USE_REST_API=true.
     """
-    service_container = get_service_container()
-    return service_container.service_factory.location_service
+    use_rest_api = os.getenv('TELLUS_CLI_USE_REST_API', 'false').lower() == 'true'
+    
+    if use_rest_api:
+        return get_rest_location_service()
+    else:
+        service_container = get_service_container()
+        return service_container.service_factory.location_service
 
 
 @cli.group()
@@ -229,31 +242,43 @@ def create_simulation(ctx, expid: str = None, location: str = None, model_id: st
         
         # If no expid provided, launch interactive wizard
         if not expid:
-            import questionary
-            
-            expid = questionary.text(
-                "Simulation ID (expid):",
-                validate=lambda text: True if text.strip() else "Simulation ID is required"
-            ).ask()
-            
-            if not expid:
-                console.print("[dim]Operation cancelled[/dim]")
-                return
+            try:
+                import questionary
+                
+                expid = questionary.text(
+                    "Simulation ID (expid):",
+                    validate=lambda text: True if text.strip() else "Simulation ID is required"
+                ).ask()
+                
+                if not expid:
+                    console.print("[dim]Operation cancelled[/dim]")
+                    return
+            except Exception as e:
+                # Fallback to simple input if questionary fails
+                console.print(f"[yellow]Warning: Interactive prompt failed ({str(e)}), using simple input[/yellow]")
+                expid = click.prompt("Simulation ID (expid)", type=str).strip()
+                if not expid:
+                    console.print("[red]Error: Simulation ID is required[/red]")
+                    return
                 
         # If no location provided and interactive mode
         if not location:
-            import questionary
-            
-            # Get available locations
-            location_service = get_service_container().service_factory.location_service
-            locations_result = location_service.list_locations()
-            
-            if locations_result.locations:
-                location_choices = [loc.name for loc in locations_result.locations]
-                location = questionary.select(
-                    "Select location for simulation:",
-                    choices=location_choices
-                ).ask()
+            try:
+                import questionary
+                
+                # Get available locations
+                location_service = get_service_container().service_factory.location_service
+                locations_result = location_service.list_locations()
+                
+                if locations_result.locations:
+                    location_choices = [loc.name for loc in locations_result.locations]
+                    location = questionary.select(
+                        "Select location for simulation:",
+                        choices=location_choices
+                    ).ask()
+            except Exception as e:
+                console.print(f"[yellow]Warning: Interactive selection failed ({str(e)}), skipping location[/yellow]")
+                location = None
         
         dto = CreateSimulationDto(
             simulation_id=expid,

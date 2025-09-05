@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 
 from ...application.container import get_service_container
 from .routers import health, simulations, locations
+from .version import get_version_info
 
 # Create console for output (avoiding core.cli import)
 try:
@@ -59,6 +60,11 @@ def create_app() -> FastAPI:
     Returns:
         Configured FastAPI application instance
     """
+    # Get dynamic version information
+    version_info = get_version_info()
+    api_version = version_info["api_version"]
+    api_path = f"/api/{api_version}"
+    
     app = FastAPI(
         title="Tellus Climate Data API",
         description="""
@@ -78,11 +84,11 @@ def create_app() -> FastAPI:
         following clean architecture principles with clear separation between
         domain logic and API concerns.
         """,
-        version="0.1.0",
+        version=version_info["tellus_version"],
         lifespan=lifespan,
-        docs_url="/docs",
-        redoc_url="/redoc",
-        openapi_url="/openapi.json"
+        docs_url=f"{api_path}/docs",
+        redoc_url=f"{api_path}/redoc",
+        openapi_url=f"{api_path}/openapi.json"
     )
     
     # CORS middleware
@@ -106,10 +112,10 @@ def create_app() -> FastAPI:
             }
         )
     
-    # Include routers
-    app.include_router(health.router, tags=["Health"])
-    app.include_router(simulations.router, prefix="/simulations", tags=["Simulations"])
-    app.include_router(locations.router, prefix="/locations", tags=["Locations"])
+    # Include routers with versioned API prefix
+    app.include_router(health.router, prefix=api_path, tags=["Health"])
+    app.include_router(simulations.router, prefix=f"{api_path}/simulations", tags=["Simulations"])
+    app.include_router(locations.router, prefix=f"{api_path}/locations", tags=["Locations"])
     
     return app
 
