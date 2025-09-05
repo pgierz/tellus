@@ -311,3 +311,146 @@ class TestSimulationCompatibility:
         expected_pagination_fields = ["page", "page_size", "total_count", "has_next", "has_previous"]
         for field in expected_pagination_fields:
             assert field in pagination
+
+
+class TestSimulationAttributes:
+    """Test simulation attribute management endpoints."""
+    
+    def test_get_all_attributes_success(self, client: TestClient):
+        """Test getting all attributes of a simulation."""
+        response = client.get("/simulations/sim-001/attributes")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Check response structure
+        assert "simulation_id" in data
+        assert "attributes" in data
+        assert data["simulation_id"] == "sim-001"
+        assert isinstance(data["attributes"], dict)
+        
+        # Check specific attributes from mock data
+        attributes = data["attributes"]
+        assert attributes["model"] == "FESOM"
+        assert attributes["resolution"] == "T127"
+    
+    def test_get_all_attributes_simulation_not_found(self, client: TestClient):
+        """Test getting attributes of a non-existent simulation."""
+        response = client.get("/simulations/nonexistent/attributes")
+        
+        assert response.status_code == 404
+        data = response.json()
+        assert "not found" in data["detail"].lower()
+    
+    def test_get_specific_attribute_success(self, client: TestClient):
+        """Test getting a specific attribute of a simulation."""
+        response = client.get("/simulations/sim-001/attributes/model")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Check response structure
+        assert "key" in data
+        assert "value" in data
+        assert data["key"] == "model"
+        assert data["value"] == "FESOM"
+    
+    def test_get_specific_attribute_not_found(self, client: TestClient):
+        """Test getting a non-existent attribute."""
+        response = client.get("/simulations/sim-001/attributes/nonexistent")
+        
+        assert response.status_code == 404
+        data = response.json()
+        assert "not found" in data["detail"].lower()
+        assert "nonexistent" in data["detail"]
+    
+    def test_get_specific_attribute_simulation_not_found(self, client: TestClient):
+        """Test getting attribute of a non-existent simulation."""
+        response = client.get("/simulations/nonexistent/attributes/model")
+        
+        assert response.status_code == 404
+        data = response.json()
+        assert "not found" in data["detail"].lower()
+    
+    def test_set_attribute_via_put_success(self, client: TestClient):
+        """Test setting an attribute using PUT method."""
+        attribute_data = {
+            "key": "experiment",
+            "value": "test-run"
+        }
+        
+        response = client.put("/simulations/sim-001/attributes/experiment", json=attribute_data)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Check response
+        assert data["key"] == "experiment"
+        assert data["value"] == "test-run"
+    
+    def test_set_attribute_key_mismatch(self, client: TestClient):
+        """Test setting attribute with mismatched key in URL vs body."""
+        attribute_data = {
+            "key": "different_key",
+            "value": "test-value"
+        }
+        
+        response = client.put("/simulations/sim-001/attributes/experiment", json=attribute_data)
+        
+        assert response.status_code == 400
+        data = response.json()
+        assert "must match" in data["detail"]
+    
+    def test_set_attribute_simulation_not_found(self, client: TestClient):
+        """Test setting attribute on non-existent simulation."""
+        attribute_data = {
+            "key": "experiment",
+            "value": "test-run"
+        }
+        
+        response = client.put("/simulations/nonexistent/attributes/experiment", json=attribute_data)
+        
+        assert response.status_code == 404
+        data = response.json()
+        assert "not found" in data["detail"].lower()
+    
+    def test_add_attribute_via_post_success(self, client: TestClient):
+        """Test adding a new attribute using POST method."""
+        attribute_data = {
+            "key": "new_attribute",
+            "value": "new_value"
+        }
+        
+        response = client.post("/simulations/sim-001/attributes", json=attribute_data)
+        
+        assert response.status_code == 201
+        data = response.json()
+        
+        # Check response
+        assert data["key"] == "new_attribute"
+        assert data["value"] == "new_value"
+    
+    def test_add_attribute_simulation_not_found(self, client: TestClient):
+        """Test adding attribute to non-existent simulation."""
+        attribute_data = {
+            "key": "new_attribute",
+            "value": "new_value"
+        }
+        
+        response = client.post("/simulations/nonexistent/attributes", json=attribute_data)
+        
+        assert response.status_code == 404
+        data = response.json()
+        assert "not found" in data["detail"].lower()
+    
+    def test_add_attribute_invalid_data(self, client: TestClient):
+        """Test adding attribute with invalid data."""
+        invalid_data = {
+            "key": "",  # Empty key should fail validation
+            "value": "some_value"
+        }
+        
+        response = client.post("/simulations/sim-001/attributes", json=invalid_data)
+        
+        # Should fail validation (422)
+        assert response.status_code == 422

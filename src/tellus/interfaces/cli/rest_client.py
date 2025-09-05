@@ -234,6 +234,31 @@ class RestSimulationService:
             urljoin(self.client.base_url, f'simulations/{simulation_id}')
         )
         self.client._handle_response(response)
+        
+    def get_simulation_attributes(self, simulation_id: str) -> Dict[str, Any]:
+        """Get all attributes of a simulation via REST API."""
+        response = self.client.client.get(
+            urljoin(self.client.base_url, f'simulations/{simulation_id}/attributes')
+        )
+        data = self.client._handle_response(response)
+        return data.get('attributes', {})
+        
+    def get_simulation_attribute(self, simulation_id: str, attribute_key: str) -> Optional[str]:
+        """Get a specific attribute of a simulation via REST API."""
+        response = self.client.client.get(
+            urljoin(self.client.base_url, f'simulations/{simulation_id}/attributes/{attribute_key}')
+        )
+        data = self.client._handle_response(response)
+        return data.get('value')
+        
+    def add_simulation_attribute(self, simulation_id: str, key: str, value: str) -> None:
+        """Add or update a simulation attribute via REST API."""
+        payload = {'key': key, 'value': value}
+        response = self.client.client.post(
+            urljoin(self.client.base_url, f'simulations/{simulation_id}/attributes'),
+            json=payload
+        )
+        self.client._handle_response(response)
 
 
 class RestLocationService:

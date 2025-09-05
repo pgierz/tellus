@@ -2793,8 +2793,11 @@ def list_workflows(sim_id: str):
 @click.option("--list-all", "list_all", is_flag=True, help="List all attributes")
 def manage_attributes(sim_id: str, set_attr: tuple = None, get_attr: str = None, list_all: bool = False):
     """Manage simulation attributes."""
+    import os
+    
     try:
         service = _get_simulation_service()
+        use_rest_api = os.getenv('TELLUS_CLI_USE_REST_API', 'false').lower() == 'true'
         
         if set_attr:
             key, value = set_attr
@@ -2802,41 +2805,91 @@ def manage_attributes(sim_id: str, set_attr: tuple = None, get_attr: str = None,
             console.print(f"[green]✓[/green] Set attribute '{key}' = '{value}' for simulation '{sim_id}'")
             
         elif get_attr:
-            sim = service.get_simulation(sim_id)
-            if sim.attrs and get_attr in sim.attrs:
-                console.print(f"{get_attr}: {sim.attrs[get_attr]}")
+            if use_rest_api:
+                # Use REST API methods
+                try:
+                    attribute_value = service.get_simulation_attribute(sim_id, get_attr)
+                    if attribute_value is not None:
+                        console.print(f"{get_attr}: {attribute_value}")
+                    else:
+                        console.print(f"[yellow]Attribute '{get_attr}' not found for simulation '{sim_id}'[/yellow]")
+                except Exception as e:
+                    # Handle 404 errors from REST API
+                    if "not found" in str(e).lower():
+                        console.print(f"[yellow]Attribute '{get_attr}' not found for simulation '{sim_id}'[/yellow]")
+                    else:
+                        raise
             else:
-                console.print(f"[yellow]Attribute '{get_attr}' not found for simulation '{sim_id}'[/yellow]")
+                # Use direct service
+                sim = service.get_simulation(sim_id)
+                if sim.attrs and get_attr in sim.attrs:
+                    console.print(f"{get_attr}: {sim.attrs[get_attr]}")
+                else:
+                    console.print(f"[yellow]Attribute '{get_attr}' not found for simulation '{sim_id}'[/yellow]")
                 
         elif list_all:
-            sim = service.get_simulation(sim_id)
-            if not sim.attrs:
-                console.print(f"No attributes set for simulation '{sim_id}'")
-                return
+            if use_rest_api:
+                # Use REST API methods
+                attrs = service.get_simulation_attributes(sim_id)
+                if not attrs:
+                    console.print(f"No attributes set for simulation '{sim_id}'")
+                    return
+                    
+                table = Table(title=f"Attributes for Simulation: {sim_id}")
+                table.add_column("Key", style="cyan")
+                table.add_column("Value", style="green")
                 
-            table = Table(title=f"Attributes for Simulation: {sim_id}")
-            table.add_column("Key", style="cyan")
-            table.add_column("Value", style="green")
-            
-            for key, value in sorted(sim.attrs.items()):
-                table.add_row(key, str(value))
-            
-            console.print(Panel.fit(table))
+                for key, value in sorted(attrs.items()):
+                    table.add_row(key, str(value))
+                
+                console.print(Panel.fit(table))
+            else:
+                # Use direct service
+                sim = service.get_simulation(sim_id)
+                if not sim.attrs:
+                    console.print(f"No attributes set for simulation '{sim_id}'")
+                    return
+                    
+                table = Table(title=f"Attributes for Simulation: {sim_id}")
+                table.add_column("Key", style="cyan")
+                table.add_column("Value", style="green")
+                
+                for key, value in sorted(sim.attrs.items()):
+                    table.add_row(key, str(value))
+                
+                console.print(Panel.fit(table))
         else:
             # Default behavior: list all attributes
-            sim = service.get_simulation(sim_id)
-            if not sim.attrs:
-                console.print(f"No attributes set for simulation '{sim_id}'")
-                return
+            if use_rest_api:
+                # Use REST API methods
+                attrs = service.get_simulation_attributes(sim_id)
+                if not attrs:
+                    console.print(f"No attributes set for simulation '{sim_id}'")
+                    return
+                    
+                table = Table(title=f"Attributes for Simulation: {sim_id}")
+                table.add_column("Key", style="cyan")
+                table.add_column("Value", style="green")
                 
-            table = Table(title=f"Attributes for Simulation: {sim_id}")
-            table.add_column("Key", style="cyan")
-            table.add_column("Value", style="green")
-            
-            for key, value in sorted(sim.attrs.items()):
-                table.add_row(key, str(value))
-            
-            console.print(Panel.fit(table))
+                for key, value in sorted(attrs.items()):
+                    table.add_row(key, str(value))
+                
+                console.print(Panel.fit(table))
+            else:
+                # Use direct service
+                sim = service.get_simulation(sim_id)
+                if not sim.attrs:
+                    console.print(f"No attributes set for simulation '{sim_id}'")
+                    return
+                    
+                table = Table(title=f"Attributes for Simulation: {sim_id}")
+                table.add_column("Key", style="cyan")
+                table.add_column("Value", style="green")
+                
+                for key, value in sorted(sim.attrs.items()):
+                    table.add_row(key, str(value))
+                
+                console.print(Panel.fit(table))
             
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")
