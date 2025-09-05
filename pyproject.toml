@@ -81,6 +81,8 @@ tellus-chat = { path = "./src/tellus_chat", editable = true }
 # sandbox = "python3 sandbox/manual_tests.py"
 tellus = {cmd = "python -m tellus", cwd = "." }
 sandbox = { cmd = "python3 my_tellus_script.py", cwd = "sandbox" , description = "Run a dummy script using tellus"}
+api = { cmd = "python scripts/start_api.py", description = "Start the Tellus FastAPI server (auto-detects available port starting from 1968)" }
+api-fixed = { cmd = "uvicorn src.tellus.interfaces.web.main:app --reload --host 0.0.0.0 --port 1968", description = "Start the Tellus FastAPI server on fixed port 1968" }
 
 [tool.pixi.feature.test.pypi-dependencies]
 factory-boy = "*"  # Move to Py-PI
@@ -110,6 +112,8 @@ h5netcdf = ">=1.6.4,<2"
 nc-time-axis = ">=1.4.1,<2"
 scipy = ">=1.16.0,<2"
 seaborn = ">=0.13.2,<0.14"
+httpx = ">=0.28.1,<0.29"
+pytest-asyncio = ">=1.1.0,<2"
 
 [tool.pixi.feature.test.tasks]
 test = "pytest"
@@ -149,6 +153,7 @@ nc-time-axis = ">=1.4.1,<2"
 nbconvert = ">=7.16.6,<8"
 papermill = ">=2.6.0,<3"
 textual = ">=5.3.0,<6"
+networkx = ">=3.0.0,<4"
 
 [tool.pixi.feature.docs.dependencies]
 jupyter-book = "*"

@@ -1,0 +1,1 @@
+"""Router-specific tests for Tellus FastAPI."""

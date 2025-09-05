@@ -22,6 +22,12 @@ from ..infrastructure.repositories.json_simulation_repository import \
     JsonSimulationRepository
 from ..infrastructure.repositories.json_simulation_file_repository import \
     JsonSimulationFileRepository
+from ..infrastructure.repositories.json_network_topology_repository import \
+    JsonNetworkTopologyRepository
+from ..infrastructure.adapters.network_benchmarking_adapter import \
+    CachedNetworkBenchmarkingAdapter
+from ..application.services.network_topology_service import \
+    NetworkTopologyApplicationService
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +57,7 @@ class ServiceContainer:
         
         self._service_factory: Optional[ApplicationServiceFactory] = None
         self._progress_tracking_service: Optional[ProgressTrackingService] = None
+        self._network_topology_service: Optional[NetworkTopologyApplicationService] = None
         
         # Ensure directories exist
         self._global_data_path.mkdir(parents=True, exist_ok=True)
@@ -127,10 +134,45 @@ class ServiceContainer:
         _ = self.service_factory
         return self._progress_tracking_service
     
+    def get_network_topology_service(self) -> NetworkTopologyApplicationService:
+        """Get or create the network topology service."""
+        if self._network_topology_service is None:
+            # Initialize network topology repository (global data)
+            topology_repo = JsonNetworkTopologyRepository(
+                storage_file=self._global_data_path / "network_topologies.json"
+            )
+            
+            # Initialize benchmarking adapter with caching
+            benchmarking_adapter = CachedNetworkBenchmarkingAdapter(
+                cache_ttl_hours=24.0,
+                temp_dir=Path.home() / ".cache" / "tellus" / "network_bench",
+                enable_file_transfer_tests=True,
+                test_file_size_mb=10
+            )
+            
+            # Get location repository from service factory
+            location_repo = self.service_factory.get_location_repository()
+            
+            # Create network topology service
+            self._network_topology_service = NetworkTopologyApplicationService(
+                location_repo=location_repo,
+                topology_repo=topology_repo,
+                benchmarking_adapter=benchmarking_adapter
+            )
+            
+            logger.info("Network topology service initialized")
+        
+        return self._network_topology_service
+    
+    def get_location_repository(self):
+        """Get the location repository."""
+        return self.service_factory.get_location_repository()
+    
     def reset(self):
         """Reset the service container (useful for testing)."""
         self._service_factory = None
         self._progress_tracking_service = None
+        self._network_topology_service = None
         logger.debug("Service container reset")
 
 

@@ -28,6 +28,7 @@ def create_main_cli():
     from .location import location
     from .simulation import simulation
     from .workflow import workflow_cli
+    from .network_commands import network_commands
 
     # Register all subcommands
     cli.add_command(init_command)
@@ -37,5 +38,6 @@ def create_main_cli():
     cli.add_command(config)
     cli.add_command(files)
     cli.add_command(file_types)
+    cli.add_command(network_commands)
 
     return cli
