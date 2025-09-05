@@ -349,10 +349,15 @@ def remove_location(sim_id: str, location_name: str):
             console.print(f"[yellow]Warning:[/yellow] Location '{location_name}' is not associated with simulation '{sim_id}'")
             return
         
-        # Use the entity method to disassociate
-        simulation_entity = service._simulation_repo.get_by_id(sim_id)
-        simulation_entity.disassociate_location(location_name)
-        service._simulation_repo.save(simulation_entity)
+        # Check if using REST API
+        if hasattr(service, 'disassociate_simulation_from_location'):
+            # REST API or service with disassociate method
+            service.disassociate_simulation_from_location(sim_id, location_name)
+        else:
+            # Legacy direct repository access
+            simulation_entity = service._simulation_repo.get_by_id(sim_id)
+            simulation_entity.disassociate_location(location_name)
+            service._simulation_repo.save(simulation_entity)
         
         console.print(f"[green]✓[/green] Removed location '{location_name}' from simulation '{sim_id}'")
         
@@ -2376,9 +2381,7 @@ def simulation_files():
 def list_files(sim_id: str, location: str = None, content_type: str = None, type: str = None):
     """List files associated with a simulation."""
     try:
-        container = get_service_container()
-        unified_service = container.service_factory.unified_file_service
-        simulation_service = container.service_factory.simulation_service
+        simulation_service = _get_simulation_service()
         
         # Verify simulation exists
         sim = simulation_service.get_simulation(sim_id)
@@ -2387,7 +2390,27 @@ def list_files(sim_id: str, location: str = None, content_type: str = None, type
             return
         
         # Get files associated with this simulation
-        files = unified_service.get_simulation_files(sim_id)
+        if hasattr(simulation_service, 'get_simulation_files'):
+            # Use the service method (works with both REST API and direct service)
+            files_data = simulation_service.get_simulation_files(sim_id)
+            if isinstance(files_data, list) and files_data and isinstance(files_data[0], dict):
+                # REST API returns list of dicts
+                console.print(f"[green]Files for simulation '{sim_id}':[/green]")
+                if not files_data:
+                    console.print("No files found")
+                    return
+                
+                for file_info in files_data:
+                    console.print(f"  • {file_info.get('file_path', 'Unknown')} ({file_info.get('content_type', 'unknown')})")
+                return
+            else:
+                # Service returns entity objects
+                files = files_data
+        else:
+            # Fallback to unified service
+            container = get_service_container()
+            unified_service = container.service_factory.unified_file_service
+            files = unified_service.get_simulation_files(sim_id)
         
         # Apply filters
         if location:

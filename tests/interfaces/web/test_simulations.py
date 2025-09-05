@@ -454,3 +454,126 @@ class TestSimulationAttributes:
         
         # Should fail validation (422)
         assert response.status_code == 422
+
+
+class TestSimulationLocationAssociations:
+    """Test simulation-location association endpoints."""
+    
+    def test_associate_simulation_locations(self, client: TestClient):
+        """Test associating a simulation with locations."""
+        association_data = {
+            "simulation_id": "sim-001",
+            "location_names": ["location1", "location2"],
+            "context_overrides": {"key1": "value1"}
+        }
+        
+        response = client.post("/simulations/sim-001/locations", json=association_data)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Should return updated simulation
+        assert data["simulation_id"] == "sim-001"
+        assert "locations" in data
+    
+    def test_associate_simulation_locations_id_mismatch(self, client: TestClient):
+        """Test association with mismatched simulation IDs."""
+        association_data = {
+            "simulation_id": "different-sim",  # Different from URL
+            "location_names": ["location1"],
+            "context_overrides": {}
+        }
+        
+        response = client.post("/simulations/sim-001/locations", json=association_data)
+        
+        assert response.status_code == 400
+        data = response.json()
+        assert "must match" in data["detail"]
+    
+    def test_associate_simulation_locations_not_found(self, client: TestClient):
+        """Test associating locations with nonexistent simulation."""
+        association_data = {
+            "simulation_id": "nonexistent",
+            "location_names": ["location1"],
+            "context_overrides": {}
+        }
+        
+        response = client.post("/simulations/nonexistent/locations", json=association_data)
+        
+        assert response.status_code == 404
+        data = response.json()
+        assert "not found" in data["detail"].lower()
+    
+    def test_disassociate_simulation_location(self, client: TestClient):
+        """Test removing a location association."""
+        response = client.delete("/simulations/sim-001/locations/location1")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Should return updated simulation
+        assert data["simulation_id"] == "sim-001"
+        assert "locations" in data
+    
+    def test_disassociate_simulation_location_not_found(self, client: TestClient):
+        """Test disassociating location from nonexistent simulation."""
+        response = client.delete("/simulations/nonexistent/locations/location1")
+        
+        assert response.status_code == 404
+        data = response.json()
+        assert "not found" in data["detail"].lower()
+    
+    def test_update_simulation_location_context(self, client: TestClient):
+        """Test updating location context."""
+        context_data = {
+            "context_overrides": {
+                "model": "FESOM",
+                "experiment": "test_exp"
+            }
+        }
+        
+        response = client.put("/simulations/sim-001/locations/location1/context", json=context_data)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Should return updated simulation
+        assert data["simulation_id"] == "sim-001"
+        assert "locations" in data
+    
+    def test_update_simulation_location_context_not_found(self, client: TestClient):
+        """Test updating context for nonexistent simulation."""
+        context_data = {
+            "context_overrides": {"key": "value"}
+        }
+        
+        response = client.put("/simulations/nonexistent/locations/location1/context", json=context_data)
+        
+        assert response.status_code == 404
+        data = response.json()
+        assert "not found" in data["detail"].lower()
+
+
+class TestSimulationFiles:
+    """Test simulation files endpoints."""
+    
+    def test_get_simulation_files(self, client: TestClient):
+        """Test getting files for a simulation."""
+        response = client.get("/simulations/sim-001/files")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Check response structure
+        assert "simulation_id" in data
+        assert "files" in data
+        assert data["simulation_id"] == "sim-001"
+        assert isinstance(data["files"], list)
+    
+    def test_get_simulation_files_not_found(self, client: TestClient):
+        """Test getting files for nonexistent simulation."""
+        response = client.get("/simulations/nonexistent/files")
+        
+        assert response.status_code == 404
+        data = response.json()
+        assert "not found" in data["detail"].lower()

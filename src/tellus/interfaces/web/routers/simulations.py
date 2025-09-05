@@ -16,7 +16,8 @@ from pydantic import BaseModel, Field
 
 from ....application.dtos import (
     SimulationDto, CreateSimulationDto, UpdateSimulationDto,
-    SimulationListDto, PaginationInfo, FilterOptions
+    SimulationListDto, PaginationInfo, FilterOptions,
+    SimulationLocationAssociationDto
 )
 from ....application.services.simulation_service import SimulationApplicationService
 from ..dependencies import get_simulation_service
@@ -429,4 +430,201 @@ async def add_simulation_attribute(
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to add simulation attribute: {str(e)}"
+            )
+
+
+# Location association endpoints
+
+@router.post("/{simulation_id}/locations", response_model=SimulationDto)
+async def associate_simulation_locations(
+    simulation_id: str,
+    association_data: SimulationLocationAssociationDto,
+    simulation_service: SimulationApplicationService = Depends(get_simulation_service)
+):
+    """
+    Associate a simulation with one or more locations.
+    
+    Args:
+        simulation_id: The simulation identifier
+        association_data: Location association data
+        
+    Returns:
+        Updated simulation with new location associations
+        
+    Raises:
+        400: If simulation_id in URL doesn't match request body
+        404: If simulation is not found
+        422: If validation fails
+    """
+    try:
+        # Validate that the simulation_id in URL matches the one in the request body
+        if simulation_id != association_data.simulation_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Simulation ID in URL ('{simulation_id}') must match ID in request body ('{association_data.simulation_id}')"
+            )
+            
+        # Associate the locations using the service
+        simulation_service.associate_locations(association_data)
+        
+        # Return the updated simulation
+        return simulation_service.get_simulation(simulation_id)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Simulation '{simulation_id}' not found"
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to associate locations: {str(e)}"
+            )
+
+
+@router.delete("/{simulation_id}/locations/{location_name}", response_model=SimulationDto)
+async def disassociate_simulation_location(
+    simulation_id: str,
+    location_name: str,
+    simulation_service: SimulationApplicationService = Depends(get_simulation_service)
+):
+    """
+    Remove a location association from a simulation.
+    
+    Args:
+        simulation_id: The simulation identifier
+        location_name: The location name to disassociate
+        
+    Returns:
+        Updated simulation without the location association
+        
+    Raises:
+        404: If simulation is not found
+    """
+    try:
+        # Disassociate the location using the service
+        updated_simulation = simulation_service.disassociate_simulation_from_location(
+            simulation_id, location_name
+        )
+        
+        return updated_simulation
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Simulation '{simulation_id}' not found"
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to disassociate location: {str(e)}"
+            )
+
+
+class UpdateLocationContextRequest(BaseModel):
+    """Request model for updating location context."""
+    context_overrides: Dict[str, Any] = Field(..., description="Context overrides to apply")
+
+
+@router.put("/{simulation_id}/locations/{location_name}/context", response_model=SimulationDto)
+async def update_simulation_location_context(
+    simulation_id: str,
+    location_name: str,
+    context_data: UpdateLocationContextRequest,
+    simulation_service: SimulationApplicationService = Depends(get_simulation_service)
+):
+    """
+    Update the context for a specific location association.
+    
+    Args:
+        simulation_id: The simulation identifier
+        location_name: The location name
+        context_data: Context overrides to apply
+        
+    Returns:
+        Updated simulation with modified location context
+        
+    Raises:
+        404: If simulation is not found
+    """
+    try:
+        # Update the location context using the service
+        updated_simulation = simulation_service.update_simulation_location_context(
+            simulation_id=simulation_id,
+            location_name=location_name,
+            context_overrides=context_data.context_overrides
+        )
+        
+        return updated_simulation
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Simulation '{simulation_id}' or location '{location_name}' not found"
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to update location context: {str(e)}"
+            )
+
+
+# Files endpoints
+
+class SimulationFilesResponse(BaseModel):
+    """Response model for simulation files."""
+    simulation_id: str = Field(..., description="The simulation identifier")
+    files: List[Dict[str, Any]] = Field(..., description="List of files")
+
+
+@router.get("/{simulation_id}/files", response_model=SimulationFilesResponse)
+async def get_simulation_files(
+    simulation_id: str,
+    simulation_service: SimulationApplicationService = Depends(get_simulation_service)
+):
+    """
+    Get files associated with a simulation.
+    
+    Args:
+        simulation_id: The simulation identifier
+        
+    Returns:
+        List of files associated with the simulation
+        
+    Raises:
+        404: If simulation is not found
+    """
+    try:
+        # Get files using the service
+        files = simulation_service.get_simulation_files(simulation_id)
+        
+        # Convert to dict format for response
+        files_data = [file_dto.model_dump() for file_dto in files]
+        
+        return SimulationFilesResponse(
+            simulation_id=simulation_id,
+            files=files_data
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Simulation '{simulation_id}' not found"
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to get simulation files: {str(e)}"
             )

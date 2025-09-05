@@ -17,7 +17,8 @@ from rich.console import Console
 from ...application.dtos import (
     SimulationDto, CreateSimulationDto, UpdateSimulationDto,
     SimulationListDto, LocationDto, CreateLocationDto, UpdateLocationDto,
-    LocationListDto, LocationTestResult, FilterOptions
+    LocationListDto, LocationTestResult, FilterOptions,
+    SimulationLocationAssociationDto
 )
 
 console = Console()
@@ -259,6 +260,46 @@ class RestSimulationService:
             json=payload
         )
         self.client._handle_response(response)
+
+    def associate_locations(self, association_dto: SimulationLocationAssociationDto) -> SimulationDto:
+        """Associate a simulation with locations via REST API."""
+        response = self.client.client.post(
+            urljoin(self.client.base_url, f'simulations/{association_dto.simulation_id}/locations'),
+            json=association_dto.model_dump()
+        )
+        data = self.client._handle_response(response)
+        return SimulationDto.model_validate(data)
+
+    def disassociate_simulation_from_location(self, simulation_id: str, location_name: str) -> SimulationDto:
+        """Disassociate a simulation from a location via REST API."""
+        response = self.client.client.delete(
+            urljoin(self.client.base_url, f'simulations/{simulation_id}/locations/{location_name}')
+        )
+        data = self.client._handle_response(response)
+        return SimulationDto.model_validate(data)
+
+    def update_simulation_location_context(
+        self, 
+        simulation_id: str, 
+        location_name: str, 
+        context_overrides: Dict[str, Any]
+    ) -> SimulationDto:
+        """Update simulation location context via REST API."""
+        payload = {'context_overrides': context_overrides}
+        response = self.client.client.put(
+            urljoin(self.client.base_url, f'simulations/{simulation_id}/locations/{location_name}/context'),
+            json=payload
+        )
+        data = self.client._handle_response(response)
+        return SimulationDto.model_validate(data)
+
+    def get_simulation_files(self, simulation_id: str) -> List[Dict[str, Any]]:
+        """Get simulation files via REST API."""
+        response = self.client.client.get(
+            urljoin(self.client.base_url, f'simulations/{simulation_id}/files')
+        )
+        data = self.client._handle_response(response)
+        return data.get('files', [])
 
 
 class RestLocationService:
