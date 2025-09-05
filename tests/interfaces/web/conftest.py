@@ -296,10 +296,19 @@ def test_app(mock_service_container):
     from tellus.interfaces.web.routers import health, simulations, locations
     from fastapi.middleware.cors import CORSMiddleware
     
+    # Get dynamic version information to match production
+    from tellus.interfaces.web.version import get_version_info
+    version_info = get_version_info()
+    api_version = version_info["api_version"]
+    api_path = f"/api/{api_version}"
+    
     app = FastAPI(
         title="Tellus Climate Data API",
-        version="0.1.0",
-        description="REST API for Tellus - the distributed data management system for Earth System Model simulations."
+        version=version_info["tellus_version"],
+        description="REST API for Tellus - the distributed data management system for Earth System Model simulations.",
+        docs_url=f"{api_path}/docs",
+        redoc_url=f"{api_path}/redoc",
+        openapi_url=f"{api_path}/openapi.json"
     )
     
     # Add CORS middleware
@@ -311,10 +320,10 @@ def test_app(mock_service_container):
         allow_headers=["*"],
     )
     
-    # Include routers
-    app.include_router(health.router)
-    app.include_router(simulations.router, prefix="/simulations", tags=["simulations"])
-    app.include_router(locations.router, prefix="/locations", tags=["locations"])
+    # Include routers with versioned API prefix to match production
+    app.include_router(health.router, prefix=api_path, tags=["Health"])
+    app.include_router(simulations.router, prefix=f"{api_path}/simulations", tags=["simulations"])
+    app.include_router(locations.router, prefix=f"{api_path}/locations", tags=["locations"])
     
     # Set the mock container BEFORE any lifespan events
     app.state.container = mock_service_container
