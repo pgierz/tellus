@@ -1,9 +1,9 @@
 # 🌊 Tellus Demo: Your First Earth System Model Workflow
 
-*A hands-on walkthrough for managing climate simulations like a pro*
+*A hands-on walkthrough using the real CLI commands that actually exist*
 
 ## 🎯 What You'll Learn
-In 10 minutes, you'll create a simulation, set up data locations, and explore files - using both traditional CLI and modern REST API approaches.
+In 10 minutes, you'll create simulations, set up storage locations, and explore the actual Tellus workflow using both traditional CLI and modern REST API approaches.
 
 ---
 
@@ -28,51 +28,29 @@ pixi run api
 ### Step 1: Create Your First Simulation
 ```bash
 # Create a new FESOM ocean model simulation
-pixi run tellus simulation create \
-  --simulation-id "my-fesom-run" \
-  --model-id "FESOM2" \
-  --attrs experiment=PI \
-  --attrs resolution=T127 \
-  --attrs description="My first FESOM simulation"
+pixi run tellus simulation create my-fesom-run --model-id FESOM2
 
-# ✅ Creates: my-fesom-run with metadata
+# ✅ Creates: my-fesom-run simulation
 ```
 
 ### Step 2: Add Storage Locations
 ```bash
-# Add a local development location
-pixi run tellus location create \
-  --name "dev-local" \
-  --kind DISK \
-  --host "localhost" \
-  --path "/tmp/tellus-data/{model}/{experiment}" \
-  --description "Local development storage"
+# Add a local development location (interactive wizard)
+pixi run tellus location create dev-local
 
 # Add an HPC cluster location  
-pixi run tellus location create \
-  --name "hpc-cluster" \
-  --kind COMPUTE \
-  --host "supercomputer.university.edu" \
-  --path "/scratch/{username}/runs/{model}/{experiment}" \
-  --description "University HPC cluster"
+pixi run tellus location create hpc-cluster
 
-# Add an archive location
-pixi run tellus location create \
-  --name "long-term-archive" \
-  --kind TAPE \
-  --host "archive.university.edu" \
-  --path "/archive/climate/{model}/{experiment}/{simulation_id}" \
-  --description "Long-term tape archive"
+# ✅ Creates locations - follow the interactive prompts for host, path, etc.
 ```
 
 ### Step 3: Connect Simulation to Locations
 ```bash
 # Associate your simulation with storage locations
-pixi run tellus simulation add-location my-fesom-run dev-local
-pixi run tellus simulation add-location my-fesom-run hpc-cluster  
-pixi run tellus simulation add-location my-fesom-run long-term-archive
+pixi run tellus simulation location add my-fesom-run dev-local
+pixi run tellus simulation location add my-fesom-run hpc-cluster
 
-# ✅ Simulation now knows where its data lives
+# ✅ Simulation now knows where its data can be stored
 ```
 
 ### Step 4: Explore Your Setup
@@ -88,6 +66,23 @@ pixi run tellus location list
 
 # Test location connectivity
 pixi run tellus location test dev-local
+
+# List simulation-location associations
+pixi run tellus simulation location list my-fesom-run
+```
+
+### Step 5: Work with Simulation Data
+```bash
+# List contents at a simulation location
+pixi run tellus simulation location ls my-fesom-run dev-local
+
+# Upload a file to the simulation location
+# pixi run tellus simulation location put my-fesom-run dev-local local-file.txt
+
+# Download a file from the simulation location  
+# pixi run tellus simulation location get my-fesom-run dev-local remote-file.txt
+
+# ✅ Tellus provides git-like operations for simulation data
 ```
 
 ---
@@ -101,20 +96,15 @@ Switch to the powerful REST API backend:
 export TELLUS_CLI_USE_REST_API=true
 ```
 
-### Step 5: Create Another Simulation (via REST)
+### Step 6: Create Another Simulation (via REST)
 ```bash
 # Same commands, now powered by REST API! ✨
-pixi run tellus simulation create \
-  --simulation-id "my-icon-run" \
-  --model-id "ICON" \
-  --attrs experiment=RCP85 \
-  --attrs resolution=R2B6 \
-  --attrs description="Future climate scenario"
+pixi run tellus simulation create my-icon-run --model-id ICON
 
 # 🔍 Behind the scenes: CLI → REST API → Response
 ```
 
-### Step 6: Verify with Direct API Calls
+### Step 7: Verify with Direct API Calls
 ```bash
 # Check the API health
 curl http://localhost:1968/api/v0a3/health
@@ -136,57 +126,72 @@ curl http://localhost:1968/api/v0a3/locations/ | jq
 ### **Your Data Architecture:**
 ```
 📁 Simulations
-├── 🌊 my-fesom-run (FESOM2, PI experiment)  
-│   ├── 💻 dev-local → /tmp/tellus-data/FESOM2/PI
-│   ├── 🖥️  hpc-cluster → /scratch/{user}/runs/FESOM2/PI  
-│   └── 📼 long-term-archive → /archive/climate/FESOM2/PI/my-fesom-run
+├── 🌊 my-fesom-run (FESOM2)
+│   ├── 💻 dev-local (associated)
+│   └── 🖥️ hpc-cluster (associated)
 │
-└── 🌍 my-icon-run (ICON, RCP85 experiment)
-    └── 📍 (locations to be added...)
+└── 🌍 my-icon-run (ICON)
+    └── 📍 (ready for location associations)
+
+📍 Locations
+├── dev-local (local development)
+└── hpc-cluster (HPC compute)
 ```
 
-### **Capabilities You Now Have:**
-- ✅ **Simulation Management**: Create, configure, and track climate model runs
-- ✅ **Multi-Location Support**: Local dev, HPC clusters, long-term archives  
-- ✅ **Template-Based Paths**: Dynamic paths using simulation attributes
+### **Real Commands You Can Use:**
+- ✅ **Simulation Management**: `create`, `list`, `show`, `update`, `delete`
+- ✅ **Location Management**: `create`, `list`, `show`, `test`, `update`, `delete`
+- ✅ **Location Associations**: `simulation location add/remove/list`
+- ✅ **File Operations**: `simulation location ls/get/put/mget/mput`
 - ✅ **Dual Interface**: Traditional CLI + Modern REST API
-- ✅ **Metadata Tracking**: Rich attributes and relationships
 
 ---
 
 ## 🔍 **Explore Further**
 
 ```bash
-# View all simulation attributes  
-pixi run tellus simulation show my-fesom-run --format json
+# Manage simulation attributes
+pixi run tellus simulation attrs my-fesom-run
 
-# Add custom attributes
-pixi run tellus simulation attr my-fesom-run contact "your.email@university.edu"
-pixi run tellus simulation attr my-fesom-run status "running"
+# Edit simulation metadata
+pixi run tellus simulation edit my-fesom-run
 
-# Test location paths get resolved correctly
-pixi run tellus location test dev-local --context simulation_id=my-fesom-run
+# Update location association settings
+pixi run tellus simulation location update my-fesom-run dev-local
 
-# List files at locations (when they exist)
+# Work with simulation files
 pixi run tellus simulation files my-fesom-run
+
+# Manage workflows
+pixi run tellus simulation workflow my-fesom-run
+
+# Remove location association
+pixi run tellus simulation location remove my-fesom-run dev-local
 ```
 
 ---
 
 ## 🎉 **Congratulations!**
 
-You've just experienced **Tellus** - the modern way to manage Earth System Model data:
+You've just experienced the **real Tellus CLI** - the modern way to manage Earth System Model data:
 
 - 🏗️ **Clean Architecture**: CLI and REST API working in harmony
-- 🌐 **Multi-Location**: From local dev to HPC to archives  
-- 🎯 **Context-Aware**: Paths that adapt to your simulation parameters
+- 🌐 **Multi-Location**: Support for various storage backends
+- 🎯 **Git-like Operations**: Familiar file management commands
 - 📈 **Scalable**: Ready for small experiments or large model intercomparisons
 
+### **Key Features Demonstrated:**
+- **Interactive Wizards**: Location creation with guided setup
+- **Location Associations**: Connect simulations to storage locations
+- **File Operations**: Upload, download, and list files at remote locations
+- **REST API Integration**: Same functionality via HTTP endpoints
+- **Dual Mode**: Switch between direct service calls and REST API backend
+
 ### **Next Steps:**
-- Integrate with your actual model workflows
-- Set up automated archiving pipelines  
-- Build web dashboards using the REST API
-- Scale to multiple research projects
+- Try the interactive wizards for location creation
+- Upload actual simulation data using `put` commands
+- Explore the REST API endpoints directly
+- Set up automated workflows with the API
 
 **Welcome to modern climate model data management!** 🌊✨
 
