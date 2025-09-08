@@ -10,6 +10,7 @@ Provides CRUD operations for climate simulations including:
 """
 
 from typing import List, Optional, Dict, Any
+from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from fastapi import status
 from pydantic import BaseModel, Field
@@ -714,7 +715,7 @@ async def create_archive(
             split_parts=request.split_parts,
             archive_type=request.archive_type,
             description=request.description,
-            created_at=archive.created_at.isoformat() if archive.created_at else None
+            created_at=datetime.fromtimestamp(archive.created_time).isoformat() if archive.created_time else None
         )
         
     except Exception as e:
@@ -766,7 +767,7 @@ async def list_archives(
                 split_parts=archive.attributes.get('split_parts'),
                 archive_type=archive.attributes.get('archive_type', 'single'),
                 description=archive.attributes.get('description'),
-                created_at=archive.created_at.isoformat() if archive.created_at else None
+                created_at=datetime.fromtimestamp(archive.created_time).isoformat() if archive.created_time else None
             ))
         
         return ArchiveListResponse(
@@ -824,7 +825,7 @@ async def get_archive(
             split_parts=archive.attributes.get('split_parts'),
             archive_type=archive.attributes.get('archive_type', 'single'),
             description=archive.attributes.get('description'),
-            created_at=archive.created_at.isoformat() if archive.created_at else None
+            created_at=datetime.fromtimestamp(archive.created_time).isoformat() if archive.created_time else None
         )
         
     except HTTPException:

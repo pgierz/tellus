@@ -356,6 +356,56 @@ def mock_location_service():
 def mock_file_service():
     """Mock unified file service for testing."""
     service = MagicMock()
+    
+    # Default mock implementations that can be overridden in specific tests
+    def mock_create_archive(dto):
+        # Default implementation - tests can override this
+        from tellus.domain.entities.simulation_file import SimulationFile, FileType
+        from datetime import datetime
+        return SimulationFile(
+            relative_path="default_archive",
+            file_type=FileType.ARCHIVE,
+            created_time=datetime.now().timestamp()
+        )
+    
+    def mock_list_simulation_archives(sim_id):
+        # Default empty list - tests can override
+        return []
+    
+    def mock_get_archive(archive_id):
+        # Default None - tests can override
+        return None
+    
+    def mock_remove_file(file_id):
+        # Default success - tests can override
+        return None
+    
+    def mock_get_file_children(parent_id):
+        # Default empty list - tests can override
+        return []
+    
+    def mock_get_simulation_files(sim_id):
+        # Default empty list - tests can override
+        return []
+    
+    def mock_register_files_to_simulation(dto):
+        # Default success result - tests can override
+        from tellus.application.dtos import FileRegistrationResultDto
+        return FileRegistrationResultDto(
+            registered_count=0,
+            updated_count=0,
+            skipped_count=0
+        )
+    
+    # Set up default mock behavior
+    service.create_archive.side_effect = mock_create_archive
+    service.list_simulation_archives.side_effect = mock_list_simulation_archives
+    service.get_archive.side_effect = mock_get_archive
+    service.remove_file.side_effect = mock_remove_file
+    service.get_file_children.side_effect = mock_get_file_children
+    service.get_simulation_files.side_effect = mock_get_simulation_files
+    service.register_files_to_simulation.side_effect = mock_register_files_to_simulation
+    
     return service
 
 
