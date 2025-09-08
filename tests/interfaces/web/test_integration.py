@@ -27,7 +27,7 @@ class TestAPIDocumentation:
         # Check API info
         info = schema["info"]
         assert info["title"] == "Tellus Climate Data API"
-        assert info["version"] == "0.1.0"
+        assert info["version"] == "0.1.0a3"
         assert "description" in info
     
     def test_docs_endpoint_accessible(self, client: TestClient):
@@ -56,14 +56,14 @@ class TestAPIDocumentation:
         
         # Check that key endpoints are documented
         expected_paths = [
-            "/",
-            "/health",
-            "/health/detailed",
-            "/simulations/",
-            "/simulations/{simulation_id}",
-            "/locations/",
-            "/locations/{location_name}",
-            "/locations/{location_name}/test"
+            "/api/v0a3/",
+            "/api/v0a3/health",
+            "/api/v0a3/health/detailed",
+            "/api/v0a3/simulations/",
+            "/api/v0a3/simulations/{simulation_id}",
+            "/api/v0a3/locations/",
+            "/api/v0a3/locations/{location_name}",
+            "/api/v0a3/locations/{location_name}/test"
         ]
         
         for expected_path in expected_paths:
@@ -306,7 +306,7 @@ class TestAPISecurityAndValidation:
         """Test that content type is properly validated."""
         # Send XML when JSON is expected
         response = client.post(
-            "/simulations/",
+            "/api/v0a3/simulations/",
             content="<xml>not json</xml>",
             headers={"Content-Type": "application/xml"}
         )
@@ -323,10 +323,10 @@ class TestAPIPerformance:
         import time
         
         endpoints = [
-            "/health",
-            "/simulations/",
-            "/locations/",
-            "/"
+            "/api/v0a3/health",
+            "/api/v0a3/simulations/",
+            "/api/v0a3/locations/",
+            "/api/v0a3/"
         ]
         
         for endpoint in endpoints:

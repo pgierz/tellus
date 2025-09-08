@@ -341,7 +341,7 @@ class TestLocationErrorHandling:
     def test_invalid_json_handling(self, client: TestClient):
         """Test handling of invalid JSON in requests."""
         response = client.post(
-            "/locations/",
+            "/api/v0a3/locations/",
             content="invalid json",
             headers={"Content-Type": "application/json"}
         )

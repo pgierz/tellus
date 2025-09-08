@@ -43,6 +43,14 @@ def mock_simulation_service():
             locations={"cluster": {}},
             namelists={},
             workflows={}
+        ),
+        SimulationDto(
+            simulation_id="sim-001",
+            uid="123e4567-e89b-12d3-a456-426614174003",
+            attributes={"model": "FESOM", "resolution": "T127", "experiment": "Historical"},
+            locations={"local": {}},
+            namelists={},
+            workflows={}
         )
     ]
     
@@ -125,6 +133,87 @@ def mock_simulation_service():
         return None
     
     service.delete_simulation.side_effect = mock_delete_simulation
+    
+    # Mock attributes methods for new REST API endpoints
+    def mock_get_simulation_attributes(sim_id):
+        sim = next((s for s in mock_simulations if s.simulation_id == sim_id), None)
+        if sim is None:
+            raise Exception(f"Simulation '{sim_id}' not found")
+        return {
+            "simulation_id": sim_id,
+            "attributes": sim.attributes
+        }
+    
+    def mock_get_simulation_attribute(sim_id, attribute_key):
+        sim = next((s for s in mock_simulations if s.simulation_id == sim_id), None)
+        if sim is None:
+            raise Exception(f"Simulation '{sim_id}' not found")
+        if attribute_key not in sim.attributes:
+            raise Exception(f"Attribute '{attribute_key}' not found")
+        return {
+            "key": attribute_key,
+            "value": sim.attributes[attribute_key]
+        }
+    
+    def mock_set_simulation_attribute(sim_id, attribute_key, value):
+        sim = next((s for s in mock_simulations if s.simulation_id == sim_id), None)
+        if sim is None:
+            raise Exception(f"Simulation '{sim_id}' not found")
+        # In reality we'd update the simulation's attributes
+        return {
+            "key": attribute_key,
+            "value": value
+        }
+    
+    def mock_add_simulation_attribute(sim_id, attribute_key, value):
+        sim = next((s for s in mock_simulations if s.simulation_id == sim_id), None)
+        if sim is None:
+            raise Exception(f"Simulation '{sim_id}' not found")
+        # In reality we'd add to the simulation's attributes
+        return {
+            "key": attribute_key,
+            "value": value
+        }
+    
+    # Mock location association methods
+    def mock_associate_simulation_locations(sim_id, location_names, context_overrides=None):
+        sim = next((s for s in mock_simulations if s.simulation_id == sim_id), None)
+        if sim is None:
+            raise Exception(f"Simulation '{sim_id}' not found")
+        # Return the simulation (in reality we'd update location associations)
+        return sim
+    
+    def mock_disassociate_simulation_location(sim_id, location_name):
+        sim = next((s for s in mock_simulations if s.simulation_id == sim_id), None)
+        if sim is None:
+            raise Exception(f"Simulation '{sim_id}' not found")
+        return sim
+    
+    def mock_update_simulation_location_context(sim_id, location_name, context_overrides):
+        sim = next((s for s in mock_simulations if s.simulation_id == sim_id), None)
+        if sim is None:
+            raise Exception(f"Simulation '{sim_id}' not found")
+        return sim
+    
+    # Mock files methods
+    def mock_get_simulation_files(sim_id):
+        sim = next((s for s in mock_simulations if s.simulation_id == sim_id), None)
+        if sim is None:
+            raise Exception(f"Simulation '{sim_id}' not found")
+        return {
+            "simulation_id": sim_id,
+            "files": []  # Mock empty file list
+        }
+    
+    # Add these methods to the mock service
+    service.get_simulation_attributes.side_effect = mock_get_simulation_attributes
+    service.get_simulation_attribute.side_effect = mock_get_simulation_attribute
+    service.set_simulation_attribute.side_effect = mock_set_simulation_attribute
+    service.add_simulation_attribute.side_effect = mock_add_simulation_attribute
+    service.associate_simulation_locations.side_effect = mock_associate_simulation_locations
+    service.disassociate_simulation_location.side_effect = mock_disassociate_simulation_location
+    service.update_simulation_location_context.side_effect = mock_update_simulation_location_context
+    service.get_simulation_files.side_effect = mock_get_simulation_files
     
     return service
 

@@ -260,7 +260,7 @@ class TestSimulationErrorHandling:
     def test_invalid_json_handling(self, client: TestClient):
         """Test handling of invalid JSON in requests."""
         response = client.post(
-            "/simulations/",
+            "/api/v0a3/simulations/",
             content="invalid json",
             headers={"Content-Type": "application/json"}
         )
@@ -270,7 +270,7 @@ class TestSimulationErrorHandling:
     def test_content_type_handling(self, client: TestClient):
         """Test handling of incorrect content types."""
         response = client.post(
-            "/simulations/",
+            "/api/v0a3/simulations/",
             content="simulation_id=test",
             headers={"Content-Type": "application/x-www-form-urlencoded"}
         )
