@@ -183,16 +183,16 @@ def mock_simulation_service():
         # Return the simulation (in reality we'd update location associations)
         return sim
     
-    def mock_disassociate_simulation_location(sim_id, location_name):
+    def mock_disassociate_simulation_from_location(sim_id, location_name):
         sim = next((s for s in mock_simulations if s.simulation_id == sim_id), None)
         if sim is None:
             raise Exception(f"Simulation '{sim_id}' not found")
         return sim
     
-    def mock_update_simulation_location_context(sim_id, location_name, context_overrides):
-        sim = next((s for s in mock_simulations if s.simulation_id == sim_id), None)
+    def mock_update_simulation_location_context(simulation_id, location_name, context_overrides):
+        sim = next((s for s in mock_simulations if s.simulation_id == simulation_id), None)
         if sim is None:
-            raise Exception(f"Simulation '{sim_id}' not found")
+            raise Exception(f"Simulation '{simulation_id}' not found")
         return sim
     
     # Mock files methods
@@ -200,10 +200,7 @@ def mock_simulation_service():
         sim = next((s for s in mock_simulations if s.simulation_id == sim_id), None)
         if sim is None:
             raise Exception(f"Simulation '{sim_id}' not found")
-        return {
-            "simulation_id": sim_id,
-            "files": []  # Mock empty file list
-        }
+        return []  # Mock empty file list (router expects list, not dict)
     
     # Add these methods to the mock service
     service.get_simulation_attributes.side_effect = mock_get_simulation_attributes
@@ -211,7 +208,7 @@ def mock_simulation_service():
     service.set_simulation_attribute.side_effect = mock_set_simulation_attribute
     service.add_simulation_attribute.side_effect = mock_add_simulation_attribute
     service.associate_simulation_locations.side_effect = mock_associate_simulation_locations
-    service.disassociate_simulation_location.side_effect = mock_disassociate_simulation_location
+    service.disassociate_simulation_from_location.side_effect = mock_disassociate_simulation_from_location
     service.update_simulation_location_context.side_effect = mock_update_simulation_location_context
     service.get_simulation_files.side_effect = mock_get_simulation_files
     
