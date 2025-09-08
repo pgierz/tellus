@@ -29,7 +29,7 @@ router = APIRouter()
 # Pydantic models for attributes API
 class AttributeRequest(BaseModel):
     """Request model for setting an attribute."""
-    key: str = Field(..., description="The attribute key")
+    key: str = Field(..., min_length=1, description="The attribute key")
     value: str = Field(..., description="The attribute value")
 
 

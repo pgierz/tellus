@@ -27,7 +27,7 @@ class TestSimulationListing:
         
         # Check simulations
         simulations = data["simulations"]
-        assert len(simulations) == 2
+        assert len(simulations) == 3
         
         # Check first simulation structure
         sim = simulations[0]
@@ -46,7 +46,7 @@ class TestSimulationListing:
         pagination = data["pagination"]
         assert pagination["page"] == 1
         assert pagination["page_size"] == 1
-        assert pagination["total_count"] == 2
+        assert pagination["total_count"] == 3
         assert pagination["has_next"] is True
         assert pagination["has_previous"] is False
         
