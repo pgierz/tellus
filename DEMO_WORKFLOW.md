@@ -10,8 +10,12 @@ In 10 minutes, you'll create simulations, set up storage locations, and explore 
 ## 🚀 **Quick Setup**
 
 ```bash
-# Start in the project directory
-cd /path/to/tellus
+# Clone the repository
+git clone https://github.com/pgierz/tellus.git
+
+# Enter the directory, and ensure you are on the rest branch
+cd tellus
+git checkout rest
 
 # Install dependencies
 pixi install
@@ -35,13 +39,13 @@ pixi run tellus simulation create my-fesom-run --model-id FESOM2
 
 ### Step 2: Add Storage Locations
 ```bash
-# Add a local development location (interactive wizard)
-pixi run tellus location create dev-local
+# Add a local development location
+pixi run tellus location create dev-local --protocol=file --kind=disk --path=/tmp/dev-storage
 
 # Add an HPC cluster location  
-pixi run tellus location create hpc-cluster
+pixi run tellus location create hpc-cluster --protocol=ssh --kind=compute --host=login.hpc.example.com --path=/work/username/simulations
 
-# ✅ Creates locations - follow the interactive prompts for host, path, etc.
+# ✅ Creates locations with all required parameters specified directly
 ```
 
 ### Step 3: Connect Simulation to Locations
@@ -181,17 +185,20 @@ You've just experienced the **real Tellus CLI** - the modern way to manage Earth
 - 📈 **Scalable**: Ready for small experiments or large model intercomparisons
 
 ### **Key Features Demonstrated:**
-- **Interactive Wizards**: Location creation with guided setup
+- **Direct Parameter Commands**: All operations work with explicit parameters
 - **Location Associations**: Connect simulations to storage locations
 - **File Operations**: Upload, download, and list files at remote locations
 - **REST API Integration**: Same functionality via HTTP endpoints
 - **Dual Mode**: Switch between direct service calls and REST API backend
 
+### **Known Issues:**
+- **Interactive Wizards**: Currently affected by VSplit compatibility issue ([Issue #54](https://github.com/pgierz/tellus/issues/54)). Use direct parameter commands as shown above.
+
 ### **Next Steps:**
-- Try the interactive wizards for location creation
 - Upload actual simulation data using `put` commands
 - Explore the REST API endpoints directly
 - Set up automated workflows with the API
+- Try the locations with real remote hosts (SSH keys required)
 
 **Welcome to modern climate model data management!** 🌊✨
 
