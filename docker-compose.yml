@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  tellus-api:
+    build: .
+    ports:
+      - "1968:1968"
+    volumes:
+      # Persist simulation data and cache
+      - tellus-data:/home/tellus/data
+      - tellus-cache:/home/tellus/.cache/tellus
+      # Optional: mount SSH keys for remote storage access
+      # - ~/.ssh:/home/tellus/.ssh:ro
+    environment:
+      # Optional: configure default settings
+      - TELLUS_LOG_LEVEL=INFO
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:1968$(tellus api-info --url-only | sed 's|http://localhost:1968||')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  tellus-data:
+    driver: local
+  tellus-cache:
+    driver: local
