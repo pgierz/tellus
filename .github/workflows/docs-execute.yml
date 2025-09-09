@@ -27,11 +27,16 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Set up pixi
-      uses: prefix-dev/setup-pixi@v0.8.1
+    - name: Set up Python
+      uses: actions/setup-python@v5
       with:
-        pixi-version: v0.34.0
-        cache: true
+        python-version: "3.11"
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install -e .
+        python -m pip install jupyter nbconvert requests uvicorn
     
     - name: Prepare notebook environment
       run: |
@@ -48,18 +53,24 @@ jobs:
         echo "📓 Executing notebook: $notebook"
         
         # Clear any existing outputs for clean execution
-        pixi run jupyter nbconvert --clear-output --inplace "$notebook"
+        jupyter nbconvert --clear-output --inplace "$notebook"
         
         # Execute the notebook and capture outputs
-        pixi run jupyter nbconvert --to notebook --execute --inplace "$notebook"
+        jupyter nbconvert --to notebook --execute --inplace "$notebook"
         
         echo "✅ Successfully executed: $notebook"
       
+    - name: Set artifact name
+      run: |
+        notebook="${{ matrix.notebook }}"
+        basename=$(basename "$notebook" .ipynb)
+        echo "ARTIFACT_NAME=$basename" >> $GITHUB_ENV
+        
     - name: Upload executed notebook
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: executed-notebook-${{ matrix.job.index }}
+        name: executed-${{ env.ARTIFACT_NAME }}
         path: ${{ matrix.notebook }}
         retention-days: 30
         
@@ -67,11 +78,10 @@ jobs:
       uses: actions/upload-artifact@v4  
       if: failure()
       with:
-        name: execution-logs-${{ matrix.job.index }}
+        name: logs-${{ env.ARTIFACT_NAME }}
         path: |
           simulations.json
           locations.json
-          /tmp/*storage*/
         retention-days: 7
 
   # Special job for REST API demo that requires server
@@ -82,11 +92,16 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Set up pixi
-      uses: prefix-dev/setup-pixi@v0.8.1
+    - name: Set up Python
+      uses: actions/setup-python@v5
       with:
-        pixi-version: v0.34.0
-        cache: true
+        python-version: "3.11"
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install -e .
+        python -m pip install jupyter nbconvert requests uvicorn
     
     - name: Prepare environment
       run: |
@@ -95,8 +110,8 @@ jobs:
     
     - name: Start API server in background
       run: |
-        # Start API server in background
-        pixi run api &
+        # Start API server in background  
+        python -m uvicorn src.tellus.interfaces.web.main:app --host 0.0.0.0 --port 1968 &
         API_PID=$!
         echo "API_PID=$API_PID" >> $GITHUB_ENV
         
@@ -117,8 +132,8 @@ jobs:
     - name: Execute REST API demo notebook
       run: |
         # Clear outputs and execute
-        pixi run jupyter nbconvert --clear-output --inplace "docs/tutorials/REST_API_DEMO.ipynb"
-        pixi run jupyter nbconvert --to notebook --execute --inplace "docs/tutorials/REST_API_DEMO.ipynb"
+        jupyter nbconvert --clear-output --inplace "docs/tutorials/REST_API_DEMO.ipynb"
+        jupyter nbconvert --to notebook --execute --inplace "docs/tutorials/REST_API_DEMO.ipynb"
         echo "✅ Successfully executed REST API demo"
     
     - name: Stop API server
