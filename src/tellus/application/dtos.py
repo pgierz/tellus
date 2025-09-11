@@ -7,6 +7,7 @@ providing a stable interface that can evolve independently of the domain model.
 
 import json
 import time
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set
@@ -496,7 +497,7 @@ class CreateWorkflowDto(BaseModel, JsonSerializableMixin):
 # Network Topology DTOs
 
 @dataclass  
-class BandwidthMeasurementDto(JsonSerializable):
+class BandwidthMeasurementDto(JsonSerializableMixin):
     """DTO for bandwidth measurements."""
     bytes_per_second: float
     measurement_time: str
@@ -505,7 +506,7 @@ class BandwidthMeasurementDto(JsonSerializable):
 
 
 @dataclass
-class LatencyMeasurementDto(JsonSerializable):
+class LatencyMeasurementDto(JsonSerializableMixin):
     """DTO for latency measurements."""
     milliseconds: float
     measurement_time: str
@@ -514,7 +515,7 @@ class LatencyMeasurementDto(JsonSerializable):
 
 
 @dataclass
-class NetworkConnectionDto(JsonSerializable):
+class NetworkConnectionDto(JsonSerializableMixin):
     """DTO for network connections."""
     source_location_id: str
     destination_location_id: str
@@ -526,7 +527,7 @@ class NetworkConnectionDto(JsonSerializable):
 
 
 @dataclass
-class NetworkPathDto(JsonSerializable):
+class NetworkPathDto(JsonSerializableMixin):
     """DTO for network paths."""
     hops: List[str]
     total_cost: float
@@ -535,7 +536,7 @@ class NetworkPathDto(JsonSerializable):
 
 
 @dataclass
-class TopologyBenchmarkDto(JsonSerializable):
+class TopologyBenchmarkDto(JsonSerializableMixin):
     """DTO for topology benchmark requests."""
     source_locations: List[str]
     destination_locations: List[str]
@@ -545,7 +546,7 @@ class TopologyBenchmarkDto(JsonSerializable):
 
 
 @dataclass
-class OptimalRouteRequestDto(JsonSerializable):
+class OptimalRouteRequestDto(JsonSerializableMixin):
     """DTO for optimal route requests."""
     source_location_id: str
     destination_location_id: str
@@ -554,7 +555,7 @@ class OptimalRouteRequestDto(JsonSerializable):
 
 
 @dataclass
-class OptimalRouteResponseDto(JsonSerializable):
+class OptimalRouteResponseDto(JsonSerializableMixin):
     """DTO for optimal route responses."""
     path: NetworkPathDto
     reasoning: str
@@ -563,7 +564,7 @@ class OptimalRouteResponseDto(JsonSerializable):
 
 
 @dataclass
-class CreateNetworkTopologyDto(JsonSerializable):
+class CreateNetworkTopologyDto(JsonSerializableMixin):
     """DTO for creating network topology."""
     topology_id: str
     connections: List[NetworkConnectionDto] = field(default_factory=list)

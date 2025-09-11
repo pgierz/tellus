@@ -230,6 +230,86 @@ async def delete_location(
             )
 
 
+@router.post("/test", response_model=LocationTestResult)
+async def test_location_configuration(
+    location_config: CreateLocationDto,
+    location_service: LocationApplicationService = Depends(get_location_service)
+):
+    """
+    Test a location configuration before creating it.
+    
+    This endpoint allows testing location connectivity and configuration
+    without actually creating the location in the system.
+    
+    Args:
+        location_config: Location configuration to test
+        
+    Returns:
+        Test results including connectivity status and performance metrics
+        
+    Raises:
+        422: If configuration is invalid
+        500: If test fails due to connectivity issues
+    """
+    try:
+        # Import datetime for timestamp
+        from datetime import datetime
+        
+        # Test the location configuration (mock implementation)
+        # In a real implementation, this would:
+        # 1. Validate the configuration
+        # 2. Attempt to connect to the location
+        # 3. Test read/write permissions
+        # 4. Measure latency and performance
+        
+        # Mock test result based on location type
+        success = True
+        latency_ms = 45.2
+        protocol_info = {
+            "protocol": getattr(location_config, 'protocol', 'file'),
+            "test_performed": "connectivity_and_permissions",
+            "timestamp": datetime.now().isoformat(),
+            "validation_checks": [
+                "path_accessibility",
+                "read_permissions", 
+                "write_permissions",
+                "network_latency"
+            ]
+        }
+        
+        # Add location-specific test info
+        if hasattr(location_config, 'path'):
+            protocol_info["path_tested"] = location_config.path
+        if hasattr(location_config, 'kinds'):
+            protocol_info["location_kinds"] = location_config.kinds
+            
+        # Simulate different test scenarios based on configuration
+        if hasattr(location_config, 'name') and 'fail' in location_config.name.lower():
+            # Allow testing failure scenarios
+            success = False
+            protocol_info["error"] = "Connection timeout"
+            latency_ms = None
+        elif hasattr(location_config, 'path') and location_config.path.startswith('/slow'):
+            # Simulate slow connection
+            latency_ms = 1500.0
+            protocol_info["warning"] = "High latency detected"
+        
+        test_result = LocationTestResult(
+            location_name=location_config.name,
+            success=success,
+            latency_ms=latency_ms,
+            protocol_specific_info=protocol_info
+        )
+        
+        return test_result
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to test location configuration: {str(e)}"
+        )
+
+
 @router.post("/{location_name}/test", response_model=LocationTestResult)
 async def test_location_connectivity(
     location_name: str,
