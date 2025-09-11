@@ -5,11 +5,17 @@ requires-python = ">= 3.11"
 dynamic = ["version"]
 
 [project.optional-dependencies]
-# Removed chat dependencies
+# REST API dependencies
+api = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "pydantic>=2.5.0",
+]
 
 [project.scripts]
 tellus = "tellus.core.main:main"
 tellus-chat = "tellus_chat.cli:main"
+tellus-api = "tellus.interfaces.rest.server:main"
 
 [tool.pytest.ini_options]
 python_files = "test_*.py"
@@ -110,6 +116,7 @@ h5netcdf = ">=1.6.4,<2"
 nc-time-axis = ">=1.4.1,<2"
 scipy = ">=1.16.0,<2"
 seaborn = ">=0.13.2,<0.14"
+pytest-asyncio = ">=1.1.0,<2"
 
 [tool.pixi.feature.test.tasks]
 test = "pytest"
@@ -137,7 +144,7 @@ rich = ">=13.0.0"
 fsspec = ">=2025.7.0,<2026"
 paramiko = ">=3.5.1,<4"
 rich-click = ">=1.8.9,<2"
-questionary = ">=2.1.0,<3"
+questionary = "2.1.1.*"
 requests = ">=2.32.4,<3"
 loguru = ">=0.7.3,<0.8"
 inquirerpy = ">=0.3.4,<0.4"

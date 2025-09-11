@@ -119,13 +119,25 @@ class PathResolutionService:
                 configured_prefix = simulation_entity.location_contexts[location_name]['path_prefix']
                 
                 if configured_prefix:
+                    # Resolve template variables in the configured prefix
+                    resolved_prefix = configured_prefix
+                    
+                    # Combine simulation context with location-specific context
+                    combined_context = simulation_context.copy()
+                    location_context = simulation_entity.location_contexts[location_name]
+                    combined_context.update(location_context)
+                    
+                    for attr_name, attr_value in combined_context.items():
+                        placeholder = f"{{{attr_name}}}"
+                        resolved_prefix = resolved_prefix.replace(placeholder, str(attr_value))
+                    
                     # If the prefix is an absolute path, use it as the complete base
-                    if configured_prefix.startswith('/'):
-                        resolved_base_path = configured_prefix
+                    if resolved_prefix.startswith('/'):
+                        resolved_base_path = resolved_prefix
                         template_path = None  # No additional template needed
                     else:
-                        # Relative prefix - use as template with location base
-                        template_path = configured_prefix
+                        # Relative prefix - use as resolved template with location base
+                        template_path = resolved_prefix
             else:
                 # Fall back to location path templates
                 template_path = location_entity.suggest_path(simulation_context)
