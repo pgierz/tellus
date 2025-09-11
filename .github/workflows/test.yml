@@ -1,4 +1,8 @@
-on: [push, pull_request]
+on:
+  push:
+    branches: [ main, master, develop, "feat/**", "fix/**" ]
+  pull_request:
+    branches: [ main, master, develop ]
 jobs:
   test:
     runs-on: ubuntu-latest

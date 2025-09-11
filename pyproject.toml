@@ -34,7 +34,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Removed chat dependencies
+# Removed api section - all dependencies are now in main [project] dependencies
 
 [project.scripts]
 tellus = "tellus.core.main:main"

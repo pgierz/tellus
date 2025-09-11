@@ -411,6 +411,14 @@ def update_location_association(sim_id: str = None, location_name: str = None,
         # Interactive mode when arguments missing
         if not sim_id or not location_name:
             import questionary
+            import sys
+            
+            # Check if we can run interactively
+            if not sys.stdin.isatty():
+                console.print("[red]Error:[/red] Interactive mode requires simulation ID and location name when not run in a terminal")
+                console.print(f"[dim]Usage: tellus simulation location edit <simulation_id> <location_name>[/dim]")
+                console.print(f"[dim]Example: tellus simulation location edit MIS11.3-B tellus_hsm[/dim]")
+                return
 
             # Get simulation ID if not provided
             if not sim_id:
@@ -498,25 +506,43 @@ def update_location_association(sim_id: str = None, location_name: str = None,
         # Interactive updates if no options provided
         if not any([path_prefix, context]):
             import questionary
+            import sys
+            
+            # Check if we can run interactively
+            if not sys.stdin.isatty():
+                console.print("[yellow]No update options provided and not running in interactive terminal.[/yellow]")
+                console.print("[dim]Use --path-prefix or --context options to specify updates.[/dim]")
+                console.print(f"[dim]Example: tellus simulation location edit {sim_id} {location_name} --path-prefix '{{model}}/{{experiment}}'[/dim]")
+                return
             
             console.print("\n[cyan]Select what you'd like to update:[/cyan]")
             
-            # Ask what to update
-            update_options = questionary.checkbox(
-                "What would you like to update?",
-                choices=[
-                    "Path Prefix Template",
-                    "Custom Context Data"
-                ],
-                style=questionary.Style([
-                    ('question', 'bold'),
-                    ('selected', 'fg:#cc5454'),
-                    ('pointer', 'fg:#ff0066 bold'),
-                ])
-            ).ask()
-            
-            if not update_options:
-                console.print("[yellow]No updates selected[/yellow]")
+            try:
+                # Ask what to update with multiple select calls (avoiding VSplit bug)
+                update_options = []
+                
+                update_path_prefix = questionary.confirm(
+                    "Update Path Prefix Template?",
+                    default=False
+                ).ask()
+                
+                if update_path_prefix:
+                    update_options.append("Path Prefix Template")
+                    
+                update_context = questionary.confirm(
+                    "Update Custom Context Data?",
+                    default=False
+                ).ask()
+                
+                if update_context:
+                    update_options.append("Custom Context Data")
+                
+                if not update_options:
+                    console.print("[yellow]No updates selected[/yellow]")
+                    return
+            except Exception as e:
+                console.print(f"[red]Error in interactive mode:[/red] {e}")
+                console.print("[dim]Try using --path-prefix or --context options instead[/dim]")
                 return
             
             # Handle path prefix update

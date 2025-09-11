@@ -164,6 +164,10 @@ class ServiceContainer:
         
         return self._network_topology_service
     
+    def network_topology_service(self) -> NetworkTopologyApplicationService:
+        """Get the network topology application service."""
+        return self.get_network_topology_service()
+    
     def get_location_repository(self):
         """Get the location repository."""
         return self.service_factory.get_location_repository()

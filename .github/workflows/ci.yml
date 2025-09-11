@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, master, develop, "fix/**" ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, master, develop ]
 
 jobs:
   test:
@@ -13,6 +13,11 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.11", "3.12"]
+        include:
+          - python-version: "3.11"
+            pixi-environment: "test-py311"
+          - python-version: "3.12"
+            pixi-environment: "test-py312"
     
     steps:
     - uses: actions/checkout@v4
@@ -20,11 +25,17 @@ jobs:
     - name: Set up pixi
       uses: prefix-dev/setup-pixi@v0.8.1
       with:
-        pixi-version: v0.34.0
+        pixi-version: v0.54.1
         cache: true
     
-    - name: Run tests
-      run: pixi run -e test-py${{ matrix.python-version }} test
+    - name: Run unit tests
+      run: pixi run -e ${{ matrix.pixi-environment }} test
+    
+    - name: Run CLI integration tests
+      run: pixi run -e ${{ matrix.pixi-environment }} pytest tests/test_cli_integration_working.py -v --cov=src/tellus/interfaces/cli --cov-append
+      
+    - name: Run working CLI specification tests
+      run: pixi run -e ${{ matrix.pixi-environment }} pytest tests/test_cli_specification.py -v --cov=src/tellus/interfaces/cli --cov-append
     
     - name: Upload coverage reports
       uses: codecov/codecov-action@v4
@@ -42,7 +53,7 @@ jobs:
     - name: Set up pixi  
       uses: prefix-dev/setup-pixi@v0.8.1
       with:
-        pixi-version: v0.34.0
+        pixi-version: v0.54.1
         cache: true
     
     # Add linting when you have it configured
