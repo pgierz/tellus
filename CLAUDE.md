@@ -165,3 +165,74 @@ This should be addressed before the new architecture becomes the default.
 
 - You do not need to set TELLUS_USE_NEW_ARCHIVE_SERVICE
 - When changing internals and need to modify something on the objects, make a deprecation warning to be easy to remove this later on.
+
+## Documentation Standards
+
+This project uses **executable documentation** as the primary documentation pattern. All documentation should be interactive and verifiable.
+
+### Documentation Patterns
+
+**1. Jupyter Notebook Documentation (.ipynb)**
+- ALWAYS use Jupyter notebooks for tutorials, demos, and user-facing documentation
+- Place notebooks in `docs/tutorials/` directory
+- Use descriptive names like `CLI_DEMO.ipynb`, `REST_API_DEMO.ipynb`
+- Include shell commands using `!` prefix for CLI operations
+- Add Python code cells for API interactions and data processing
+- Structure notebooks with clear sections and explanatory markdown
+
+**2. Executable Documentation in CI**
+- ALL notebooks in `docs/**/*.ipynb` are automatically executed in CI
+- Use the `docs-execute.yml` workflow pattern for consistent execution
+- Notebooks must be self-contained and executable without manual intervention
+- Create required directories and test data within the notebook
+- Handle both success and failure scenarios gracefully
+
+**3. Documentation Structure**
+```
+docs/
+├── tutorials/
+│   ├── CLI_DEMO.ipynb           # Basic CLI workflow
+│   ├── REST_API_DEMO.ipynb      # API integration patterns
+│   └── ADVANCED_FEATURES.ipynb  # Complex scenarios
+└── api/                         # Auto-generated API docs
+```
+
+**4. Documentation Content Guidelines**
+- Start with clear learning objectives
+- Include setup and cleanup sections
+- Use emojis for visual structure (🚀 Setup, 🎯 Objectives, ✅ Success, ❌ Errors)
+- Provide both basic and advanced examples
+- Include error handling and common issues
+- End with next steps and related resources
+- Add cross-references between related notebooks
+
+**5. CI Integration Standards**
+- Matrix strategy for parallel notebook execution
+- Separate job for REST API demos requiring server
+- Artifact upload for debugging failed executions
+- Environment preparation (temp directories, clean state)
+- Proper server lifecycle management (start/stop API server)
+- Clear output before execution for reproducible results
+
+**6. Notebook Development Workflow**
+```bash
+# Create new tutorial notebook
+cp docs/tutorials/CLI_DEMO.ipynb docs/tutorials/NEW_FEATURE.ipynb
+
+# Test locally before committing
+pixi run jupyter nbconvert --clear-output --inplace docs/tutorials/NEW_FEATURE.ipynb
+pixi run jupyter nbconvert --to notebook --execute --inplace docs/tutorials/NEW_FEATURE.ipynb
+
+# Commit with cleared outputs for clean diffs
+pixi run jupyter nbconvert --clear-output --inplace docs/tutorials/NEW_FEATURE.ipynb
+git add docs/tutorials/NEW_FEATURE.ipynb
+git commit -m "docs: add NEW_FEATURE tutorial notebook"
+```
+
+**Why Executable Documentation?**
+- Ensures examples always work with current codebase
+- Catches breaking changes immediately
+- Provides living documentation that evolves with the software
+- Enables interactive learning and experimentation
+- Serves as integration tests for user-facing features
+- Builds confidence in documentation accuracy

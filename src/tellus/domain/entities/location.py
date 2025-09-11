@@ -2,9 +2,9 @@
 Core Location domain entity - pure business logic without infrastructure dependencies.
 """
 
-from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Any, Dict, List, Optional
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 
 class LocationKind(Enum):
@@ -24,18 +24,23 @@ class LocationKind(Enum):
             raise ValueError(f"Invalid location kind: {s}. Valid kinds: {valid_kinds}")
 
 
-@dataclass
-class PathTemplate:
+class PathTemplate(BaseModel):
     """
     Value object representing a path template pattern for a location.
     """
+    
+    model_config = ConfigDict(
+        extra='forbid',
+        validate_assignment=True
+    )
+    
     name: str
     pattern: str
     description: str
-    required_attributes: List[str] = field(default_factory=list)
+    required_attributes: List[str] = Field(default_factory=list)
     
-    def __post_init__(self):
-        """Extract required attributes from pattern."""
+    def model_post_init(self, __context) -> None:
+        """Extract required attributes from pattern after model initialization."""
         if not self.required_attributes:
             self.required_attributes = self._extract_attributes()
     
@@ -56,102 +61,105 @@ class PathTemplate:
         return len(self.required_attributes)
 
 
-@dataclass
-class LocationEntity:
+class LocationEntity(BaseModel):
     """
     Pure domain entity representing a storage location.
     
     This entity contains only the core business data and validation logic,
     without any infrastructure concerns like filesystem operations or persistence.
     """
+    
+    model_config = ConfigDict(
+        extra='forbid',
+        validate_assignment=True,
+        arbitrary_types_allowed=True
+    )
+    
     name: str
     kinds: List[LocationKind]
     config: Dict[str, Any]
-    path_templates: List[PathTemplate] = field(default_factory=list)
+    path_templates: List[PathTemplate] = Field(default_factory=list)
     optional: bool = False
     
-    def __post_init__(self):
-        """Validate the entity after initialization."""
-        validation_errors = self.validate()
-        if validation_errors:
-            raise ValueError(f"Invalid location data: {', '.join(validation_errors)}")
+    @field_validator('name')
+    @classmethod
+    def validate_name(cls, v):
+        """Validate location name."""
+        if not v:
+            raise ValueError('Location name is required')
+        if not isinstance(v, str):
+            raise ValueError('Location name must be a string')
+        return v
+    
+    @field_validator('kinds')
+    @classmethod
+    def validate_kinds(cls, v):
+        """Validate location kinds."""
+        if not v:
+            raise ValueError('At least one location kind is required')
+        if not isinstance(v, list):
+            raise ValueError('Location kinds must be a list')
+        for kind in v:
+            if not isinstance(kind, LocationKind):
+                raise ValueError(f'Invalid location kind: {kind}. Must be LocationKind enum')
+        return v
+    
+    @field_validator('config')
+    @classmethod
+    def validate_config(cls, v):
+        """Validate config dictionary."""
+        if not isinstance(v, dict):
+            raise ValueError('Config must be a dictionary')
+        # Check for required protocol
+        if 'protocol' not in v:
+            raise ValueError('Protocol is required in config')
+        protocol = v['protocol']
+        if not isinstance(protocol, str):
+            raise ValueError('Protocol must be a string')
+        
+        # Validate protocol-specific requirements
+        if protocol in ('sftp', 'ssh'):
+            if 'storage_options' not in v:
+                raise ValueError(f'storage_options required for {protocol} protocol')
+            storage_options = v['storage_options']
+            if not isinstance(storage_options, dict):
+                raise ValueError('storage_options must be a dictionary')
+        
+        # Validate path if present
+        if 'path' in v:
+            path = v['path']
+            if not isinstance(path, str):
+                raise ValueError('Path must be a string if provided')
+        
+        return v
+    
+    @field_validator('path_templates')
+    @classmethod
+    def validate_path_templates(cls, v):
+        """Validate path templates."""
+        if not isinstance(v, list):
+            raise ValueError('Path templates must be a list')
+        for template in v:
+            if not isinstance(template, PathTemplate):
+                raise ValueError(f'Invalid path template: {template}. Must be PathTemplate instance')
+        return v
     
     def validate(self) -> List[str]:
         """
         Validate business rules for the location entity.
+        
+        Note: With pydantic, most validation is handled automatically.
+        This method is kept for backward compatibility and custom business rules.
         
         Returns:
             List of validation error messages (empty if valid)
         """
         errors = []
         
-        if not self.name:
-            errors.append("Location name is required")
-        
-        if not isinstance(self.name, str):
-            errors.append("Location name must be a string")
-        
-        if not self.kinds:
-            errors.append("At least one location kind is required")
-        
-        if not isinstance(self.kinds, list):
-            errors.append("Location kinds must be a list")
-        
-        for kind in self.kinds:
-            if not isinstance(kind, LocationKind):
-                errors.append(f"Invalid location kind: {kind}. Must be LocationKind enum")
-        
-        if not isinstance(self.config, dict):
-            errors.append("Config must be a dictionary")
-        
-        if not isinstance(self.path_templates, list):
-            errors.append("Path templates must be a list")
-        
-        for template in self.path_templates:
-            if not isinstance(template, PathTemplate):
-                errors.append(f"Invalid path template: {template}. Must be PathTemplate instance")
-        
-        # Validate required config fields based on location kinds
-        config_errors = self._validate_config()
-        errors.extend(config_errors)
+        # Additional custom validation can go here if needed
         
         return errors
     
-    def _validate_config(self) -> List[str]:
-        """
-        Validate configuration based on location kinds and protocols.
-        
-        Returns:
-            List of configuration validation errors
-        """
-        errors = []
-        
-        # Check for required protocol
-        if 'protocol' not in self.config:
-            errors.append("Protocol is required in config")
-        else:
-            protocol = self.config['protocol']
-            if not isinstance(protocol, str):
-                errors.append("Protocol must be a string")
-        
-        # Validate protocol-specific requirements
-        protocol = self.config.get('protocol', '')
-        
-        if protocol in ('sftp', 'ssh'):
-            if 'storage_options' not in self.config:
-                errors.append(f"storage_options required for {protocol} protocol")
-            else:
-                storage_options = self.config['storage_options']
-                if not isinstance(storage_options, dict):
-                    errors.append("storage_options must be a dictionary")
-        
-        # Validate path if present
-        if 'path' in self.config:
-            path = self.config['path']
-            if not isinstance(path, str):
-                errors.append("Path must be a string if provided")
-        
-        return errors
     
     def has_kind(self, kind: LocationKind) -> bool:
         """Check if location has a specific kind."""
@@ -210,25 +218,20 @@ class LocationEntity:
         
         # Store old value for rollback
         old_value = self.config.get(key)
-        self.config[key] = value
+        new_config = self.config.copy()
+        new_config[key] = value
         
-        # Validate the change
+        # Validate the change by trying to update the model
         try:
-            validation_errors = self._validate_config()
-            if validation_errors:
-                # Rollback the change
-                if old_value is not None:
-                    self.config[key] = old_value
-                else:
-                    del self.config[key]
-                raise ValueError(f"Invalid config update: {', '.join(validation_errors)}")
-        except Exception:
+            # This will trigger validation
+            self.config = new_config
+        except Exception as e:
             # Rollback on any error
             if old_value is not None:
                 self.config[key] = old_value
             else:
                 self.config.pop(key, None)
-            raise
+            raise ValueError(f"Invalid config update: {e}") from e
     
     def is_remote(self) -> bool:
         """Check if this is a remote location (not local filesystem)."""

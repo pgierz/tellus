@@ -4,79 +4,83 @@ Core Simulation domain entity - pure business logic without infrastructure depen
 
 import copy
 import uuid
-from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
+from pydantic import BaseModel, Field, ConfigDict, field_validator, computed_field
 
 
-@dataclass
-class SimulationEntity:
+class SimulationEntity(BaseModel):
     """
     Pure domain entity representing a simulation in the Earth System Model context.
 
     This entity contains only the core business data and validation logic,
     without any infrastructure concerns like persistence or file system operations.
     """
+    
+    model_config = ConfigDict(
+        # Allow field validation for private fields
+        extra='forbid',
+        # Keep the same behavior as dataclass __init__
+        validate_assignment=True,
+        # Make it compatible with existing serialization
+        arbitrary_types_allowed=True
+    )
 
     simulation_id: str
     model_id: Optional[str] = None
     path: Optional[str] = None
-    attrs: Dict[str, Any] = field(default_factory=dict)
-    namelists: Dict[str, Any] = field(default_factory=dict)
-    snakemakes: Dict[str, Any] = field(default_factory=dict)
+    attrs: Dict[str, Any] = Field(default_factory=dict)
+    namelists: Dict[str, Any] = Field(default_factory=dict)
+    snakemakes: Dict[str, Any] = Field(default_factory=dict)
     
     # Location associations - tracks which locations this simulation knows about
-    associated_locations: Set[str] = field(default_factory=set)
+    associated_locations: Set[str] = Field(default_factory=set)
     
     # Location-specific contexts and configurations
-    location_contexts: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    location_contexts: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     
-    # File management - tracks files associated with this simulation
+    # File management - tracks files associated with this simulation  
     file_inventory: Optional['FileInventory'] = None
 
     # Internal identifier (different from user-facing simulation_id)
-    _uid: str = field(default_factory=lambda: str(uuid.uuid4()))
+    uid_: str = Field(default_factory=lambda: str(uuid.uuid4()), alias='_uid')
 
-    def __post_init__(self):
-        """Validate the entity after initialization."""
-        validation_errors = self.validate()
-        if validation_errors:
-            raise ValueError(f"Invalid simulation data: {', '.join(validation_errors)}")
+    @field_validator('simulation_id')
+    @classmethod
+    def validate_simulation_id(cls, v):
+        """Validate simulation_id field."""
+        if not v:
+            raise ValueError('Simulation ID is required')
+        if not isinstance(v, str):
+            raise ValueError('Simulation ID must be a string')
+        return v
+
+    @field_validator('model_id')
+    @classmethod
+    def validate_model_id(cls, v):
+        """Validate model_id field."""
+        if v is not None and not isinstance(v, str):
+            raise ValueError('Model ID must be a string if provided')
+        return v
+
+    @field_validator('path')
+    @classmethod
+    def validate_path(cls, v):
+        """Validate path field."""
+        if v is not None and not isinstance(v, str):
+            raise ValueError('Path must be a string if provided')
+        return v
 
     def validate(self) -> List[str]:
         """
         Validate business rules for the simulation entity.
+        
+        Note: With pydantic, most validation is handled automatically.
+        This method is kept for backward compatibility and custom business rules.
 
         Returns:
             List of validation error messages (empty if valid)
         """
         errors = []
-
-        if not self.simulation_id:
-            errors.append("Simulation ID is required")
-
-        if not isinstance(self.simulation_id, str):
-            errors.append("Simulation ID must be a string")
-
-        if self.model_id is not None and not isinstance(self.model_id, str):
-            errors.append("Model ID must be a string if provided")
-
-        if self.path is not None and not isinstance(self.path, str):
-            errors.append("Path must be a string if provided")
-
-        if not isinstance(self.attrs, dict):
-            errors.append("Attributes must be a dictionary")
-
-        if not isinstance(self.namelists, dict):
-            errors.append("Namelists must be a dictionary")
-
-        if not isinstance(self.snakemakes, dict):
-            errors.append("Snakemakes must be a dictionary")
-        
-        if not isinstance(self.associated_locations, set):
-            errors.append("Associated locations must be a set")
-            
-        if not isinstance(self.location_contexts, dict):
-            errors.append("Location contexts must be a dictionary")
             
         if self.file_inventory is not None:
             # Import here to avoid circular imports
@@ -86,10 +90,11 @@ class SimulationEntity:
 
         return errors
 
+    @computed_field  # type: ignore
     @property
     def uid(self) -> str:
         """Get the internal unique identifier."""
-        return self._uid
+        return self.uid_
 
     def add_attribute(self, key: str, value: Any) -> None:
         """Add or update a simulation attribute."""
@@ -416,5 +421,19 @@ class SimulationEntity:
         return (
             f"SimulationEntity(simulation_id='{self.simulation_id}', "
             f"model_id='{self.model_id}', path='{self.path}', "
-            f"uid='{self._uid}')"
+            f"uid='{self.uid}')"
         )
+
+
+# Import FileInventory and rebuild model to resolve forward references
+def _rebuild_model():
+    """Rebuild the SimulationEntity model after FileInventory is defined."""
+    try:
+        from .simulation_file import FileInventory  # noqa: F401
+        SimulationEntity.model_rebuild()
+    except ImportError:
+        # FileInventory might not exist yet, that's okay
+        pass
+
+# Try to rebuild now, but don't fail if FileInventory doesn't exist
+_rebuild_model()

@@ -349,10 +349,15 @@ def remove_location(sim_id: str, location_name: str):
             console.print(f"[yellow]Warning:[/yellow] Location '{location_name}' is not associated with simulation '{sim_id}'")
             return
         
-        # Use the entity method to disassociate
-        simulation_entity = service._simulation_repo.get_by_id(sim_id)
-        simulation_entity.disassociate_location(location_name)
-        service._simulation_repo.save(simulation_entity)
+        # Check if using REST API
+        if hasattr(service, 'disassociate_simulation_from_location'):
+            # REST API or service with disassociate method
+            service.disassociate_simulation_from_location(sim_id, location_name)
+        else:
+            # Legacy direct repository access
+            simulation_entity = service._simulation_repo.get_by_id(sim_id)
+            simulation_entity.disassociate_location(location_name)
+            service._simulation_repo.save(simulation_entity)
         
         console.print(f"[green]✓[/green] Removed location '{location_name}' from simulation '{sim_id}'")
         
@@ -2402,9 +2407,48 @@ def simulation_files():
 def list_files(sim_id: str, location: str = None, content_type: str = None, type: str = None):
     """List files associated with a simulation."""
     try:
-        container = get_service_container()
-        unified_service = container.service_factory.unified_file_service
-        simulation_service = container.service_factory.simulation_service
+        # Check if we should use REST API
+        use_rest_api = os.getenv('TELLUS_CLI_USE_REST_API', 'false').lower() == 'true'
+        
+        if use_rest_api:
+            from .rest_client import get_rest_simulation_service
+            console.print("✨ Using REST API backend")
+            
+            rest_service = get_rest_simulation_service()
+            files = rest_service.get_simulation_files(
+                sim_id, 
+                location=location, 
+                content_type=content_type, 
+                file_type=type
+            )
+            
+            if not files:
+                console.print(f"No files associated with simulation '{sim_id}'")
+                return
+                
+            # Display files in table format
+            table = Table(title=f"Files for Simulation: {sim_id}")
+            table.add_column("File Path", style="cyan")
+            table.add_column("Location", style="green")
+            table.add_column("Size", style="yellow") 
+            table.add_column("Content Type", style="magenta")
+            table.add_column("Parent Archive", style="dim")
+            
+            for file_info in files:
+                size_str = str(file_info.get('size_bytes', 0)) if file_info.get('size_bytes') else '-'
+                table.add_row(
+                    file_info.get('file_path', '-'),
+                    file_info.get('location', '-') or '-',
+                    size_str,
+                    file_info.get('content_type', '-') or '-',
+                    file_info.get('parent_file', '-') or '-'
+                )
+            
+            console.print(table)
+            return
+        
+        # Fall back to direct service
+        simulation_service = _get_simulation_service()
         
         # Verify simulation exists
         sim = simulation_service.get_simulation(sim_id)
@@ -2413,7 +2457,27 @@ def list_files(sim_id: str, location: str = None, content_type: str = None, type
             return
         
         # Get files associated with this simulation
-        files = unified_service.get_simulation_files(sim_id)
+        if hasattr(simulation_service, 'get_simulation_files'):
+            # Use the service method (works with both REST API and direct service)
+            files_data = simulation_service.get_simulation_files(sim_id)
+            if isinstance(files_data, list) and files_data and isinstance(files_data[0], dict):
+                # REST API returns list of dicts
+                console.print(f"[green]Files for simulation '{sim_id}':[/green]")
+                if not files_data:
+                    console.print("No files found")
+                    return
+                
+                for file_info in files_data:
+                    console.print(f"  • {file_info.get('file_path', 'Unknown')} ({file_info.get('content_type', 'unknown')})")
+                return
+            else:
+                # Service returns entity objects
+                files = files_data
+        else:
+            # Fallback to unified service
+            container = get_service_container()
+            unified_service = container.service_factory.unified_file_service
+            files = unified_service.get_simulation_files(sim_id)
         
         # Apply filters
         if location:
@@ -2546,6 +2610,30 @@ def add_files(sim_id: str, from_archive: str, content_type: str = None, pattern:
         tellus simulation files add my-sim --from-archive my-archive --dry-run
     """
     try:
+        # Check if we should use REST API
+        use_rest_api = os.getenv('TELLUS_CLI_USE_REST_API', 'false').lower() == 'true'
+        
+        if use_rest_api and not dry_run:
+            from .rest_client import get_rest_simulation_service
+            console.print("✨ Using REST API backend")
+            
+            rest_service = get_rest_simulation_service()
+            result = rest_service.register_files_to_simulation(
+                sim_id,
+                from_archive,
+                content_type_filter=content_type,
+                pattern_filter=pattern,
+                overwrite_existing=overwrite
+            )
+            
+            console.print(f"[green]✓ File registration completed[/green]")
+            console.print(f"  Registered: {result['registered_count']} files")
+            console.print(f"  Updated: {result['updated_count']} files")  
+            console.print(f"  Skipped: {result['skipped_count']} files")
+            console.print(f"  Archive: {result['archive_id']}")
+            return
+        
+        # Fall back to direct service
         container = get_service_container()
         unified_service = container.service_factory.unified_file_service
         simulation_service = container.service_factory.simulation_service
@@ -2720,6 +2808,42 @@ def status_files(sim_id: str, show_archives: bool = False, content_type: str = N
         tellus simulation files status my-sim --content-type output
     """
     try:
+        # Check if we should use REST API
+        use_rest_api = os.getenv('TELLUS_CLI_USE_REST_API', 'false').lower() == 'true'
+        
+        if use_rest_api:
+            from .rest_client import get_rest_simulation_service
+            console.print("✨ Using REST API backend")
+            
+            rest_service = get_rest_simulation_service()
+            status = rest_service.get_simulation_files_status(sim_id)
+            
+            console.print(f"\n[cyan]File Status for Simulation:[/cyan] {status['simulation_id']}")
+            console.print(f"[cyan]Total Files:[/cyan] {status['total_files']}")
+            
+            # Show files by archive
+            if status['files_by_archive']:
+                console.print("\n[yellow]Files by Archive:[/yellow]")
+                for archive, count in status['files_by_archive'].items():
+                    archive_display = archive if archive != 'no_archive' else '[no archive]'
+                    console.print(f"  {archive_display}: {count} files")
+            
+            # Show files by content type
+            if status['files_by_content_type']:
+                console.print("\n[yellow]Files by Content Type:[/yellow]")
+                for content_type, count in status['files_by_content_type'].items():
+                    console.print(f"  {content_type}: {count} files")
+            
+            # Show files by location
+            if status['files_by_location']:
+                console.print("\n[yellow]Files by Location:[/yellow]")
+                for location, count in status['files_by_location'].items():
+                    location_display = location if location != 'no_location' else '[no location]'
+                    console.print(f"  {location_display}: {count} files")
+            
+            return
+        
+        # Fall back to direct service
         container = get_service_container()
         simulation_service = container.service_factory.simulation_service
         
@@ -2819,8 +2943,11 @@ def list_workflows(sim_id: str):
 @click.option("--list-all", "list_all", is_flag=True, help="List all attributes")
 def manage_attributes(sim_id: str, set_attr: tuple = None, get_attr: str = None, list_all: bool = False):
     """Manage simulation attributes."""
+    import os
+    
     try:
         service = _get_simulation_service()
+        use_rest_api = os.getenv('TELLUS_CLI_USE_REST_API', 'false').lower() == 'true'
         
         if set_attr:
             key, value = set_attr
@@ -2828,41 +2955,91 @@ def manage_attributes(sim_id: str, set_attr: tuple = None, get_attr: str = None,
             console.print(f"[green]✓[/green] Set attribute '{key}' = '{value}' for simulation '{sim_id}'")
             
         elif get_attr:
-            sim = service.get_simulation(sim_id)
-            if sim.attrs and get_attr in sim.attrs:
-                console.print(f"{get_attr}: {sim.attrs[get_attr]}")
+            if use_rest_api:
+                # Use REST API methods
+                try:
+                    attribute_value = service.get_simulation_attribute(sim_id, get_attr)
+                    if attribute_value is not None:
+                        console.print(f"{get_attr}: {attribute_value}")
+                    else:
+                        console.print(f"[yellow]Attribute '{get_attr}' not found for simulation '{sim_id}'[/yellow]")
+                except Exception as e:
+                    # Handle 404 errors from REST API
+                    if "not found" in str(e).lower():
+                        console.print(f"[yellow]Attribute '{get_attr}' not found for simulation '{sim_id}'[/yellow]")
+                    else:
+                        raise
             else:
-                console.print(f"[yellow]Attribute '{get_attr}' not found for simulation '{sim_id}'[/yellow]")
+                # Use direct service
+                sim = service.get_simulation(sim_id)
+                if sim.attrs and get_attr in sim.attrs:
+                    console.print(f"{get_attr}: {sim.attrs[get_attr]}")
+                else:
+                    console.print(f"[yellow]Attribute '{get_attr}' not found for simulation '{sim_id}'[/yellow]")
                 
         elif list_all:
-            sim = service.get_simulation(sim_id)
-            if not sim.attrs:
-                console.print(f"No attributes set for simulation '{sim_id}'")
-                return
+            if use_rest_api:
+                # Use REST API methods
+                attrs = service.get_simulation_attributes(sim_id)
+                if not attrs:
+                    console.print(f"No attributes set for simulation '{sim_id}'")
+                    return
+                    
+                table = Table(title=f"Attributes for Simulation: {sim_id}")
+                table.add_column("Key", style="cyan")
+                table.add_column("Value", style="green")
                 
-            table = Table(title=f"Attributes for Simulation: {sim_id}")
-            table.add_column("Key", style="cyan")
-            table.add_column("Value", style="green")
-            
-            for key, value in sorted(sim.attrs.items()):
-                table.add_row(key, str(value))
-            
-            console.print(Panel.fit(table))
+                for key, value in sorted(attrs.items()):
+                    table.add_row(key, str(value))
+                
+                console.print(Panel.fit(table))
+            else:
+                # Use direct service
+                sim = service.get_simulation(sim_id)
+                if not sim.attrs:
+                    console.print(f"No attributes set for simulation '{sim_id}'")
+                    return
+                    
+                table = Table(title=f"Attributes for Simulation: {sim_id}")
+                table.add_column("Key", style="cyan")
+                table.add_column("Value", style="green")
+                
+                for key, value in sorted(sim.attrs.items()):
+                    table.add_row(key, str(value))
+                
+                console.print(Panel.fit(table))
         else:
             # Default behavior: list all attributes
-            sim = service.get_simulation(sim_id)
-            if not sim.attrs:
-                console.print(f"No attributes set for simulation '{sim_id}'")
-                return
+            if use_rest_api:
+                # Use REST API methods
+                attrs = service.get_simulation_attributes(sim_id)
+                if not attrs:
+                    console.print(f"No attributes set for simulation '{sim_id}'")
+                    return
+                    
+                table = Table(title=f"Attributes for Simulation: {sim_id}")
+                table.add_column("Key", style="cyan")
+                table.add_column("Value", style="green")
                 
-            table = Table(title=f"Attributes for Simulation: {sim_id}")
-            table.add_column("Key", style="cyan")
-            table.add_column("Value", style="green")
-            
-            for key, value in sorted(sim.attrs.items()):
-                table.add_row(key, str(value))
-            
-            console.print(Panel.fit(table))
+                for key, value in sorted(attrs.items()):
+                    table.add_row(key, str(value))
+                
+                console.print(Panel.fit(table))
+            else:
+                # Use direct service
+                sim = service.get_simulation(sim_id)
+                if not sim.attrs:
+                    console.print(f"No attributes set for simulation '{sim_id}'")
+                    return
+                    
+                table = Table(title=f"Attributes for Simulation: {sim_id}")
+                table.add_column("Key", style="cyan")
+                table.add_column("Value", style="green")
+                
+                for key, value in sorted(sim.attrs.items()):
+                    table.add_row(key, str(value))
+                
+                console.print(Panel.fit(table))
             
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")

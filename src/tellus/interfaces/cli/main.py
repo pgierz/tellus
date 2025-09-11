@@ -18,6 +18,29 @@ def cli(ctx, output_json):
     ctx.obj['output_json'] = output_json
 
 
+@cli.command("api-info")
+@click.option("--url-only", is_flag=True, help="Output only the health check URL")
+def api_info(url_only):
+    """Show API version and health check URL information."""
+    try:
+        from ..web.version import get_version_info
+        version_info = get_version_info()
+        
+        if url_only:
+            click.echo(f"http://localhost:1968{version_info['api_path']}/health")
+        else:
+            console.print(f"[bold]Tellus API Information[/bold]")
+            console.print(f"Version: [green]{version_info['tellus_version']}[/green]")
+            console.print(f"API Version: [blue]{version_info['api_version']}[/blue]") 
+            console.print(f"API Path: [yellow]{version_info['api_path']}[/yellow]")
+            console.print(f"Health Check: [cyan]http://localhost:1968{version_info['api_path']}/health[/cyan]")
+            
+    except ImportError:
+        console.print("[red]Error: Web API components not available[/red]")
+    except Exception as e:
+        console.print(f"[red]Error getting API info: {e}[/red]")
+
+
 def create_main_cli():
     """Create and configure the main CLI with all subcommands."""
     # Import subcommands here to avoid circular imports

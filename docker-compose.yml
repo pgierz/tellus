@@ -1,0 +1,27 @@
+services:
+  tellus-api:
+    build: .
+    ports:
+      - "1968:1968"
+    volumes:
+      # Mount merged tellus data from ~/.local/tellus directly to .tellus
+      - ~/.local/tellus:/home/tellus/.tellus
+      - tellus-cache:/home/tellus/.cache/tellus
+      # Optional: mount SSH keys for remote storage access
+      # - ~/.ssh:/home/tellus/.ssh:ro
+    environment:
+      # Optional: configure default settings
+      - TELLUS_LOG_LEVEL=INFO
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:1968/api/v0a3/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  tellus-data:
+    driver: local
+  tellus-cache:
+    driver: local
