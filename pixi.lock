@@ -16797,8 +16797,8 @@ packages:
   timestamp: 1743515657639
 - pypi: ./
   name: tellus
-  version: 0.1.0a4.dev5+g5e94bea0e.d20250910
-  sha256: f69aa2cc7c868d36714d9b993b90c939a81be53a7705654ce1132181e36ac0d2
+  version: 0.1.0a4.dev17+gfdd4d6563
+  sha256: 43d15629c85258c6e8a49eb7a5f8aabc5ca4ec60140c2aeb8e045b2bfdc180b0
   requires_dist:
   - fastapi>=0.104.0 ; extra == 'api'
   - pydantic>=2.5.0 ; extra == 'api'
