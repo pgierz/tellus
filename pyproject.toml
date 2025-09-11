@@ -24,6 +24,7 @@ dependencies = [
     # Web API
     "fastapi>=0.116.1,<0.117",
     "uvicorn>=0.35.0,<0.36",
+    "httpx>=0.28.1,<0.29",
     # Workflow and notebook support
     "snakemake>=9.9.0,<10",
     "nbconvert>=7.16.6,<8",
@@ -93,6 +94,7 @@ packages = ["src/tellus"]
 
 [tool.hatch.version]
 source = "vcs"
+fallback-version = "0.0.0-dev"
 
 [tool.pixi.workspace]
 channels = ["conda-forge", "bioconda"]
@@ -204,6 +206,7 @@ release-prod = { cmd = "cz bump --prerelease alpha && python -m build && python 
 
 [tool.setuptools_scm]
 # Dynamic versioning from git tags
+root = "."
 
 [tool.commitizen]
 name = "cz_conventional_commits"

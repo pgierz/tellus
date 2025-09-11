@@ -11,25 +11,29 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency files first for better Docker layer caching
+# Copy git metadata first (needed for version detection)
+COPY .git/ ./.git/
+
+# Copy dependency files for better Docker layer caching
 COPY pyproject.toml ./
 COPY README.md ./
 
-# Install Python dependencies
+# Install Python dependencies (now git is available for version detection)
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -e .
 
-# Copy source code and git metadata (needed for version detection)
+# Copy source code
 COPY src/ ./src/
 COPY scripts/ ./scripts/
-COPY .git/ ./.git/
 
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash tellus
-USER tellus
 
-# Create directories for data persistence
-RUN mkdir -p /home/tellus/.cache/tellus /home/tellus/data
+# Create directories with proper ownership
+RUN mkdir -p /app/.tellus && chown tellus:tellus /app/.tellus
+RUN mkdir -p /home/tellus/.cache/tellus /home/tellus/data && chown -R tellus:tellus /home/tellus
+
+USER tellus
 
 # Expose the API port
 EXPOSE 1968
