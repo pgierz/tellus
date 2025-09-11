@@ -72,7 +72,7 @@ packages = ["src/tellus"]
 [tool.hatch.version]
 source = "vcs"
 
-[tool.pixi]
+[tool.pixi.workspace]
 channels = ["conda-forge", "bioconda"]
 platforms = ["osx-arm64", "linux-64"]
 
