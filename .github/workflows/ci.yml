@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, master, develop ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, master, develop ]
 
 jobs:
   test:
@@ -23,8 +23,14 @@ jobs:
         pixi-version: v0.34.0
         cache: true
     
-    - name: Run tests
+    - name: Run unit tests
       run: pixi run -e test-py${{ matrix.python-version }} test
+    
+    - name: Run CLI integration tests
+      run: pixi run -e test-py${{ matrix.python-version }} pytest tests/test_cli_integration_working.py -v
+      
+    - name: Run working CLI specification tests
+      run: pixi run -e test-py${{ matrix.python-version }} pytest tests/test_cli_specification.py -v
     
     - name: Upload coverage reports
       uses: codecov/codecov-action@v4
