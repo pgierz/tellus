@@ -7,6 +7,9 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+# Pytest plugins configuration
+pytest_plugins = ["pytest_asyncio"]
+
 
 @pytest.fixture
 def runner():
