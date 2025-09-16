@@ -32,8 +32,8 @@ from ...domain.entities.workflow import (ResourceRequirement, RunStatus,
 from ...infrastructure.adapters.progress_tracking import ProgressTracker
 from ...infrastructure.adapters.workflow_engines import (
     PythonWorkflowEngine, SnakemakeWorkflowEngine)
-from ...infrastructure.repositories.json_location_repository import \
-    JsonLocationRepository
+from ...infrastructure.repositories.postgres_location_repository import \
+    PostgresLocationRepository, AsyncLocationRepositoryWrapper
 from ...infrastructure.repositories.json_workflow_repository import (
     JsonWorkflowRepository, JsonWorkflowRunRepository,
     JsonWorkflowTemplateRepository)

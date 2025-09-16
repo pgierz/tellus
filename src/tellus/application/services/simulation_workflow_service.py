@@ -11,10 +11,8 @@ from typing import Any, Dict, List, Optional
 from ...domain.entities.location import LocationEntity
 from ...domain.entities.simulation import SimulationEntity
 from ...domain.entities.workflow import WorkflowEntity
-from ...infrastructure.repositories.json_location_repository import \
-    ILocationRepository
-from ...infrastructure.repositories.json_simulation_repository import \
-    ISimulationRepository
+from ...domain.repositories.location_repository import ILocationRepository
+from ...domain.repositories.simulation_repository import ISimulationRepository
 from .workflow_service import WorkflowApplicationService
 
 logger = logging.getLogger(__name__)

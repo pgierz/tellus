@@ -1,9 +1,11 @@
 """Repository implementations for data persistence."""
 
-from .json_location_repository import JsonLocationRepository
-from .json_simulation_repository import JsonSimulationRepository
+from .postgres_location_repository import PostgresLocationRepository, AsyncLocationRepositoryWrapper
+from .postgres_simulation_repository import PostgresSimulationRepository, AsyncSimulationRepositoryWrapper
 
 __all__ = [
-    'JsonLocationRepository', 
-    'JsonSimulationRepository',
+    'PostgresLocationRepository',
+    'PostgresSimulationRepository',
+    'AsyncLocationRepositoryWrapper',
+    'AsyncSimulationRepositoryWrapper',
 ]

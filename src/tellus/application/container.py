@@ -14,12 +14,8 @@ from ..application.dtos import CacheConfigurationDto
 from ..application.service_factory import ApplicationServiceFactory
 from ..application.services.progress_tracking_service import \
     ProgressTrackingService
-from ..infrastructure.repositories.json_location_repository import \
-    JsonLocationRepository
 from ..infrastructure.repositories.json_progress_tracking_repository import \
     JsonProgressTrackingRepository
-from ..infrastructure.repositories.json_simulation_repository import \
-    JsonSimulationRepository
 from ..infrastructure.repositories.json_simulation_file_repository import \
     JsonSimulationFileRepository
 from ..infrastructure.repositories.json_network_topology_repository import \
@@ -82,18 +78,20 @@ class ServiceContainer:
     def service_factory(self) -> ApplicationServiceFactory:
         """Get or create the application service factory."""
         if self._service_factory is None:
-            # Initialize repositories with hybrid data persistence
-            # Global data (shared across projects)
-            location_repo = JsonLocationRepository(
-                file_path=self._global_data_path / "locations.json"
-            )
+            # Initialize PostgreSQL repositories directly
+            from ..infrastructure.repositories.postgres_simulation_repository import AsyncSimulationRepositoryWrapper, PostgresSimulationRepository
+            from ..infrastructure.repositories.postgres_location_repository import AsyncLocationRepositoryWrapper, PostgresLocationRepository
+
+            # Create database-backed repositories
+            async_sim_repo = PostgresSimulationRepository()
+            async_loc_repo = PostgresLocationRepository()
+
+            simulation_repo = AsyncSimulationRepositoryWrapper(async_sim_repo)
+            location_repo = AsyncLocationRepositoryWrapper(async_loc_repo)
+
+            # Keep JSON for other services that haven't been migrated yet
             progress_tracking_repo = JsonProgressTrackingRepository(
                 storage_path=str(self._global_data_path / "progress_tracking.json")
-            )
-            
-            # Project-specific data
-            simulation_repo = JsonSimulationRepository(
-                file_path=self._project_data_path / "simulations.json"
             )
             simulation_file_repo = JsonSimulationFileRepository(
                 storage_dir=str(self._project_data_path)

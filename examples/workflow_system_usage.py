@@ -20,8 +20,8 @@ from tellus.application.services.workflow_execution_service import WorkflowExecu
 from tellus.infrastructure.repositories.json_workflow_repository import (
     JsonWorkflowRepository, JsonWorkflowRunRepository, JsonWorkflowTemplateRepository
 )
-from tellus.infrastructure.repositories.json_simulation_repository import JsonSimulationRepository
-from tellus.infrastructure.repositories.json_location_repository import JsonLocationRepository
+from tellus.infrastructure.repositories.postgres_simulation_repository import PostgresSimulationRepository, AsyncSimulationRepositoryWrapper
+from tellus.infrastructure.repositories.postgres_location_repository import PostgresLocationRepository, AsyncLocationRepositoryWrapper
 from tellus.infrastructure.adapters.workflow_engines import SnakemakeWorkflowEngine, PythonWorkflowEngine
 from tellus.domain.entities.workflow import WorkflowEngine
 from tellus.progress import ProgressTracker
@@ -35,8 +35,11 @@ def create_workflow_system():
     """Create and configure the complete workflow system."""
     
     # Create repositories
-    simulation_repo = JsonSimulationRepository("simulations.json")
-    location_repo = JsonLocationRepository("locations.json")
+    # Create PostgreSQL repositories
+    async_simulation_repo = PostgresSimulationRepository()
+    async_location_repo = PostgresLocationRepository()
+    simulation_repo = AsyncSimulationRepositoryWrapper(async_simulation_repo)
+    location_repo = AsyncLocationRepositoryWrapper(async_location_repo)
     workflow_repo = JsonWorkflowRepository("workflows.json")
     workflow_run_repo = JsonWorkflowRunRepository("workflow_runs.json")
     workflow_template_repo = JsonWorkflowTemplateRepository("workflow_templates.json")

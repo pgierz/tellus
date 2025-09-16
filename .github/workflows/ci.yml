@@ -53,6 +53,56 @@ jobs:
       with:
         fail_ci_if_error: false
 
+  database-tests:
+    name: Database Integration Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: tellus_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up pixi
+      uses: prefix-dev/setup-pixi@v0.8.1
+      with:
+        pixi-version: v0.54.1
+        cache: true
+
+    - name: Run database repository tests
+      env:
+        TELLUS_DB_HOST: localhost
+        TELLUS_DB_PORT: 5432
+        TELLUS_DB_NAME: tellus_test
+        TELLUS_DB_USER: postgres
+        TELLUS_DB_PASSWORD: postgres
+        TESTING: true
+      run: pixi run -e test-py311 pytest tests/unit/infrastructure/repositories/ -v --cov=src/tellus/infrastructure/repositories --cov-append
+
+    - name: Test database CLI commands
+      env:
+        TELLUS_DB_HOST: localhost
+        TELLUS_DB_PORT: 5432
+        TELLUS_DB_NAME: tellus_test
+        TELLUS_DB_USER: postgres
+        TELLUS_DB_PASSWORD: postgres
+      run: |
+        # Test database initialization
+        pixi run -e test-py311 python -m tellus.cli.database init --drop-tables
+        # Test database status
+        pixi run -e test-py311 python -m tellus.cli.database status
+
   lint:
     name: Linting and Code Quality
     runs-on: ubuntu-latest
