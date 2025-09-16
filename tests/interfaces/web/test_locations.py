@@ -8,14 +8,15 @@ for the location management API.
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import patch
+from tellus.interfaces.web.version import get_version_info
 
 
 class TestLocationListing:
     """Test location listing and filtering."""
     
-    def test_list_locations_default(self, client: TestClient):
+    def test_list_locations_default(self, client: TestClient, api_path):
         """Test listing locations with default parameters."""
-        response = client.get("/api/v0a3/locations/")
+        response = client.get(f"{api_path}/locations/")
         
         assert response.status_code == 200
         data = response.json()
@@ -41,9 +42,9 @@ class TestLocationListing:
         assert loc["protocol"] == "file"
         assert loc["is_remote"] is False
     
-    def test_list_locations_with_pagination(self, client: TestClient):
+    def test_list_locations_with_pagination(self, client: TestClient, api_path):
         """Test location listing with pagination parameters."""
-        response = client.get("/api/v0a3/locations/?page=1&page_size=1")
+        response = client.get(f"{api_path}/locations/?page=1&page_size=1")
         
         assert response.status_code == 200
         data = response.json()
@@ -59,9 +60,9 @@ class TestLocationListing:
         # Should only return 1 location
         assert len(data["locations"]) == 1
     
-    def test_list_locations_with_search(self, client: TestClient):
+    def test_list_locations_with_search(self, client: TestClient, api_path):
         """Test location listing with search filter."""
-        response = client.get("/api/v0a3/locations/?search=local")
+        response = client.get(f"{api_path}/locations/?search=local")
         
         assert response.status_code == 200
         data = response.json()
@@ -75,9 +76,9 @@ class TestLocationListing:
         assert len(locations) == 1
         assert "local" in locations[0]["name"]
     
-    def test_list_locations_with_kind_filter(self, client: TestClient):
+    def test_list_locations_with_kind_filter(self, client: TestClient, api_path):
         """Test location listing with kind filter."""
-        response = client.get("/api/v0a3/locations/?kind=COMPUTE")
+        response = client.get(f"{api_path}/locations/?kind=COMPUTE")
         
         assert response.status_code == 200
         data = response.json()
@@ -87,27 +88,27 @@ class TestLocationListing:
         assert len(locations) == 1
         assert "COMPUTE" in locations[0]["kinds"]
     
-    def test_list_locations_pagination_validation(self, client: TestClient):
+    def test_list_locations_pagination_validation(self, client: TestClient, api_path):
         """Test pagination parameter validation."""
         # Invalid page number
-        response = client.get("/api/v0a3/locations/?page=0")
+        response = client.get(f"{api_path}/locations/?page=0")
         assert response.status_code == 422
         
         # Invalid page size
-        response = client.get("/api/v0a3/locations/?page_size=0")
+        response = client.get(f"{api_path}/locations/?page_size=0")
         assert response.status_code == 422
         
         # Page size too large
-        response = client.get("/api/v0a3/locations/?page_size=101")
+        response = client.get(f"{api_path}/locations/?page_size=101")
         assert response.status_code == 422
 
 
 class TestLocationCreation:
     """Test location creation."""
     
-    def test_create_location_success(self, client: TestClient, sample_location_data):
+    def test_create_location_success(self, client: TestClient, api_path, sample_location_data):
         """Test successful location creation."""
-        response = client.post("/api/v0a3/locations/", json=sample_location_data)
+        response = client.post(f"{api_path}/locations/", json=sample_location_data)
         
         assert response.status_code == 201
         data = response.json()
@@ -121,7 +122,7 @@ class TestLocationCreation:
         assert data["additional_config"] == sample_location_data["additional_config"]
         assert data["is_remote"] is True  # sftp protocol
     
-    def test_create_location_duplicate_name(self, client: TestClient):
+    def test_create_location_duplicate_name(self, client: TestClient, api_path):
         """Test creating location with duplicate name fails."""
         duplicate_data = {
             "name": "local-storage",  # This already exists in mock data
@@ -130,13 +131,13 @@ class TestLocationCreation:
             "path": "/different/path"
         }
         
-        response = client.post("/api/v0a3/locations/", json=duplicate_data)
+        response = client.post(f"{api_path}/locations/", json=duplicate_data)
         
         assert response.status_code == 400
         data = response.json()
         assert "already exists" in data["detail"]
     
-    def test_create_location_validation_errors(self, client: TestClient):
+    def test_create_location_validation_errors(self, client: TestClient, api_path):
         """Test validation errors in location creation."""
         # Missing required field
         invalid_data = {
@@ -145,7 +146,7 @@ class TestLocationCreation:
             # Missing name
         }
         
-        response = client.post("/api/v0a3/locations/", json=invalid_data)
+        response = client.post(f"{api_path}/locations/", json=invalid_data)
         assert response.status_code == 422
         
         # Empty name
@@ -155,7 +156,7 @@ class TestLocationCreation:
             "protocol": "file"
         }
         
-        response = client.post("/api/v0a3/locations/", json=invalid_data)
+        response = client.post(f"{api_path}/locations/", json=invalid_data)
         assert response.status_code == 422
         
         # Empty kinds list
@@ -165,10 +166,10 @@ class TestLocationCreation:
             "protocol": "file"
         }
         
-        response = client.post("/api/v0a3/locations/", json=invalid_data)
+        response = client.post(f"{api_path}/locations/", json=invalid_data)
         assert response.status_code == 422
     
-    def test_create_location_minimal_data(self, client: TestClient):
+    def test_create_location_minimal_data(self, client: TestClient, api_path):
         """Test creating location with minimal required data."""
         minimal_data = {
             "name": "minimal-location",
@@ -176,7 +177,7 @@ class TestLocationCreation:
             "protocol": "file"
         }
         
-        response = client.post("/api/v0a3/locations/", json=minimal_data)
+        response = client.post(f"{api_path}/locations/", json=minimal_data)
         
         assert response.status_code == 201
         data = response.json()
@@ -190,9 +191,9 @@ class TestLocationCreation:
 class TestLocationRetrieval:
     """Test individual location retrieval."""
     
-    def test_get_location_success(self, client: TestClient):
+    def test_get_location_success(self, client: TestClient, api_path):
         """Test successful location retrieval."""
-        response = client.get("/api/v0a3/locations/local-storage")
+        response = client.get(f"{api_path}/locations/local-storage")
         
         assert response.status_code == 200
         data = response.json()
@@ -202,17 +203,17 @@ class TestLocationRetrieval:
         assert data["protocol"] == "file"
         assert data["is_remote"] is False
     
-    def test_get_location_not_found(self, client: TestClient):
+    def test_get_location_not_found(self, client: TestClient, api_path):
         """Test retrieving non-existent location."""
-        response = client.get("/api/v0a3/locations/non-existent")
+        response = client.get(f"{api_path}/locations/non-existent")
         
         assert response.status_code == 404
         data = response.json()
         assert "not found" in data["detail"]
     
-    def test_get_location_case_sensitivity(self, client: TestClient):
+    def test_get_location_case_sensitivity(self, client: TestClient, api_path):
         """Test that location names are case sensitive."""
-        response = client.get("/api/v0a3/locations/LOCAL-STORAGE")  # Different case
+        response = client.get(f"{api_path}/locations/LOCAL-STORAGE")  # Different case
         
         assert response.status_code == 404
 
@@ -220,40 +221,40 @@ class TestLocationRetrieval:
 class TestLocationUpdate:
     """Test location updates."""
     
-    def test_update_location_success(self, client: TestClient):
+    def test_update_location_success(self, client: TestClient, api_path):
         """Test successful location update."""
         update_data = {
             "protocol": "sftp",
             "storage_options": {"host": "new-host.example.com"}
         }
         
-        response = client.put("/api/v0a3/locations/local-storage", json=update_data)
+        response = client.put(f"{api_path}/locations/local-storage", json=update_data)
         
         assert response.status_code == 200
         data = response.json()
         assert data["name"] == "local-storage"
     
-    def test_update_location_not_found(self, client: TestClient):
+    def test_update_location_not_found(self, client: TestClient, api_path):
         """Test updating non-existent location."""
         update_data = {"protocol": "sftp"}
         
-        response = client.put("/api/v0a3/locations/non-existent", json=update_data)
+        response = client.put(f"{api_path}/locations/non-existent", json=update_data)
         
         assert response.status_code == 404
         data = response.json()
         assert "not found" in data["detail"]
     
-    def test_update_location_partial(self, client: TestClient):
+    def test_update_location_partial(self, client: TestClient, api_path):
         """Test partial location update."""
         update_data = {"path": "/new/path"}
         
-        response = client.put("/api/v0a3/locations/local-storage", json=update_data)
+        response = client.put(f"{api_path}/locations/local-storage", json=update_data)
         
         assert response.status_code == 200
     
-    def test_update_location_empty_data(self, client: TestClient):
+    def test_update_location_empty_data(self, client: TestClient, api_path):
         """Test update with empty data."""
-        response = client.put("/api/v0a3/locations/local-storage", json={})
+        response = client.put(f"{api_path}/locations/local-storage", json={})
         
         assert response.status_code == 200
 
@@ -261,16 +262,16 @@ class TestLocationUpdate:
 class TestLocationDeletion:
     """Test location deletion."""
     
-    def test_delete_location_success(self, client: TestClient):
+    def test_delete_location_success(self, client: TestClient, api_path):
         """Test successful location deletion."""
-        response = client.delete("/api/v0a3/locations/local-storage")
+        response = client.delete(f"{api_path}/locations/local-storage")
         
         assert response.status_code == 204
         assert response.content == b""
     
-    def test_delete_location_not_found(self, client: TestClient):
+    def test_delete_location_not_found(self, client: TestClient, api_path):
         """Test deleting non-existent location."""
-        response = client.delete("/api/v0a3/locations/non-existent")
+        response = client.delete(f"{api_path}/locations/non-existent")
         
         assert response.status_code == 404
         data = response.json()
@@ -280,9 +281,9 @@ class TestLocationDeletion:
 class TestLocationConnectivityTesting:
     """Test location connectivity testing."""
     
-    def test_test_location_success(self, client: TestClient):
+    def test_test_location_success(self, client: TestClient, api_path):
         """Test successful location connectivity test."""
-        response = client.post("/api/v0a3/locations/local-storage/test")
+        response = client.post(f"{api_path}/locations/local-storage/test")
         
         assert response.status_code == 200
         data = response.json()
@@ -297,17 +298,17 @@ class TestLocationConnectivityTesting:
         assert isinstance(data["latency_ms"], (int, float))
         assert isinstance(data["protocol_specific_info"], dict)
     
-    def test_test_location_not_found(self, client: TestClient):
+    def test_test_location_not_found(self, client: TestClient, api_path):
         """Test testing non-existent location."""
-        response = client.post("/api/v0a3/locations/non-existent/test")
+        response = client.post(f"{api_path}/locations/non-existent/test")
         
         assert response.status_code == 404
         data = response.json()
         assert "not found" in data["detail"]
     
-    def test_test_location_result_format(self, client: TestClient):
+    def test_test_location_result_format(self, client: TestClient, api_path):
         """Test that test results follow correct format."""
-        response = client.post("/api/v0a3/locations/cluster-storage/test")
+        response = client.post(f"{api_path}/locations/cluster-storage/test")
         
         assert response.status_code == 200
         data = response.json()
@@ -327,28 +328,28 @@ class TestLocationConnectivityTesting:
 class TestLocationErrorHandling:
     """Test error handling for location endpoints."""
     
-    def test_service_error_handling(self, client: TestClient, mock_location_service):
+    def test_service_error_handling(self, client: TestClient, api_path, mock_location_service):
         """Test handling of service layer errors."""
         # Configure mock to raise exception
         mock_location_service.list_locations.side_effect = Exception("Service error")
         
-        response = client.get("/api/v0a3/locations/")
+        response = client.get(f"{api_path}/locations/")
         
         assert response.status_code == 500
         data = response.json()
         assert "Failed to list locations" in data["detail"]
     
-    def test_invalid_json_handling(self, client: TestClient):
+    def test_invalid_json_handling(self, client: TestClient, api_path):
         """Test handling of invalid JSON in requests."""
         response = client.post(
-            "/api/v0a3/locations/",
+            f"{api_path}/locations/",
             content="invalid json",
             headers={"Content-Type": "application/json"}
         )
         
         assert response.status_code == 422
     
-    def test_invalid_protocol_handling(self, client: TestClient):
+    def test_invalid_protocol_handling(self, client: TestClient, api_path):
         """Test handling of invalid protocol values."""
         invalid_data = {
             "name": "test-location",
@@ -356,7 +357,7 @@ class TestLocationErrorHandling:
             "protocol": "invalid-protocol"
         }
         
-        response = client.post("/api/v0a3/locations/", json=invalid_data)
+        response = client.post(f"{api_path}/locations/", json=invalid_data)
         
         # Should still create (protocol validation is in domain layer)
         # This tests API layer doesn't break with unexpected values
@@ -366,9 +367,9 @@ class TestLocationErrorHandling:
 class TestLocationFiltering:
     """Test advanced location filtering capabilities."""
     
-    def test_multiple_filters(self, client: TestClient):
+    def test_multiple_filters(self, client: TestClient, api_path):
         """Test applying multiple filters simultaneously."""
-        response = client.get("/api/v0a3/locations/?search=cluster&kind=COMPUTE")
+        response = client.get(f"{api_path}/locations/?search=cluster&kind=COMPUTE")
         
         assert response.status_code == 200
         data = response.json()
@@ -380,10 +381,10 @@ class TestLocationFiltering:
                 assert "cluster" in location["name"].lower()
                 assert "COMPUTE" in location["kinds"]
     
-    def test_case_insensitive_search(self, client: TestClient):
+    def test_case_insensitive_search(self, client: TestClient, api_path):
         """Test that search is case insensitive."""
-        response1 = client.get("/api/v0a3/locations/?search=local")
-        response2 = client.get("/api/v0a3/locations/?search=LOCAL")
+        response1 = client.get(f"{api_path}/locations/?search=local")
+        response2 = client.get(f"{api_path}/locations/?search=LOCAL")
         
         assert response1.status_code == 200
         assert response2.status_code == 200
@@ -391,10 +392,10 @@ class TestLocationFiltering:
         # Should return same results regardless of case
         assert len(response1.json()["locations"]) == len(response2.json()["locations"])
     
-    def test_kind_filter_case_insensitive(self, client: TestClient):
+    def test_kind_filter_case_insensitive(self, client: TestClient, api_path):
         """Test that kind filter handles different cases."""
-        response1 = client.get("/api/v0a3/locations/?kind=DISK")
-        response2 = client.get("/api/v0a3/locations/?kind=disk")
+        response1 = client.get(f"{api_path}/locations/?kind=DISK")
+        response2 = client.get(f"{api_path}/locations/?kind=disk")
         
         assert response1.status_code == 200
         assert response2.status_code == 200
@@ -405,9 +406,9 @@ class TestLocationFiltering:
 class TestLocationCompatibility:
     """Test backward compatibility and API consistency."""
     
-    def test_location_dto_structure(self, client: TestClient):
+    def test_location_dto_structure(self, client: TestClient, api_path):
         """Test that location DTOs have consistent structure."""
-        response = client.get("/api/v0a3/locations/local-storage")
+        response = client.get(f"{api_path}/locations/local-storage")
         
         assert response.status_code == 200
         data = response.json()
@@ -428,9 +429,9 @@ class TestLocationCompatibility:
         assert isinstance(data["additional_config"], dict)
         assert isinstance(data["is_remote"], bool)
     
-    def test_list_response_consistency(self, client: TestClient):
+    def test_list_response_consistency(self, client: TestClient, api_path):
         """Test that list responses are consistent."""
-        response = client.get("/api/v0a3/locations/")
+        response = client.get(f"{api_path}/locations/")
         
         assert response.status_code == 200
         data = response.json()

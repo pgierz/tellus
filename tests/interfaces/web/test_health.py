@@ -8,14 +8,17 @@ and that the API provides proper monitoring capabilities.
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import MagicMock
+from tellus.interfaces.web.version import get_version_info
 
 
 class TestHealthEndpoints:
     """Test health check endpoints."""
-    
+
     def test_basic_health_check(self, client: TestClient):
         """Test basic health endpoint returns success."""
-        response = client.get("/api/v0a3/health")
+        version_info = get_version_info()
+        api_path = version_info["api_path"]
+        response = client.get(f"{api_path}/health")
         
         assert response.status_code == 200
         data = response.json()
@@ -25,15 +28,17 @@ class TestHealthEndpoints:
         assert "timestamp" in data
         assert "uptime_seconds" in data
         assert "version" in data
-        
+
         assert data["status"] == "healthy"
-        assert data["version"] == "0.1.0a3"
+        assert data["version"] == version_info["tellus_version"]
         assert isinstance(data["uptime_seconds"], (int, float))
         assert data["uptime_seconds"] >= 0
     
     def test_detailed_health_check(self, client: TestClient):
         """Test detailed health endpoint returns comprehensive status."""
-        response = client.get("/api/v0a3/health/detailed")
+        version_info = get_version_info()
+        api_path = version_info["api_path"]
+        response = client.get(f"{api_path}/health/detailed")
         
         assert response.status_code == 200
         data = response.json()
@@ -63,7 +68,9 @@ class TestHealthEndpoints:
     
     def test_api_root_information(self, client: TestClient):
         """Test API root endpoint returns basic information."""
-        response = client.get("/api/v0a3/")
+        version_info = get_version_info()
+        api_path = version_info["api_path"]
+        response = client.get(f"{api_path}/")
         
         assert response.status_code == 200
         data = response.json()
@@ -74,14 +81,16 @@ class TestHealthEndpoints:
             assert field in data
         
         assert data["name"] == "Tellus Climate Data API"
-        assert data["version"] == "0.1.0a3"
-        assert data["docs_url"] == "/api/v0a3/docs"
-        assert data["redoc_url"] == "/api/v0a3/redoc"
-        assert data["health_url"] == "/api/v0a3/health"
+        assert data["version"] == version_info["tellus_version"]
+        assert data["docs_url"] == f"{api_path}/docs"
+        assert data["redoc_url"] == f"{api_path}/redoc"
+        assert data["health_url"] == f"{api_path}/health"
     
     def test_health_check_response_format(self, client: TestClient):
         """Test health check response follows correct schema."""
-        response = client.get("/api/v0a3/health")
+        version_info = get_version_info()
+        api_path = version_info["api_path"]
+        response = client.get(f"{api_path}/health")
         data = response.json()
         
         # Validate timestamp format (should be ISO format)
@@ -97,7 +106,9 @@ class TestHealthEndpoints:
     
     def test_cors_headers_present(self, client: TestClient):
         """Test that CORS headers are properly set."""
-        response = client.get("/api/v0a3/health")
+        version_info = get_version_info()
+        api_path = version_info["api_path"]
+        response = client.get(f"{api_path}/health")
         
         # Check for CORS headers (these should be set by the middleware)
         assert response.status_code == 200
@@ -111,7 +122,9 @@ class TestHealthEndpointErrors:
     def test_health_endpoint_error_resilience(self, client: TestClient):
         """Test that health endpoints handle errors gracefully."""
         # This test ensures the health endpoint returns 200 even if there are issues
-        response = client.get("/api/v0a3/health/detailed")
+        version_info = get_version_info()
+        api_path = version_info["api_path"]
+        response = client.get(f"{api_path}/health/detailed")
         
         assert response.status_code == 200  # Should always return 200
         data = response.json()
@@ -128,8 +141,10 @@ class TestHealthEndpointErrors:
     def test_health_endpoint_resilience(self, client: TestClient):
         """Test that health endpoints are resilient to repeated calls."""
         # Make multiple rapid calls
+        version_info = get_version_info()
+        api_path = version_info["api_path"]
         for _ in range(5):
-            response = client.get("/api/v0a3/health")
+            response = client.get(f"{api_path}/health")
             assert response.status_code == 200
             
             data = response.json()
@@ -142,9 +157,11 @@ class TestHealthMonitoring:
     def test_health_check_timing(self, client: TestClient):
         """Test that health checks respond quickly."""
         import time
-        
+
+        version_info = get_version_info()
+        api_path = version_info["api_path"]
         start_time = time.time()
-        response = client.get("/api/v0a3/health")
+        response = client.get(f"{api_path}/health")
         end_time = time.time()
         
         assert response.status_code == 200
@@ -154,8 +171,10 @@ class TestHealthMonitoring:
     def test_health_check_idempotency(self, client: TestClient):
         """Test that health checks are idempotent."""
         # Multiple calls should return consistent results
-        response1 = client.get("/api/v0a3/health")
-        response2 = client.get("/api/v0a3/health")
+        version_info = get_version_info()
+        api_path = version_info["api_path"]
+        response1 = client.get(f"{api_path}/health")
+        response2 = client.get(f"{api_path}/health")
         
         assert response1.status_code == 200
         assert response2.status_code == 200

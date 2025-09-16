@@ -19,6 +19,10 @@ dependencies = [
     # Data processing and domain layer
     "pydantic>=2.0.0",
     "nc-time-axis>=1.4.1,<2",
+    # Database persistence
+    "sqlalchemy>=2.0.0,<3",
+    "asyncpg>=0.29.0,<0.30",
+    "alembic>=1.13.0,<2",
     # File system and remote access
     "paramiko>=3.5.1,<4",
     # Web API
@@ -116,6 +120,7 @@ api-fixed = { cmd = "uvicorn src.tellus.interfaces.web.main:app --reload --host 
 
 [tool.pixi.feature.test.pypi-dependencies]
 factory-boy = "*"  # Move to Py-PI
+testcontainers = "*"  # For database testing
 
 [tool.pixi.feature.test.dependencies]
 pytest = "*"

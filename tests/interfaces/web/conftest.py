@@ -530,3 +530,10 @@ def temp_project_dir():
 
 
 # Pytest configuration for async tests is in root conftest.py
+
+
+@pytest.fixture
+def api_path():
+    """Get the current API path for tests."""
+    from tellus.interfaces.web.version import get_version_info
+    return get_version_info()["api_path"]

@@ -8,14 +8,15 @@ for the simulation management API.
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import patch
+from tellus.interfaces.web.version import get_version_info
 
 
 class TestSimulationListing:
     """Test simulation listing and filtering."""
     
-    def test_list_simulations_default(self, client: TestClient):
+    def test_list_simulations_default(self, client: TestClient, api_path):
         """Test listing simulations with default parameters."""
-        response = client.get("/api/v0a3/simulations/")
+        response = client.get(f"{api_path}/simulations/")
         
         assert response.status_code == 200
         data = response.json()
@@ -35,9 +36,9 @@ class TestSimulationListing:
         for field in required_fields:
             assert field in sim
     
-    def test_list_simulations_with_pagination(self, client: TestClient):
+    def test_list_simulations_with_pagination(self, client: TestClient, api_path):
         """Test simulation listing with pagination parameters."""
-        response = client.get("/api/v0a3/simulations/?page=1&page_size=1")
+        response = client.get(f"{api_path}/simulations/?page=1&page_size=1")
         
         assert response.status_code == 200
         data = response.json()
@@ -53,9 +54,9 @@ class TestSimulationListing:
         # Should only return 1 simulation
         assert len(data["simulations"]) == 1
     
-    def test_list_simulations_with_search(self, client: TestClient):
+    def test_list_simulations_with_search(self, client: TestClient, api_path):
         """Test simulation listing with search filter."""
-        response = client.get("/api/v0a3/simulations/?search=test-sim-1")
+        response = client.get(f"{api_path}/simulations/?search=test-sim-1")
         
         assert response.status_code == 200
         data = response.json()
@@ -69,27 +70,27 @@ class TestSimulationListing:
         assert len(simulations) == 1
         assert simulations[0]["simulation_id"] == "test-sim-1"
     
-    def test_list_simulations_pagination_validation(self, client: TestClient):
+    def test_list_simulations_pagination_validation(self, client: TestClient, api_path):
         """Test pagination parameter validation."""
         # Invalid page number
-        response = client.get("/api/v0a3/simulations/?page=0")
+        response = client.get(f"{api_path}/simulations/?page=0")
         assert response.status_code == 422
         
         # Invalid page size
-        response = client.get("/api/v0a3/simulations/?page_size=0")
+        response = client.get(f"{api_path}/simulations/?page_size=0")
         assert response.status_code == 422
         
         # Page size too large
-        response = client.get("/api/v0a3/simulations/?page_size=101")
+        response = client.get(f"{api_path}/simulations/?page_size=101")
         assert response.status_code == 422
 
 
 class TestSimulationCreation:
     """Test simulation creation."""
     
-    def test_create_simulation_success(self, client: TestClient, sample_simulation_data):
+    def test_create_simulation_success(self, client: TestClient, api_path, sample_simulation_data):
         """Test successful simulation creation."""
-        response = client.post("/api/v0a3/simulations/", json=sample_simulation_data)
+        response = client.post(f"{api_path}/simulations/", json=sample_simulation_data)
         
         assert response.status_code == 201
         data = response.json()
@@ -101,7 +102,7 @@ class TestSimulationCreation:
         assert data["namelists"] == sample_simulation_data["namelists"]
         assert data["workflows"] == sample_simulation_data["snakemakes"]
     
-    def test_create_simulation_duplicate_id(self, client: TestClient):
+    def test_create_simulation_duplicate_id(self, client: TestClient, api_path):
         """Test creating simulation with duplicate ID fails."""
         duplicate_data = {
             "simulation_id": "test-sim-1",  # This already exists in mock data
@@ -109,13 +110,13 @@ class TestSimulationCreation:
             "attrs": {"experiment": "PI"}
         }
         
-        response = client.post("/api/v0a3/simulations/", json=duplicate_data)
+        response = client.post(f"{api_path}/simulations/", json=duplicate_data)
         
         assert response.status_code == 400
         data = response.json()
         assert "already exists" in data["detail"]
     
-    def test_create_simulation_validation_errors(self, client: TestClient):
+    def test_create_simulation_validation_errors(self, client: TestClient, api_path):
         """Test validation errors in simulation creation."""
         # Missing required field
         invalid_data = {
@@ -124,7 +125,7 @@ class TestSimulationCreation:
             # Missing simulation_id
         }
         
-        response = client.post("/api/v0a3/simulations/", json=invalid_data)
+        response = client.post(f"{api_path}/simulations/", json=invalid_data)
         assert response.status_code == 422
         
         # Empty simulation_id
@@ -133,16 +134,16 @@ class TestSimulationCreation:
             "model_id": "FESOM2"
         }
         
-        response = client.post("/api/v0a3/simulations/", json=invalid_data)
+        response = client.post(f"{api_path}/simulations/", json=invalid_data)
         assert response.status_code == 422
     
-    def test_create_simulation_minimal_data(self, client: TestClient):
+    def test_create_simulation_minimal_data(self, client: TestClient, api_path):
         """Test creating simulation with minimal required data."""
         minimal_data = {
             "simulation_id": "minimal-sim"
         }
         
-        response = client.post("/api/v0a3/simulations/", json=minimal_data)
+        response = client.post(f"{api_path}/simulations/", json=minimal_data)
         
         assert response.status_code == 201
         data = response.json()
@@ -155,9 +156,9 @@ class TestSimulationCreation:
 class TestSimulationRetrieval:
     """Test individual simulation retrieval."""
     
-    def test_get_simulation_success(self, client: TestClient):
+    def test_get_simulation_success(self, client: TestClient, api_path):
         """Test successful simulation retrieval."""
-        response = client.get("/api/v0a3/simulations/test-sim-1")
+        response = client.get(f"{api_path}/simulations/test-sim-1")
         
         assert response.status_code == 200
         data = response.json()
@@ -166,17 +167,17 @@ class TestSimulationRetrieval:
         assert data["attributes"]["model"] == "FESOM2"
         assert data["attributes"]["experiment"] == "PI"
     
-    def test_get_simulation_not_found(self, client: TestClient):
+    def test_get_simulation_not_found(self, client: TestClient, api_path):
         """Test retrieving non-existent simulation."""
-        response = client.get("/api/v0a3/simulations/non-existent")
+        response = client.get(f"{api_path}/simulations/non-existent")
         
         assert response.status_code == 404
         data = response.json()
         assert "not found" in data["detail"]
     
-    def test_get_simulation_case_sensitivity(self, client: TestClient):
+    def test_get_simulation_case_sensitivity(self, client: TestClient, api_path):
         """Test that simulation IDs are case sensitive."""
-        response = client.get("/api/v0a3/simulations/TEST-SIM-1")  # Different case
+        response = client.get(f"{api_path}/simulations/TEST-SIM-1")  # Different case
         
         assert response.status_code == 404
 
@@ -184,14 +185,14 @@ class TestSimulationRetrieval:
 class TestSimulationUpdate:
     """Test simulation updates."""
     
-    def test_update_simulation_success(self, client: TestClient):
+    def test_update_simulation_success(self, client: TestClient, api_path):
         """Test successful simulation update."""
         update_data = {
             "model_id": "Updated-Model",
             "attrs": {"experiment": "Updated-Experiment"}
         }
         
-        response = client.put("/api/v0a3/simulations/test-sim-1", json=update_data)
+        response = client.put(f"{api_path}/simulations/test-sim-1", json=update_data)
         
         assert response.status_code == 200
         data = response.json()
@@ -199,27 +200,27 @@ class TestSimulationUpdate:
         # Note: Mock returns the original data, in real implementation
         # these would be updated
     
-    def test_update_simulation_not_found(self, client: TestClient):
+    def test_update_simulation_not_found(self, client: TestClient, api_path):
         """Test updating non-existent simulation."""
         update_data = {"model_id": "New-Model"}
         
-        response = client.put("/api/v0a3/simulations/non-existent", json=update_data)
+        response = client.put(f"{api_path}/simulations/non-existent", json=update_data)
         
         assert response.status_code == 404
         data = response.json()
         assert "not found" in data["detail"]
     
-    def test_update_simulation_partial(self, client: TestClient):
+    def test_update_simulation_partial(self, client: TestClient, api_path):
         """Test partial simulation update."""
         update_data = {"model_id": "Partial-Update"}
         
-        response = client.put("/api/v0a3/simulations/test-sim-1", json=update_data)
+        response = client.put(f"{api_path}/simulations/test-sim-1", json=update_data)
         
         assert response.status_code == 200
     
-    def test_update_simulation_empty_data(self, client: TestClient):
+    def test_update_simulation_empty_data(self, client: TestClient, api_path):
         """Test update with empty data."""
-        response = client.put("/api/v0a3/simulations/test-sim-1", json={})
+        response = client.put(f"{api_path}/simulations/test-sim-1", json={})
         
         assert response.status_code == 200
 
@@ -227,16 +228,16 @@ class TestSimulationUpdate:
 class TestSimulationDeletion:
     """Test simulation deletion."""
     
-    def test_delete_simulation_success(self, client: TestClient):
+    def test_delete_simulation_success(self, client: TestClient, api_path):
         """Test successful simulation deletion."""
-        response = client.delete("/api/v0a3/simulations/test-sim-1")
+        response = client.delete(f"{api_path}/simulations/test-sim-1")
         
         assert response.status_code == 204
         assert response.content == b""
     
-    def test_delete_simulation_not_found(self, client: TestClient):
+    def test_delete_simulation_not_found(self, client: TestClient, api_path):
         """Test deleting non-existent simulation."""
-        response = client.delete("/api/v0a3/simulations/non-existent")
+        response = client.delete(f"{api_path}/simulations/non-existent")
         
         assert response.status_code == 404
         data = response.json()
@@ -246,31 +247,31 @@ class TestSimulationDeletion:
 class TestSimulationErrorHandling:
     """Test error handling for simulation endpoints."""
     
-    def test_service_error_handling(self, client: TestClient, mock_simulation_service):
+    def test_service_error_handling(self, client: TestClient, api_path, mock_simulation_service):
         """Test handling of service layer errors."""
         # Configure mock to raise exception
         mock_simulation_service.list_simulations.side_effect = Exception("Service error")
         
-        response = client.get("/api/v0a3/simulations/")
+        response = client.get(f"{api_path}/simulations/")
         
         assert response.status_code == 500
         data = response.json()
         assert "Failed to list simulations" in data["detail"]
     
-    def test_invalid_json_handling(self, client: TestClient):
+    def test_invalid_json_handling(self, client: TestClient, api_path):
         """Test handling of invalid JSON in requests."""
         response = client.post(
-            "/api/v0a3/simulations/",
+            f"{api_path}/simulations/",
             content="invalid json",
             headers={"Content-Type": "application/json"}
         )
         
         assert response.status_code == 422
     
-    def test_content_type_handling(self, client: TestClient):
+    def test_content_type_handling(self, client: TestClient, api_path):
         """Test handling of incorrect content types."""
         response = client.post(
-            "/api/v0a3/simulations/",
+            f"{api_path}/simulations/",
             content="simulation_id=test",
             headers={"Content-Type": "application/x-www-form-urlencoded"}
         )
@@ -282,9 +283,9 @@ class TestSimulationErrorHandling:
 class TestSimulationCompatibility:
     """Test backward compatibility and API consistency."""
     
-    def test_simulation_dto_properties(self, client: TestClient):
+    def test_simulation_dto_properties(self, client: TestClient, api_path):
         """Test that DTO properties work correctly."""
-        response = client.get("/api/v0a3/simulations/test-sim-1")
+        response = client.get(f"{api_path}/simulations/test-sim-1")
         
         assert response.status_code == 200
         data = response.json()
@@ -294,9 +295,9 @@ class TestSimulationCompatibility:
         assert isinstance(data.get("uid"), str)
         assert isinstance(data.get("attributes"), dict)
     
-    def test_list_response_structure(self, client: TestClient):
+    def test_list_response_structure(self, client: TestClient, api_path):
         """Test that list response follows expected structure."""
-        response = client.get("/api/v0a3/simulations/")
+        response = client.get(f"{api_path}/simulations/")
         
         assert response.status_code == 200
         data = response.json()
@@ -316,9 +317,9 @@ class TestSimulationCompatibility:
 class TestSimulationAttributes:
     """Test simulation attribute management endpoints."""
     
-    def test_get_all_attributes_success(self, client: TestClient):
+    def test_get_all_attributes_success(self, client: TestClient, api_path):
         """Test getting all attributes of a simulation."""
-        response = client.get("/api/v0a3/simulations/sim-001/attributes")
+        response = client.get(f"{api_path}/simulations/sim-001/attributes")
         
         assert response.status_code == 200
         data = response.json()
@@ -334,17 +335,17 @@ class TestSimulationAttributes:
         assert attributes["model"] == "FESOM"
         assert attributes["resolution"] == "T127"
     
-    def test_get_all_attributes_simulation_not_found(self, client: TestClient):
+    def test_get_all_attributes_simulation_not_found(self, client: TestClient, api_path):
         """Test getting attributes of a non-existent simulation."""
-        response = client.get("/api/v0a3/simulations/nonexistent/attributes")
+        response = client.get(f"{api_path}/simulations/nonexistent/attributes")
         
         assert response.status_code == 404
         data = response.json()
         assert "not found" in data["detail"].lower()
     
-    def test_get_specific_attribute_success(self, client: TestClient):
+    def test_get_specific_attribute_success(self, client: TestClient, api_path):
         """Test getting a specific attribute of a simulation."""
-        response = client.get("/api/v0a3/simulations/sim-001/attributes/model")
+        response = client.get(f"{api_path}/simulations/sim-001/attributes/model")
         
         assert response.status_code == 200
         data = response.json()
@@ -355,31 +356,31 @@ class TestSimulationAttributes:
         assert data["key"] == "model"
         assert data["value"] == "FESOM"
     
-    def test_get_specific_attribute_not_found(self, client: TestClient):
+    def test_get_specific_attribute_not_found(self, client: TestClient, api_path):
         """Test getting a non-existent attribute."""
-        response = client.get("/api/v0a3/simulations/sim-001/attributes/nonexistent")
+        response = client.get(f"{api_path}/simulations/sim-001/attributes/nonexistent")
         
         assert response.status_code == 404
         data = response.json()
         assert "not found" in data["detail"].lower()
         assert "nonexistent" in data["detail"]
     
-    def test_get_specific_attribute_simulation_not_found(self, client: TestClient):
+    def test_get_specific_attribute_simulation_not_found(self, client: TestClient, api_path):
         """Test getting attribute of a non-existent simulation."""
-        response = client.get("/api/v0a3/simulations/nonexistent/attributes/model")
+        response = client.get(f"{api_path}/simulations/nonexistent/attributes/model")
         
         assert response.status_code == 404
         data = response.json()
         assert "not found" in data["detail"].lower()
     
-    def test_set_attribute_via_put_success(self, client: TestClient):
+    def test_set_attribute_via_put_success(self, client: TestClient, api_path):
         """Test setting an attribute using PUT method."""
         attribute_data = {
             "key": "experiment",
             "value": "test-run"
         }
         
-        response = client.put("/api/v0a3/simulations/sim-001/attributes/experiment", json=attribute_data)
+        response = client.put(f"{api_path}/simulations/sim-001/attributes/experiment", json=attribute_data)
         
         assert response.status_code == 200
         data = response.json()
@@ -388,40 +389,40 @@ class TestSimulationAttributes:
         assert data["key"] == "experiment"
         assert data["value"] == "test-run"
     
-    def test_set_attribute_key_mismatch(self, client: TestClient):
+    def test_set_attribute_key_mismatch(self, client: TestClient, api_path):
         """Test setting attribute with mismatched key in URL vs body."""
         attribute_data = {
             "key": "different_key",
             "value": "test-value"
         }
         
-        response = client.put("/api/v0a3/simulations/sim-001/attributes/experiment", json=attribute_data)
+        response = client.put(f"{api_path}/simulations/sim-001/attributes/experiment", json=attribute_data)
         
         assert response.status_code == 400
         data = response.json()
         assert "must match" in data["detail"]
     
-    def test_set_attribute_simulation_not_found(self, client: TestClient):
+    def test_set_attribute_simulation_not_found(self, client: TestClient, api_path):
         """Test setting attribute on non-existent simulation."""
         attribute_data = {
             "key": "experiment",
             "value": "test-run"
         }
         
-        response = client.put("/api/v0a3/simulations/nonexistent/attributes/experiment", json=attribute_data)
+        response = client.put(f"{api_path}/simulations/nonexistent/attributes/experiment", json=attribute_data)
         
         assert response.status_code == 404
         data = response.json()
         assert "not found" in data["detail"].lower()
     
-    def test_add_attribute_via_post_success(self, client: TestClient):
+    def test_add_attribute_via_post_success(self, client: TestClient, api_path):
         """Test adding a new attribute using POST method."""
         attribute_data = {
             "key": "new_attribute",
             "value": "new_value"
         }
         
-        response = client.post("/api/v0a3/simulations/sim-001/attributes", json=attribute_data)
+        response = client.post(f"{api_path}/simulations/sim-001/attributes", json=attribute_data)
         
         assert response.status_code == 201
         data = response.json()
@@ -430,27 +431,27 @@ class TestSimulationAttributes:
         assert data["key"] == "new_attribute"
         assert data["value"] == "new_value"
     
-    def test_add_attribute_simulation_not_found(self, client: TestClient):
+    def test_add_attribute_simulation_not_found(self, client: TestClient, api_path):
         """Test adding attribute to non-existent simulation."""
         attribute_data = {
             "key": "new_attribute",
             "value": "new_value"
         }
         
-        response = client.post("/api/v0a3/simulations/nonexistent/attributes", json=attribute_data)
+        response = client.post(f"{api_path}/simulations/nonexistent/attributes", json=attribute_data)
         
         assert response.status_code == 404
         data = response.json()
         assert "not found" in data["detail"].lower()
     
-    def test_add_attribute_invalid_data(self, client: TestClient):
+    def test_add_attribute_invalid_data(self, client: TestClient, api_path):
         """Test adding attribute with invalid data."""
         invalid_data = {
             "key": "",  # Empty key should fail validation
             "value": "some_value"
         }
         
-        response = client.post("/api/v0a3/simulations/sim-001/attributes", json=invalid_data)
+        response = client.post(f"{api_path}/simulations/sim-001/attributes", json=invalid_data)
         
         # Should fail validation (422)
         assert response.status_code == 422
@@ -459,7 +460,7 @@ class TestSimulationAttributes:
 class TestSimulationLocationAssociations:
     """Test simulation-location association endpoints."""
     
-    def test_associate_simulation_locations(self, client: TestClient):
+    def test_associate_simulation_locations(self, client: TestClient, api_path):
         """Test associating a simulation with locations."""
         association_data = {
             "simulation_id": "sim-001",
@@ -467,7 +468,7 @@ class TestSimulationLocationAssociations:
             "context_overrides": {"key1": "value1"}
         }
         
-        response = client.post("/api/v0a3/simulations/sim-001/locations", json=association_data)
+        response = client.post(f"{api_path}/simulations/sim-001/locations", json=association_data)
         
         assert response.status_code == 200
         data = response.json()
@@ -476,7 +477,7 @@ class TestSimulationLocationAssociations:
         assert data["simulation_id"] == "sim-001"
         assert "locations" in data
     
-    def test_associate_simulation_locations_id_mismatch(self, client: TestClient):
+    def test_associate_simulation_locations_id_mismatch(self, client: TestClient, api_path):
         """Test association with mismatched simulation IDs."""
         association_data = {
             "simulation_id": "different-sim",  # Different from URL
@@ -484,13 +485,13 @@ class TestSimulationLocationAssociations:
             "context_overrides": {}
         }
         
-        response = client.post("/api/v0a3/simulations/sim-001/locations", json=association_data)
+        response = client.post(f"{api_path}/simulations/sim-001/locations", json=association_data)
         
         assert response.status_code == 400
         data = response.json()
         assert "must match" in data["detail"]
     
-    def test_associate_simulation_locations_not_found(self, client: TestClient):
+    def test_associate_simulation_locations_not_found(self, client: TestClient, api_path):
         """Test associating locations with nonexistent simulation."""
         association_data = {
             "simulation_id": "nonexistent",
@@ -498,15 +499,15 @@ class TestSimulationLocationAssociations:
             "context_overrides": {}
         }
         
-        response = client.post("/api/v0a3/simulations/nonexistent/locations", json=association_data)
+        response = client.post(f"{api_path}/simulations/nonexistent/locations", json=association_data)
         
         assert response.status_code == 404
         data = response.json()
         assert "not found" in data["detail"].lower()
     
-    def test_disassociate_simulation_location(self, client: TestClient):
+    def test_disassociate_simulation_location(self, client: TestClient, api_path):
         """Test removing a location association."""
-        response = client.delete("/api/v0a3/simulations/sim-001/locations/location1")
+        response = client.delete(f"{api_path}/simulations/sim-001/locations/location1")
         
         assert response.status_code == 200
         data = response.json()
@@ -515,15 +516,15 @@ class TestSimulationLocationAssociations:
         assert data["simulation_id"] == "sim-001"
         assert "locations" in data
     
-    def test_disassociate_simulation_location_not_found(self, client: TestClient):
+    def test_disassociate_simulation_location_not_found(self, client: TestClient, api_path):
         """Test disassociating location from nonexistent simulation."""
-        response = client.delete("/api/v0a3/simulations/nonexistent/locations/location1")
+        response = client.delete(f"{api_path}/simulations/nonexistent/locations/location1")
         
         assert response.status_code == 404
         data = response.json()
         assert "not found" in data["detail"].lower()
     
-    def test_update_simulation_location_context(self, client: TestClient):
+    def test_update_simulation_location_context(self, client: TestClient, api_path):
         """Test updating location context."""
         context_data = {
             "context_overrides": {
@@ -532,7 +533,7 @@ class TestSimulationLocationAssociations:
             }
         }
         
-        response = client.put("/api/v0a3/simulations/sim-001/locations/location1/context", json=context_data)
+        response = client.put(f"{api_path}/simulations/sim-001/locations/location1/context", json=context_data)
         
         assert response.status_code == 200
         data = response.json()
@@ -541,13 +542,13 @@ class TestSimulationLocationAssociations:
         assert data["simulation_id"] == "sim-001"
         assert "locations" in data
     
-    def test_update_simulation_location_context_not_found(self, client: TestClient):
+    def test_update_simulation_location_context_not_found(self, client: TestClient, api_path):
         """Test updating context for nonexistent simulation."""
         context_data = {
             "context_overrides": {"key": "value"}
         }
         
-        response = client.put("/api/v0a3/simulations/nonexistent/locations/location1/context", json=context_data)
+        response = client.put(f"{api_path}/simulations/nonexistent/locations/location1/context", json=context_data)
         
         assert response.status_code == 404
         data = response.json()
@@ -557,9 +558,9 @@ class TestSimulationLocationAssociations:
 class TestSimulationFiles:
     """Test simulation files endpoints."""
     
-    def test_get_simulation_files(self, client: TestClient):
+    def test_get_simulation_files(self, client: TestClient, api_path):
         """Test getting files for a simulation."""
-        response = client.get("/api/v0a3/simulations/sim-001/files")
+        response = client.get(f"{api_path}/simulations/sim-001/files")
         
         assert response.status_code == 200
         data = response.json()
@@ -570,9 +571,9 @@ class TestSimulationFiles:
         assert data["simulation_id"] == "sim-001"
         assert isinstance(data["files"], list)
     
-    def test_get_simulation_files_not_found(self, client: TestClient):
+    def test_get_simulation_files_not_found(self, client: TestClient, api_path):
         """Test getting files for nonexistent simulation."""
-        response = client.get("/api/v0a3/simulations/nonexistent/files")
+        response = client.get(f"{api_path}/simulations/nonexistent/files")
         
         assert response.status_code == 404
         data = response.json()
@@ -585,7 +586,7 @@ class TestSimulationArchives:
     
 
 
-    def test_create_archive(self, client: TestClient, mock_simulation_service, mock_file_service):
+    def test_create_archive(self, client: TestClient, api_path, mock_simulation_service, mock_file_service):
         """Test creating an archive for a simulation."""
         from tellus.domain.entities.simulation_file import SimulationFile, FileType
         from datetime import datetime
@@ -610,7 +611,7 @@ class TestSimulationArchives:
             "archive_type": "single"
         }
         
-        response = client.post("/api/v0a3/simulations/sim-001/archives", json=request_data)
+        response = client.post(f"{api_path}/simulations/sim-001/archives", json=request_data)
         
         assert response.status_code == 201
         data = response.json()
@@ -621,7 +622,7 @@ class TestSimulationArchives:
         mock_file_service.create_archive.assert_called_once()
     
 
-    def test_create_archive_with_location(self, client: TestClient, mock_simulation_service, mock_file_service):
+    def test_create_archive_with_location(self, client: TestClient, api_path, mock_simulation_service, mock_file_service):
         """Test creating an archive with location and pattern."""
         from tellus.domain.entities.simulation_file import SimulationFile, FileType
         from datetime import datetime
@@ -650,7 +651,7 @@ class TestSimulationArchives:
             "archive_type": "split-tar"
         }
         
-        response = client.post("/api/v0a3/simulations/sim-001/archives", json=request_data)
+        response = client.post(f"{api_path}/simulations/sim-001/archives", json=request_data)
         
         assert response.status_code == 201
         data = response.json()
@@ -661,7 +662,7 @@ class TestSimulationArchives:
         assert data["archive_type"] == "split-tar"
     
 
-    def test_create_archive_conflict(self, client: TestClient, mock_simulation_service, mock_file_service):
+    def test_create_archive_conflict(self, client: TestClient, api_path, mock_simulation_service, mock_file_service):
         """Test creating an archive that already exists."""
         mock_file_service.create_archive.side_effect = ValueError("Archive already exists")
         
@@ -670,14 +671,14 @@ class TestSimulationArchives:
             "archive_type": "single"
         }
         
-        response = client.post("/api/v0a3/simulations/sim-001/archives", json=request_data)
+        response = client.post(f"{api_path}/simulations/sim-001/archives", json=request_data)
         
         assert response.status_code == 409
         data = response.json()
         assert "already exists" in data["detail"]
     
 
-    def test_create_archive_simulation_not_found(self, client: TestClient, mock_simulation_service, mock_file_service):
+    def test_create_archive_simulation_not_found(self, client: TestClient, api_path, mock_simulation_service, mock_file_service):
         """Test creating archive for nonexistent simulation."""
         mock_file_service.create_archive.side_effect = ValueError("Simulation not found")
         
@@ -686,14 +687,14 @@ class TestSimulationArchives:
             "archive_type": "single"
         }
         
-        response = client.post("/api/v0a3/simulations/nonexistent/archives", json=request_data)
+        response = client.post(f"{api_path}/simulations/nonexistent/archives", json=request_data)
         
         assert response.status_code == 404
         data = response.json()
         assert "not found" in data["detail"].lower()
     
 
-    def test_list_archives(self, client: TestClient, mock_simulation_service, mock_file_service):
+    def test_list_archives(self, client: TestClient, api_path, mock_simulation_service, mock_file_service):
         """Test listing archives for a simulation."""
         from tellus.domain.entities.simulation_file import SimulationFile, FileType
         from datetime import datetime
@@ -727,7 +728,7 @@ class TestSimulationArchives:
         
         mock_file_service.list_simulation_archives.return_value = mock_archives
         
-        response = client.get("/api/v0a3/simulations/sim-001/archives")
+        response = client.get(f"{api_path}/simulations/sim-001/archives")
         
         assert response.status_code == 200
         data = response.json()
@@ -749,11 +750,11 @@ class TestSimulationArchives:
         mock_file_service.list_simulation_archives.assert_called_once_with("sim-001")
     
 
-    def test_list_archives_empty(self, client: TestClient, mock_simulation_service, mock_file_service):
+    def test_list_archives_empty(self, client: TestClient, api_path, mock_simulation_service, mock_file_service):
         """Test listing archives when none exist."""
         mock_file_service.list_simulation_archives.return_value = []
         
-        response = client.get("/api/v0a3/simulations/sim-001/archives")
+        response = client.get(f"{api_path}/simulations/sim-001/archives")
         
         assert response.status_code == 200
         data = response.json()
@@ -761,18 +762,18 @@ class TestSimulationArchives:
         assert len(data["archives"]) == 0
     
 
-    def test_list_archives_simulation_not_found(self, client: TestClient, mock_simulation_service, mock_file_service):
+    def test_list_archives_simulation_not_found(self, client: TestClient, api_path, mock_simulation_service, mock_file_service):
         """Test listing archives for nonexistent simulation."""
         mock_file_service.list_simulation_archives.side_effect = ValueError("Simulation not found")
         
-        response = client.get("/api/v0a3/simulations/nonexistent/archives")
+        response = client.get(f"{api_path}/simulations/nonexistent/archives")
         
         assert response.status_code == 404
         data = response.json()
         assert "not found" in data["detail"].lower()
     
 
-    def test_get_archive(self, client: TestClient, mock_simulation_service, mock_file_service):
+    def test_get_archive(self, client: TestClient, api_path, mock_simulation_service, mock_file_service):
         """Test getting details of a specific archive."""
         from tellus.domain.entities.simulation_file import SimulationFile, FileType
         from datetime import datetime
@@ -792,7 +793,7 @@ class TestSimulationArchives:
         
         mock_file_service.get_archive.return_value = mock_archive
         
-        response = client.get("/api/v0a3/simulations/sim-001/archives/specific_archive")
+        response = client.get(f"{api_path}/simulations/sim-001/archives/specific_archive")
         
         assert response.status_code == 200
         data = response.json()
@@ -806,18 +807,18 @@ class TestSimulationArchives:
         mock_file_service.get_archive.assert_called_once_with("specific_archive")
     
 
-    def test_get_archive_not_found(self, client: TestClient, mock_simulation_service, mock_file_service):
+    def test_get_archive_not_found(self, client: TestClient, api_path, mock_simulation_service, mock_file_service):
         """Test getting details of nonexistent archive."""
         mock_file_service.get_archive.return_value = None
         
-        response = client.get("/api/v0a3/simulations/sim-001/archives/nonexistent")
+        response = client.get(f"{api_path}/simulations/sim-001/archives/nonexistent")
         
         assert response.status_code == 404
         data = response.json()
         assert "not found" in data["detail"]
     
 
-    def test_delete_archive(self, client: TestClient, mock_simulation_service, mock_file_service):
+    def test_delete_archive(self, client: TestClient, api_path, mock_simulation_service, mock_file_service):
         """Test deleting an archive."""
         from tellus.domain.entities.simulation_file import SimulationFile, FileType
         from datetime import datetime
@@ -831,7 +832,7 @@ class TestSimulationArchives:
         mock_file_service.get_archive.return_value = mock_archive
         mock_file_service.remove_file.return_value = None
         
-        response = client.delete("/api/v0a3/simulations/sim-001/archives/archive_to_delete")
+        response = client.delete(f"{api_path}/simulations/sim-001/archives/archive_to_delete")
         
         assert response.status_code == 200
         data = response.json()
@@ -842,11 +843,11 @@ class TestSimulationArchives:
         mock_file_service.remove_file.assert_called_once_with("archive_to_delete")
     
 
-    def test_delete_archive_not_found(self, client: TestClient, mock_simulation_service, mock_file_service):
+    def test_delete_archive_not_found(self, client: TestClient, api_path, mock_simulation_service, mock_file_service):
         """Test deleting nonexistent archive."""
         mock_file_service.get_archive.return_value = None
         
-        response = client.delete("/api/v0a3/simulations/sim-001/archives/nonexistent")
+        response = client.delete(f"{api_path}/simulations/sim-001/archives/nonexistent")
         
         assert response.status_code == 404
         data = response.json()
@@ -856,7 +857,7 @@ class TestSimulationArchives:
         mock_file_service.remove_file.assert_not_called()
     
 
-    def test_delete_archive_service_error(self, client: TestClient, mock_simulation_service, mock_file_service):
+    def test_delete_archive_service_error(self, client: TestClient, api_path, mock_simulation_service, mock_file_service):
         """Test delete archive with service error."""
         from tellus.domain.entities.simulation_file import SimulationFile, FileType
         from datetime import datetime
@@ -870,7 +871,7 @@ class TestSimulationArchives:
         mock_file_service.get_archive.return_value = mock_archive
         mock_file_service.remove_file.side_effect = Exception("Deletion failed")
         
-        response = client.delete("/api/v0a3/simulations/sim-001/archives/problematic_archive")
+        response = client.delete(f"{api_path}/simulations/sim-001/archives/problematic_archive")
         
         assert response.status_code == 500
         data = response.json()
@@ -915,7 +916,7 @@ class TestArchiveContent:
         ]
         mock_file_service.get_file_children.return_value = child_files
         
-        response = client.get("/api/v0a3/simulations/sim-001/archives/test_archive/contents")
+        response = client.get(f"{api_path}/simulations/sim-001/archives/test_archive/contents")
         
         assert response.status_code == 200
         data = response.json()
@@ -956,7 +957,7 @@ class TestArchiveContent:
         mock_file_service.get_file_children.return_value = child_files
         
         # Test with file_filter
-        response = client.get("/api/v0a3/simulations/sim-001/archives/test_archive/contents?file_filter=*.nc")
+        response = client.get(f"{api_path}/simulations/sim-001/archives/test_archive/contents?file_filter=*.nc")
         
         assert response.status_code == 200
         data = response.json()
@@ -968,7 +969,7 @@ class TestArchiveContent:
         """Test listing contents of non-existent archive."""
         mock_file_service.get_archive.return_value = None
         
-        response = client.get("/api/v0a3/simulations/sim-001/archives/nonexistent/contents")
+        response = client.get(f"{api_path}/simulations/sim-001/archives/nonexistent/contents")
         
         assert response.status_code == 404
         data = response.json()
@@ -991,7 +992,7 @@ class TestArchiveContent:
         ]
         mock_file_service.get_file_children.return_value = existing_children
         
-        response = client.post("/api/v0a3/simulations/sim-001/archives/test_archive/index", json={"force": False})
+        response = client.post(f"{api_path}/simulations/sim-001/archives/test_archive/index", json={"force": False})
         
         assert response.status_code == 200
         data = response.json()
@@ -1011,7 +1012,7 @@ class TestArchiveContent:
         mock_file_service.get_archive.return_value = mock_archive
         mock_file_service.get_file_children.return_value = []
         
-        response = client.post("/api/v0a3/simulations/sim-001/archives/test_archive/index", json={"force": True})
+        response = client.post(f"{api_path}/simulations/sim-001/archives/test_archive/index", json={"force": True})
         
         assert response.status_code == 200
         data = response.json()
@@ -1023,7 +1024,7 @@ class TestArchiveContent:
         """Test indexing non-existent archive."""
         mock_file_service.get_archive.return_value = None
         
-        response = client.post("/api/v0a3/simulations/sim-001/archives/nonexistent/index", json={"force": False})
+        response = client.post(f"{api_path}/simulations/sim-001/archives/nonexistent/index", json={"force": False})
         
         assert response.status_code == 404
         data = response.json()
@@ -1062,7 +1063,7 @@ class TestFileManagement:
         ]
         mock_file_service.get_simulation_files.return_value = files
         
-        response = client.get("/api/v0a3/simulations/sim-001/files")
+        response = client.get(f"{api_path}/simulations/sim-001/files")
         
         assert response.status_code == 200
         data = response.json()
@@ -1089,7 +1090,7 @@ class TestFileManagement:
         mock_file_service.get_simulation_files.return_value = files
         
         # Test with content_type filter
-        response = client.get("/api/v0a3/simulations/sim-001/files?content_type=output")
+        response = client.get(f"{api_path}/simulations/sim-001/files?content_type=output")
         
         assert response.status_code == 200
         data = response.json()
@@ -1113,7 +1114,7 @@ class TestFileManagement:
             "overwrite_existing": True
         }
         
-        response = client.post("/api/v0a3/simulations/sim-001/files/register", json=request_data)
+        response = client.post(f"{api_path}/simulations/sim-001/files/register", json=request_data)
         
         assert response.status_code == 201
         data = response.json()
@@ -1133,7 +1134,7 @@ class TestFileManagement:
         
         request_data = {"archive_id": "nonexistent"}
         
-        response = client.post("/api/v0a3/simulations/sim-001/files/register", json=request_data)
+        response = client.post(f"{api_path}/simulations/sim-001/files/register", json=request_data)
         
         assert response.status_code == 404
 
@@ -1158,7 +1159,7 @@ class TestFileManagement:
         
         request_data = {"archive_id": "test_archive"}
         
-        response = client.delete("/api/v0a3/simulations/sim-001/files/unregister", json=request_data)
+        response = client.delete(f"{api_path}/simulations/sim-001/files/unregister", json=request_data)
         
         assert response.status_code == 200
         data = response.json()
@@ -1197,7 +1198,7 @@ class TestFileManagement:
         ]
         mock_file_service.get_simulation_files.return_value = files
         
-        response = client.get("/api/v0a3/simulations/sim-001/files/status")
+        response = client.get(f"{api_path}/simulations/sim-001/files/status")
         
         assert response.status_code == 200
         data = response.json()
