@@ -28,8 +28,8 @@ def postgres_container_session():
 async def setup_test_database(postgres_container_session):
     """Set up test database configuration for all repository tests."""
     db_url = postgres_container_session.get_connection_url()
-    # Convert psycopg2 URL to asyncpg URL
-    async_db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
+    # Convert psycopg2 URL to psycopg async URL
+    async_db_url = db_url.replace("postgresql://", "postgresql+psycopg://")
 
     config = DatabaseConfig.from_url(async_db_url)
     manager = DatabaseManager(config)

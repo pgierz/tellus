@@ -5,10 +5,7 @@ import sys
 from pathlib import Path
 
 import rich_click as click
-from ..core.cli import console
-
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
+from ..interfaces.cli.main import console
 
 
 @click.group()

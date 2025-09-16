@@ -27,8 +27,8 @@ def postgres_container():
 async def db_manager(postgres_container):
     """Create database manager for testing."""
     db_url = postgres_container.get_connection_url()
-    # Convert psycopg2 URL to asyncpg URL
-    async_db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
+    # Convert psycopg2 URL to psycopg async URL
+    async_db_url = db_url.replace("postgresql://", "postgresql+psycopg://")
 
     config = DatabaseConfig.from_url(async_db_url)
     manager = DatabaseManager(config)

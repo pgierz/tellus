@@ -67,7 +67,7 @@ class DatabaseConfig:
         return config
 
     def get_database_url(self) -> str:
-        """Construct database URL for asyncpg."""
+        """Construct database URL for psycopg."""
         if hasattr(self, 'database_url'):
             return self.database_url
 
@@ -79,7 +79,7 @@ class DatabaseConfig:
             auth = self.username
 
         return (
-            f"postgresql+asyncpg://{auth}@{self.host}:{self.port}/{self.database}"
+            f"postgresql+psycopg://{auth}@{self.host}:{self.port}/{self.database}"
             f"?sslmode={self.ssl_mode}"
         )
 

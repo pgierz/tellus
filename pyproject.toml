@@ -21,7 +21,7 @@ dependencies = [
     "nc-time-axis>=1.4.1,<2",
     # Database persistence
     "sqlalchemy>=2.0.0,<3",
-    "asyncpg>=0.29.0,<0.30",
+    "psycopg[binary]>=3.1.0,<4",
     "alembic>=1.13.0,<2",
     # File system and remote access
     "paramiko>=3.5.1,<4",
