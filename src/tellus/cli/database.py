@@ -30,7 +30,7 @@ def init(database_url, drop_tables):
 
     async def run_init():
         try:
-            from ...infrastructure.database.config import DatabaseConfig, DatabaseManager
+            from tellus.infrastructure.database.config import DatabaseConfig, DatabaseManager
 
             # Setup database configuration
             if database_url:
@@ -116,9 +116,9 @@ def status(database_url):
 
     async def run_status():
         try:
-            from ...infrastructure.database.config import DatabaseConfig, DatabaseManager
-            from ...infrastructure.repositories.postgres_simulation_repository import PostgresSimulationRepository
-            from ...infrastructure.repositories.postgres_location_repository import PostgresLocationRepository
+            from tellus.infrastructure.database.config import DatabaseConfig, DatabaseManager
+            from tellus.infrastructure.repositories.postgres_simulation_repository import PostgresSimulationRepository
+            from tellus.infrastructure.repositories.postgres_location_repository import PostgresLocationRepository
 
             # Setup database configuration
             if database_url:
@@ -176,7 +176,7 @@ def backup(output_file, database_url, include_system_tables):
     import tempfile
 
     try:
-        from ...infrastructure.database.config import DatabaseConfig
+        from tellus.infrastructure.database.config import DatabaseConfig
 
         # Setup database configuration
         if database_url:
@@ -277,7 +277,7 @@ def restore(input_file, database_url, drop_existing):
     import tempfile
 
     try:
-        from ...infrastructure.database.config import DatabaseConfig
+        from tellus.infrastructure.database.config import DatabaseConfig
 
         # Setup database configuration
         if database_url:
@@ -344,9 +344,9 @@ def restore(input_file, database_url, drop_existing):
 async def _show_status(db_config):
     """Helper function to show database status."""
     try:
-        from ...infrastructure.database.config import DatabaseManager
-        from ...infrastructure.repositories.postgres_simulation_repository import PostgresSimulationRepository
-        from ...infrastructure.repositories.postgres_location_repository import PostgresLocationRepository
+        from tellus.infrastructure.database.config import DatabaseManager
+        from tellus.infrastructure.repositories.postgres_simulation_repository import PostgresSimulationRepository
+        from tellus.infrastructure.repositories.postgres_location_repository import PostgresLocationRepository
 
         db_manager = DatabaseManager(db_config)
 

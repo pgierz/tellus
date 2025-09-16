@@ -6,7 +6,7 @@ for PostgreSQL using SQLAlchemy 2.0 async patterns.
 """
 
 import os
-from typing import Optional, AsyncGenerator
+from typing import Optional
 from urllib.parse import quote_plus
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -132,16 +132,9 @@ class DatabaseManager:
         async with self.engine.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
 
-    async def get_session(self) -> AsyncGenerator[AsyncSession, None]:
-        """Get an async database session."""
-        async with self.session_factory() as session:
-            try:
-                yield session
-            except Exception:
-                await session.rollback()
-                raise
-            finally:
-                await session.close()
+    def get_session(self):
+        """Get an async database session context manager."""
+        return self.session_factory()
 
     async def close(self):
         """Close the database engine."""
@@ -171,8 +164,7 @@ def set_database_manager(manager: DatabaseManager):
     _db_manager = manager
 
 
-async def get_session() -> AsyncGenerator[AsyncSession, None]:
+def get_session():
     """Get a database session from the global manager."""
     manager = get_database_manager()
-    async with manager.get_session() as session:
-        yield session
+    return manager.get_session()

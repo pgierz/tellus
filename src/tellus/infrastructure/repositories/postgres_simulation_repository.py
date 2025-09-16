@@ -87,8 +87,15 @@ class PostgresSimulationRepository(ISimulationRepository):
 
     async def get_by_id(self, simulation_id: str) -> Optional[SimulationEntity]:
         """Retrieve a simulation by its ID."""
-        session = await self._get_session()
+        if self._session:
+            return await self._get_by_id_with_session(self._session, simulation_id)
+        else:
+            db_manager = self._get_db_manager()
+            async with db_manager.get_session() as session:
+                return await self._get_by_id_with_session(session, simulation_id)
 
+    async def _get_by_id_with_session(self, session: AsyncSession, simulation_id: str) -> Optional[SimulationEntity]:
+        """Get by ID with provided session."""
         try:
             stmt = select(SimulationModel).where(
                 SimulationModel.simulation_id == simulation_id
