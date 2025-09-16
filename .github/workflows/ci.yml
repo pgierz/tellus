@@ -31,10 +31,20 @@ jobs:
     - name: Run unit tests
       run: pixi run -e ${{ matrix.pixi-environment }} test
     
-    - name: Run CLI integration tests
+    - name: Run CLI integration tests (direct mode)
       run: pixi run -e ${{ matrix.pixi-environment }} pytest tests/test_cli_integration_working.py -v --cov=src/tellus/interfaces/cli --cov-append
       
-    - name: Run working CLI specification tests
+    - name: Run CLI integration tests (REST API mode)
+      env:
+        TELLUS_CLI_USE_REST_API: true
+      run: pixi run -e ${{ matrix.pixi-environment }} pytest tests/test_cli_integration_working.py -v --cov=src/tellus/interfaces/cli --cov-append
+      
+    - name: Run working CLI specification tests (direct mode)
+      run: pixi run -e ${{ matrix.pixi-environment }} pytest tests/test_cli_specification.py -v --cov=src/tellus/interfaces/cli --cov-append
+      
+    - name: Run working CLI specification tests (REST API mode)
+      env:
+        TELLUS_CLI_USE_REST_API: true
       run: pixi run -e ${{ matrix.pixi-environment }} pytest tests/test_cli_specification.py -v --cov=src/tellus/interfaces/cli --cov-append
     
     - name: Upload coverage reports
@@ -85,3 +95,4 @@ jobs:
     
     - name: Verify build
       run: python -m twine check dist/*
+

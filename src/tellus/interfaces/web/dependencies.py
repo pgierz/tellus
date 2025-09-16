@@ -10,6 +10,7 @@ from fastapi import Request, Depends
 from ...application.container import ServiceContainer
 from ...application.services.simulation_service import SimulationApplicationService
 from ...application.services.location_service import LocationApplicationService
+from ...application.services.unified_file_service import UnifiedFileService
 
 
 def get_service_container(request: Request) -> ServiceContainer:
@@ -59,3 +60,18 @@ def get_location_service(
         Location service instance
     """
     return container.service_factory.location_service
+
+
+def get_unified_file_service(
+    container: ServiceContainer = Depends(get_service_container)
+) -> UnifiedFileService:
+    """
+    Get the unified file service from the container.
+    
+    Args:
+        container: Service container instance
+        
+    Returns:
+        Unified file service instance
+    """
+    return container.service_factory.unified_file_service

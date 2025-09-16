@@ -7,6 +7,7 @@ providing a stable interface that can evolve independently of the domain model.
 
 import json
 import time
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set

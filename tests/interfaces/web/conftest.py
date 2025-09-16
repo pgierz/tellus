@@ -43,6 +43,14 @@ def mock_simulation_service():
             locations={"cluster": {}},
             namelists={},
             workflows={}
+        ),
+        SimulationDto(
+            simulation_id="sim-001",
+            uid="123e4567-e89b-12d3-a456-426614174003",
+            attributes={"model": "FESOM", "resolution": "T127", "experiment": "Historical"},
+            locations={"local": {}},
+            namelists={},
+            workflows={}
         )
     ]
     
@@ -125,6 +133,84 @@ def mock_simulation_service():
         return None
     
     service.delete_simulation.side_effect = mock_delete_simulation
+    
+    # Mock attributes methods for new REST API endpoints
+    def mock_get_simulation_attributes(sim_id):
+        sim = next((s for s in mock_simulations if s.simulation_id == sim_id), None)
+        if sim is None:
+            raise Exception(f"Simulation '{sim_id}' not found")
+        return {
+            "simulation_id": sim_id,
+            "attributes": sim.attributes
+        }
+    
+    def mock_get_simulation_attribute(sim_id, attribute_key):
+        sim = next((s for s in mock_simulations if s.simulation_id == sim_id), None)
+        if sim is None:
+            raise Exception(f"Simulation '{sim_id}' not found")
+        if attribute_key not in sim.attributes:
+            raise Exception(f"Attribute '{attribute_key}' not found")
+        return {
+            "key": attribute_key,
+            "value": sim.attributes[attribute_key]
+        }
+    
+    def mock_set_simulation_attribute(sim_id, attribute_key, value):
+        sim = next((s for s in mock_simulations if s.simulation_id == sim_id), None)
+        if sim is None:
+            raise Exception(f"Simulation '{sim_id}' not found")
+        # In reality we'd update the simulation's attributes
+        return {
+            "key": attribute_key,
+            "value": value
+        }
+    
+    def mock_add_simulation_attribute(sim_id, attribute_key, value):
+        sim = next((s for s in mock_simulations if s.simulation_id == sim_id), None)
+        if sim is None:
+            raise Exception(f"Simulation '{sim_id}' not found")
+        # In reality we'd add to the simulation's attributes
+        return {
+            "key": attribute_key,
+            "value": value
+        }
+    
+    # Mock location association methods
+    def mock_associate_simulation_locations(sim_id, location_names, context_overrides=None):
+        sim = next((s for s in mock_simulations if s.simulation_id == sim_id), None)
+        if sim is None:
+            raise Exception(f"Simulation '{sim_id}' not found")
+        # Return the simulation (in reality we'd update location associations)
+        return sim
+    
+    def mock_disassociate_simulation_from_location(sim_id, location_name):
+        sim = next((s for s in mock_simulations if s.simulation_id == sim_id), None)
+        if sim is None:
+            raise Exception(f"Simulation '{sim_id}' not found")
+        return sim
+    
+    def mock_update_simulation_location_context(simulation_id, location_name, context_overrides):
+        sim = next((s for s in mock_simulations if s.simulation_id == simulation_id), None)
+        if sim is None:
+            raise Exception(f"Simulation '{simulation_id}' not found")
+        return sim
+    
+    # Mock files methods
+    def mock_get_simulation_files(sim_id):
+        sim = next((s for s in mock_simulations if s.simulation_id == sim_id), None)
+        if sim is None:
+            raise Exception(f"Simulation '{sim_id}' not found")
+        return []  # Mock empty file list (router expects list, not dict)
+    
+    # Add these methods to the mock service
+    service.get_simulation_attributes.side_effect = mock_get_simulation_attributes
+    service.get_simulation_attribute.side_effect = mock_get_simulation_attribute
+    service.set_simulation_attribute.side_effect = mock_set_simulation_attribute
+    service.add_simulation_attribute.side_effect = mock_add_simulation_attribute
+    service.associate_simulation_locations.side_effect = mock_associate_simulation_locations
+    service.disassociate_simulation_from_location.side_effect = mock_disassociate_simulation_from_location
+    service.update_simulation_location_context.side_effect = mock_update_simulation_location_context
+    service.get_simulation_files.side_effect = mock_get_simulation_files
     
     return service
 
@@ -267,7 +353,64 @@ def mock_location_service():
 
 
 @pytest.fixture
-def mock_service_container(mock_simulation_service, mock_location_service):
+def mock_file_service():
+    """Mock unified file service for testing."""
+    service = MagicMock()
+    
+    # Default mock implementations that can be overridden in specific tests
+    def mock_create_archive(dto):
+        # Default implementation - tests can override this
+        from tellus.domain.entities.simulation_file import SimulationFile, FileType
+        from datetime import datetime
+        return SimulationFile(
+            relative_path="default_archive",
+            file_type=FileType.ARCHIVE,
+            created_time=datetime.now().timestamp()
+        )
+    
+    def mock_list_simulation_archives(sim_id):
+        # Default empty list - tests can override
+        return []
+    
+    def mock_get_archive(archive_id):
+        # Default None - tests can override
+        return None
+    
+    def mock_remove_file(file_id):
+        # Default success - tests can override
+        return None
+    
+    def mock_get_file_children(parent_id):
+        # Default empty list - tests can override
+        return []
+    
+    def mock_get_simulation_files(sim_id):
+        # Default empty list - tests can override
+        return []
+    
+    def mock_register_files_to_simulation(dto):
+        # Default success result - tests can override
+        from tellus.application.dtos import FileRegistrationResultDto
+        return FileRegistrationResultDto(
+            registered_count=0,
+            updated_count=0,
+            skipped_count=0
+        )
+    
+    # Set up default mock behavior
+    service.create_archive.side_effect = mock_create_archive
+    service.list_simulation_archives.side_effect = mock_list_simulation_archives
+    service.get_archive.side_effect = mock_get_archive
+    service.remove_file.side_effect = mock_remove_file
+    service.get_file_children.side_effect = mock_get_file_children
+    service.get_simulation_files.side_effect = mock_get_simulation_files
+    service.register_files_to_simulation.side_effect = mock_register_files_to_simulation
+    
+    return service
+
+
+@pytest.fixture
+def mock_service_container(mock_simulation_service, mock_location_service, mock_file_service):
     """Mock service container for dependency injection."""
     container = MagicMock(spec=ServiceContainer)
     
@@ -275,6 +418,7 @@ def mock_service_container(mock_simulation_service, mock_location_service):
     mock_factory = MagicMock()
     mock_factory.simulation_service = mock_simulation_service
     mock_factory.location_service = mock_location_service
+    mock_factory.unified_file_service = mock_file_service
     container.service_factory = mock_factory
     
     return container
@@ -288,10 +432,19 @@ def test_app(mock_service_container):
     from tellus.interfaces.web.routers import health, simulations, locations
     from fastapi.middleware.cors import CORSMiddleware
     
+    # Get dynamic version information to match production
+    from tellus.interfaces.web.version import get_version_info
+    version_info = get_version_info()
+    api_version = version_info["api_version"]
+    api_path = f"/api/{api_version}"
+    
     app = FastAPI(
         title="Tellus Climate Data API",
-        version="0.1.0",
-        description="REST API for Tellus - the distributed data management system for Earth System Model simulations."
+        version=version_info["tellus_version"],
+        description="REST API for Tellus - the distributed data management system for Earth System Model simulations.",
+        docs_url=f"{api_path}/docs",
+        redoc_url=f"{api_path}/redoc",
+        openapi_url=f"{api_path}/openapi.json"
     )
     
     # Add CORS middleware
@@ -303,10 +456,10 @@ def test_app(mock_service_container):
         allow_headers=["*"],
     )
     
-    # Include routers
-    app.include_router(health.router)
-    app.include_router(simulations.router, prefix="/simulations", tags=["simulations"])
-    app.include_router(locations.router, prefix="/locations", tags=["locations"])
+    # Include routers with versioned API prefix to match production
+    app.include_router(health.router, prefix=api_path, tags=["Health"])
+    app.include_router(simulations.router, prefix=f"{api_path}/simulations", tags=["simulations"])
+    app.include_router(locations.router, prefix=f"{api_path}/locations", tags=["locations"])
     
     # Set the mock container BEFORE any lifespan events
     app.state.container = mock_service_container

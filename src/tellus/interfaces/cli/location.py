@@ -1,5 +1,6 @@
 """Clean architecture CLI for location management."""
 
+import os
 import rich_click as click
 from rich.console import Console
 from rich.panel import Panel
@@ -9,6 +10,7 @@ from ...application.container import get_service_container
 from ...application.dtos import CreateLocationDto
 from ...domain.entities.location import LocationKind
 from .main import cli, console
+from .rest_client import get_rest_location_service, RestClientError, handle_rest_errors
 
 
 def _complete_location_path(ctx, param, incomplete):
@@ -39,9 +41,18 @@ def _complete_location_path(ctx, param, incomplete):
 
 
 def _get_location_service():
-    """Get location service from the service container."""
-    service_container = get_service_container()
-    return service_container.service_factory.location_service
+    """
+    Get location service from the service container or REST API.
+    
+    Returns location service instance. Uses REST API if TELLUS_CLI_USE_REST_API=true.
+    """
+    use_rest_api = os.getenv('TELLUS_CLI_USE_REST_API', 'false').lower() == 'true'
+    
+    if use_rest_api:
+        return get_rest_location_service()
+    else:
+        service_container = get_service_container()
+        return service_container.service_factory.location_service
 
 
 @cli.group()

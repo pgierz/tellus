@@ -14,7 +14,7 @@ class TestAPIDocumentation:
     
     def test_openapi_schema_generation(self, client: TestClient):
         """Test that OpenAPI schema is generated correctly."""
-        response = client.get("/openapi.json")
+        response = client.get("/api/v0a3/openapi.json")
         
         assert response.status_code == 200
         schema = response.json()
@@ -27,12 +27,12 @@ class TestAPIDocumentation:
         # Check API info
         info = schema["info"]
         assert info["title"] == "Tellus Climate Data API"
-        assert info["version"] == "0.1.0"
+        assert info["version"] == "0.1.0a3"
         assert "description" in info
     
     def test_docs_endpoint_accessible(self, client: TestClient):
         """Test that Swagger UI docs are accessible."""
-        response = client.get("/docs")
+        response = client.get("/api/v0a3/docs")
         
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
@@ -41,7 +41,7 @@ class TestAPIDocumentation:
     
     def test_redoc_endpoint_accessible(self, client: TestClient):
         """Test that ReDoc documentation is accessible."""
-        response = client.get("/redoc")
+        response = client.get("/api/v0a3/redoc")
         
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
@@ -50,20 +50,20 @@ class TestAPIDocumentation:
     
     def test_openapi_paths_coverage(self, client: TestClient):
         """Test that all expected endpoints are documented."""
-        response = client.get("/openapi.json")
+        response = client.get("/api/v0a3/openapi.json")
         schema = response.json()
         paths = schema["paths"]
         
         # Check that key endpoints are documented
         expected_paths = [
-            "/",
-            "/health",
-            "/health/detailed",
-            "/simulations/",
-            "/simulations/{simulation_id}",
-            "/locations/",
-            "/locations/{location_name}",
-            "/locations/{location_name}/test"
+            "/api/v0a3/",
+            "/api/v0a3/health",
+            "/api/v0a3/health/detailed",
+            "/api/v0a3/simulations/",
+            "/api/v0a3/simulations/{simulation_id}",
+            "/api/v0a3/locations/",
+            "/api/v0a3/locations/{location_name}",
+            "/api/v0a3/locations/{location_name}/test"
         ]
         
         for expected_path in expected_paths:
@@ -71,7 +71,7 @@ class TestAPIDocumentation:
     
     def test_openapi_components_schemas(self, client: TestClient):
         """Test that Pydantic models are properly documented."""
-        response = client.get("/openapi.json")
+        response = client.get("/api/v0a3/openapi.json")
         schema = response.json()
         
         # Check for schema components (generated from Pydantic models)
@@ -108,35 +108,35 @@ class TestEndToEndWorkflows:
         }
         
         # 1. Create simulation
-        create_response = client.post("/simulations/", json=simulation_data)
+        create_response = client.post("/api/v0a3/simulations/", json=simulation_data)
         assert create_response.status_code == 201
         created_sim = create_response.json()
         assert created_sim["simulation_id"] == "e2e-test-sim"
         
         # 2. Retrieve simulation
-        get_response = client.get("/simulations/e2e-test-sim")
+        get_response = client.get("/api/v0a3/simulations/e2e-test-sim")
         assert get_response.status_code == 200
         retrieved_sim = get_response.json()
         assert retrieved_sim["simulation_id"] == "e2e-test-sim"
         
         # 3. Update simulation
         update_data = {"model_id": "Updated-Model"}
-        update_response = client.put("/simulations/e2e-test-sim", json=update_data)
+        update_response = client.put("/api/v0a3/simulations/e2e-test-sim", json=update_data)
         assert update_response.status_code == 200
         
         # 4. List simulations (should include our new one)
-        list_response = client.get("/simulations/")
+        list_response = client.get("/api/v0a3/simulations/")
         assert list_response.status_code == 200
         simulations = list_response.json()["simulations"]
         sim_ids = [s["simulation_id"] for s in simulations]
         assert "e2e-test-sim" in sim_ids
         
         # 5. Delete simulation
-        delete_response = client.delete("/simulations/e2e-test-sim")
+        delete_response = client.delete("/api/v0a3/simulations/e2e-test-sim")
         assert delete_response.status_code == 204
         
         # 6. Verify deletion
-        get_after_delete = client.get("/simulations/e2e-test-sim")
+        get_after_delete = client.get("/api/v0a3/simulations/e2e-test-sim")
         assert get_after_delete.status_code == 404
     
     @pytest.mark.skip(reason="Requires stateful mocks - mock services return static data")
@@ -150,53 +150,53 @@ class TestEndToEndWorkflows:
         }
         
         # 1. Create location
-        create_response = client.post("/locations/", json=location_data)
+        create_response = client.post("/api/v0a3/locations/", json=location_data)
         assert create_response.status_code == 201
         created_loc = create_response.json()
         assert created_loc["name"] == "e2e-test-location"
         
         # 2. Test location connectivity
-        test_response = client.post("/locations/e2e-test-location/test")
+        test_response = client.post("/api/v0a3/locations/e2e-test-location/test")
         assert test_response.status_code == 200
         test_result = test_response.json()
         assert test_result["location_name"] == "e2e-test-location"
         
         # 3. Retrieve location
-        get_response = client.get("/locations/e2e-test-location")
+        get_response = client.get("/api/v0a3/locations/e2e-test-location")
         assert get_response.status_code == 200
         retrieved_loc = get_response.json()
         assert retrieved_loc["name"] == "e2e-test-location"
         
         # 4. Update location
         update_data = {"path": "/tmp/updated-path"}
-        update_response = client.put("/locations/e2e-test-location", json=update_data)
+        update_response = client.put("/api/v0a3/locations/e2e-test-location", json=update_data)
         assert update_response.status_code == 200
         
         # 5. List locations (should include our new one)
-        list_response = client.get("/locations/")
+        list_response = client.get("/api/v0a3/locations/")
         assert list_response.status_code == 200
         locations = list_response.json()["locations"]
         location_names = [l["name"] for l in locations]
         assert "e2e-test-location" in location_names
         
         # 6. Delete location
-        delete_response = client.delete("/locations/e2e-test-location")
+        delete_response = client.delete("/api/v0a3/locations/e2e-test-location")
         assert delete_response.status_code == 204
         
         # 7. Verify deletion
-        get_after_delete = client.get("/locations/e2e-test-location")
+        get_after_delete = client.get("/api/v0a3/locations/e2e-test-location")
         assert get_after_delete.status_code == 404
     
     def test_health_monitoring_workflow(self, client: TestClient):
         """Test complete health monitoring workflow."""
         # 1. Check basic health
-        health_response = client.get("/health")
+        health_response = client.get("/api/v0a3/health")
         assert health_response.status_code == 200
         health_data = health_response.json()
         assert health_data["status"] == "healthy"
         
         # 2. Check detailed health
-        detailed_response = client.get("/health/detailed")
+        detailed_response = client.get("/api/v0a3/health/detailed")
         assert detailed_response.status_code == 200
         detailed_data = detailed_response.json()
         
@@ -215,14 +215,14 @@ class TestAPICrossEndpointInteractions:
     def test_pagination_consistency_across_endpoints(self, client: TestClient):
         """Test that pagination works consistently across endpoints."""
         # Test simulation pagination
-        sim_response = client.get("/simulations/?page=1&page_size=1")
+        sim_response = client.get("/api/v0a3/simulations/?page=1&page_size=1")
         assert sim_response.status_code == 200
         sim_data = sim_response.json()
         assert sim_data["pagination"]["page"] == 1
         assert sim_data["pagination"]["page_size"] == 1
         
         # Test location pagination
-        loc_response = client.get("/locations/?page=1&page_size=1")
+        loc_response = client.get("/api/v0a3/locations/?page=1&page_size=1")
         assert loc_response.status_code == 200
         loc_data = loc_response.json()
         assert loc_data["pagination"]["page"] == 1
@@ -234,13 +234,13 @@ class TestAPICrossEndpointInteractions:
     def test_search_functionality_across_endpoints(self, client: TestClient):
         """Test that search works consistently across endpoints."""
         # Test simulation search
-        sim_response = client.get("/simulations/?search=test")
+        sim_response = client.get("/api/v0a3/simulations/?search=test")
         assert sim_response.status_code == 200
         sim_data = sim_response.json()
         assert sim_data["filters_applied"]["search_term"] == "test"
         
         # Test location search
-        loc_response = client.get("/locations/?search=test")
+        loc_response = client.get("/api/v0a3/locations/?search=test")
         assert loc_response.status_code == 200
         loc_data = loc_response.json()
         assert loc_data["filters_applied"]["search_term"] == "test"
@@ -248,8 +248,8 @@ class TestAPICrossEndpointInteractions:
     def test_error_response_consistency(self, client: TestClient):
         """Test that error responses are consistent across endpoints."""
         # Test 404 errors
-        sim_404 = client.get("/simulations/non-existent")
-        loc_404 = client.get("/locations/non-existent")
+        sim_404 = client.get("/api/v0a3/simulations/non-existent")
+        loc_404 = client.get("/api/v0a3/locations/non-existent")
         
         assert sim_404.status_code == 404
         assert loc_404.status_code == 404
@@ -277,7 +277,7 @@ class TestAPISecurityAndValidation:
             "attrs": {"key": "<img src=x onerror=alert(1)>"}
         }
         
-        response = client.post("/simulations/", json=malicious_data)
+        response = client.post("/api/v0a3/simulations/", json=malicious_data)
         
         # Should either accept and sanitize, or reject
         assert response.status_code in [201, 400, 422]
@@ -297,7 +297,7 @@ class TestAPISecurityAndValidation:
             "attrs": large_attrs
         }
         
-        response = client.post("/simulations/", json=large_data)
+        response = client.post("/api/v0a3/simulations/", json=large_data)
         
         # Should handle large payloads gracefully
         assert response.status_code in [201, 400, 413, 422]
@@ -306,7 +306,7 @@ class TestAPISecurityAndValidation:
         """Test that content type is properly validated."""
         # Send XML when JSON is expected
         response = client.post(
-            "/simulations/",
+            "/api/v0a3/simulations/",
             content="<xml>not json</xml>",
             headers={"Content-Type": "application/xml"}
         )
@@ -323,10 +323,10 @@ class TestAPIPerformance:
         import time
         
         endpoints = [
-            "/health",
-            "/simulations/",
-            "/locations/",
-            "/"
+            "/api/v0a3/health",
+            "/api/v0a3/simulations/",
+            "/api/v0a3/locations/",
+            "/api/v0a3/"
         ]
         
         for endpoint in endpoints:
@@ -346,7 +346,7 @@ class TestAPIPerformance:
         results = []
         
         def make_request():
-            response = client.get("/health")
+            response = client.get("/api/v0a3/health")
             results.append(response.status_code)
         
         # Create multiple threads
@@ -378,25 +378,25 @@ class TestAPICompatibility:
     
     def test_api_version_consistency(self, client: TestClient):
         """Test that API version is consistent across endpoints."""
-        # Get version from root endpoint
-        root_response = client.get("/")
+        # Get version from root endpoint (now versioned)
+        root_response = client.get("/api/v0a3/")
         root_version = root_response.json()["version"]
         
-        # Get version from health endpoint
-        health_response = client.get("/health")
+        # Get version from health endpoint (now versioned)
+        health_response = client.get("/api/v0a3/health")
         health_version = health_response.json()["version"]
         
-        # Get version from OpenAPI schema
-        openapi_response = client.get("/openapi.json")
+        # Get version from OpenAPI schema (now versioned)
+        openapi_response = client.get("/api/v0a3/openapi.json")
         openapi_version = openapi_response.json()["info"]["version"]
         
         # All should report same version
-        assert root_version == health_version == openapi_version == "0.1.0"
+        assert root_version == health_version == openapi_version == "0.1.0a3"
     
     def test_json_serialization_consistency(self, client: TestClient):
         """Test that JSON serialization is consistent."""
         # Test simulation serialization
-        sim_response = client.get("/simulations/")
+        sim_response = client.get("/api/v0a3/simulations/")
         assert sim_response.status_code == 200
         sim_data = sim_response.json()
         
@@ -406,7 +406,7 @@ class TestAPICompatibility:
         assert reparsed_data == sim_data
         
         # Test location serialization
-        loc_response = client.get("/locations/")
+        loc_response = client.get("/api/v0a3/locations/")
         assert loc_response.status_code == 200
         loc_data = loc_response.json()
         

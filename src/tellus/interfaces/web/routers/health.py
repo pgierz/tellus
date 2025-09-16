@@ -11,6 +11,8 @@ from typing import Dict, Any
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
+from ..version import get_version_info
+
 router = APIRouter()
 
 
@@ -38,11 +40,12 @@ async def health_check():
     Returns:
         Basic health status and uptime information
     """
+    version_info = get_version_info()
     return HealthResponse(
         status="healthy",
         timestamp=datetime.now().isoformat(),
         uptime_seconds=time.time(),
-        version="0.1.0"
+        version=version_info["tellus_version"]
     )
 
 
@@ -78,11 +81,12 @@ async def detailed_health_check(request: Request):
     else:
         services_status["container"] = "unavailable"
     
+    version_info = get_version_info()
     return DetailedHealthResponse(
         status="healthy" if all(v == "available" for v in services_status.values()) else "degraded",
         timestamp=datetime.now().isoformat(),
         uptime_seconds=time.time(),
-        version="0.1.0",
+        version=version_info["tellus_version"],
         services=services_status,
         memory_usage={
             "note": "Memory usage monitoring not yet implemented"
@@ -90,7 +94,8 @@ async def detailed_health_check(request: Request):
         system_info={
             "api_framework": "FastAPI",
             "python_version": "3.12+",
-            "tellus_version": "0.1.0"
+            "tellus_version": version_info["tellus_version"],
+            "api_version": version_info["api_version"]
         }
     )
 
@@ -103,11 +108,26 @@ async def api_root():
     Returns:
         Basic API information and documentation links
     """
+    version_info = get_version_info()
+    api_path = f"/api/{version_info['api_version']}"
+    
     return {
         "name": "Tellus Climate Data API",
-        "version": "0.1.0",
+        "version": version_info["tellus_version"],
+        "api_version": version_info["api_version"],
         "description": "REST API for distributed climate simulation data management",
-        "docs_url": "/docs",
-        "redoc_url": "/redoc",
-        "health_url": "/health"
+        "docs_url": f"{api_path}/docs",
+        "redoc_url": f"{api_path}/redoc",
+        "health_url": f"{api_path}/health"
     }
+
+
+@router.get("/version", response_model=Dict[str, Any])
+async def get_version():
+    """
+    Get detailed version information.
+    
+    Returns:
+        Complete version information including API version, build details, etc.
+    """
+    return get_version_info()

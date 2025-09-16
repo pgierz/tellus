@@ -15,7 +15,7 @@ class TestHealthEndpoints:
     
     def test_basic_health_check(self, client: TestClient):
         """Test basic health endpoint returns success."""
-        response = client.get("/health")
+        response = client.get("/api/v0a3/health")
         
         assert response.status_code == 200
         data = response.json()
@@ -27,13 +27,13 @@ class TestHealthEndpoints:
         assert "version" in data
         
         assert data["status"] == "healthy"
-        assert data["version"] == "0.1.0"
+        assert data["version"] == "0.1.0a3"
         assert isinstance(data["uptime_seconds"], (int, float))
         assert data["uptime_seconds"] >= 0
     
     def test_detailed_health_check(self, client: TestClient):
         """Test detailed health endpoint returns comprehensive status."""
-        response = client.get("/health/detailed")
+        response = client.get("/api/v0a3/health/detailed")
         
         assert response.status_code == 200
         data = response.json()
@@ -63,7 +63,7 @@ class TestHealthEndpoints:
     
     def test_api_root_information(self, client: TestClient):
         """Test API root endpoint returns basic information."""
-        response = client.get("/")
+        response = client.get("/api/v0a3/")
         
         assert response.status_code == 200
         data = response.json()
@@ -74,14 +74,14 @@ class TestHealthEndpoints:
             assert field in data
         
         assert data["name"] == "Tellus Climate Data API"
-        assert data["version"] == "0.1.0"
-        assert data["docs_url"] == "/docs"
-        assert data["redoc_url"] == "/redoc"
-        assert data["health_url"] == "/health"
+        assert data["version"] == "0.1.0a3"
+        assert data["docs_url"] == "/api/v0a3/docs"
+        assert data["redoc_url"] == "/api/v0a3/redoc"
+        assert data["health_url"] == "/api/v0a3/health"
     
     def test_health_check_response_format(self, client: TestClient):
         """Test health check response follows correct schema."""
-        response = client.get("/health")
+        response = client.get("/api/v0a3/health")
         data = response.json()
         
         # Validate timestamp format (should be ISO format)
@@ -97,7 +97,7 @@ class TestHealthEndpoints:
     
     def test_cors_headers_present(self, client: TestClient):
         """Test that CORS headers are properly set."""
-        response = client.get("/health")
+        response = client.get("/api/v0a3/health")
         
         # Check for CORS headers (these should be set by the middleware)
         assert response.status_code == 200
@@ -111,7 +111,7 @@ class TestHealthEndpointErrors:
     def test_health_endpoint_error_resilience(self, client: TestClient):
         """Test that health endpoints handle errors gracefully."""
         # This test ensures the health endpoint returns 200 even if there are issues
-        response = client.get("/health/detailed")
+        response = client.get("/api/v0a3/health/detailed")
         
         assert response.status_code == 200  # Should always return 200
         data = response.json()
@@ -129,7 +129,7 @@ class TestHealthEndpointErrors:
         """Test that health endpoints are resilient to repeated calls."""
         # Make multiple rapid calls
         for _ in range(5):
-            response = client.get("/health")
+            response = client.get("/api/v0a3/health")
             assert response.status_code == 200
             
             data = response.json()
@@ -144,7 +144,7 @@ class TestHealthMonitoring:
         import time
         
         start_time = time.time()
-        response = client.get("/health")
+        response = client.get("/api/v0a3/health")
         end_time = time.time()
         
         assert response.status_code == 200
@@ -154,8 +154,8 @@ class TestHealthMonitoring:
     def test_health_check_idempotency(self, client: TestClient):
         """Test that health checks are idempotent."""
         # Multiple calls should return consistent results
-        response1 = client.get("/health")
-        response2 = client.get("/health")
+        response1 = client.get("/api/v0a3/health")
+        response2 = client.get("/api/v0a3/health")
         
         assert response1.status_code == 200
         assert response2.status_code == 200

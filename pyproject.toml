@@ -3,19 +3,42 @@ authors = [{name = "Paul Gierz", email = "pgierz@awi.de"}]
 name = "tellus"
 requires-python = ">= 3.11"
 dynamic = ["version"]
+dependencies = [
+    # Core CLI and utilities
+    "click>=8.0.0",
+    "rich>=13.0.0", 
+    "rich-click>=1.8.9,<2",
+    "fsspec>=2025.7.0,<2026",
+    "requests>=2.32.4,<3",
+    "loguru>=0.7.3,<0.8",
+    "networkx>=3.0.0,<4",
+    # Interactive CLI
+    "questionary>=2.1.0,<3",
+    "inquirerpy>=0.3.4,<0.4",
+    "textual>=5.3.0,<6",
+    # Data processing and domain layer
+    "pydantic>=2.0.0",
+    "nc-time-axis>=1.4.1,<2",
+    # File system and remote access
+    "paramiko>=3.5.1,<4",
+    # Web API
+    "fastapi>=0.116.1,<0.117",
+    "uvicorn>=0.35.0,<0.36",
+    "httpx>=0.28.1,<0.29",
+    # Workflow and notebook support
+    "snakemake>=9.9.0,<10",
+    "nbconvert>=7.16.6,<8",
+    "papermill>=2.6.0,<3",
+    # Scientific computing (for workflows)
+    "hypothesis>=6.136.9,<7",
+]
 
 [project.optional-dependencies]
-# REST API dependencies
-api = [
-    "fastapi>=0.104.0",
-    "uvicorn[standard]>=0.24.0",
-    "pydantic>=2.5.0",
-]
+# Removed api section - all dependencies are now in main [project] dependencies
 
 [project.scripts]
 tellus = "tellus.core.main:main"
 tellus-chat = "tellus_chat.cli:main"
-tellus-api = "tellus.interfaces.rest.server:main"
 
 [tool.pytest.ini_options]
 python_files = "test_*.py"
@@ -71,8 +94,9 @@ packages = ["src/tellus"]
 
 [tool.hatch.version]
 source = "vcs"
+fallback-version = "0.0.0-dev"
 
-[tool.pixi.project]
+[tool.pixi.workspace]
 channels = ["conda-forge", "bioconda"]
 platforms = ["osx-arm64", "linux-64"]
 
@@ -87,7 +111,8 @@ tellus-chat = { path = "./src/tellus_chat", editable = true }
 # sandbox = "python3 sandbox/manual_tests.py"
 tellus = {cmd = "python -m tellus", cwd = "." }
 sandbox = { cmd = "python3 my_tellus_script.py", cwd = "sandbox" , description = "Run a dummy script using tellus"}
-api = { cmd = "uvicorn src.tellus.interfaces.web.main:app --reload --host 0.0.0.0 --port 8000", description = "Start the Tellus FastAPI server" }
+api = { cmd = "python scripts/start_api.py", description = "Start the Tellus FastAPI server (auto-detects available port starting from 1968)" }
+api-fixed = { cmd = "uvicorn src.tellus.interfaces.web.main:app --reload --host 0.0.0.0 --port 1968", description = "Start the Tellus FastAPI server on fixed port 1968" }
 
 [tool.pixi.feature.test.pypi-dependencies]
 factory-boy = "*"  # Move to Py-PI
@@ -140,25 +165,8 @@ build = ["build"]
 
 [tool.pixi.dependencies]
 python = "*"
-
-click = ">=8.0.0"
-rich = ">=13.0.0"
-fsspec = ">=2025.7.0,<2026"
-paramiko = ">=3.5.1,<4"
-rich-click = ">=1.8.9,<2"
-questionary = "2.1.1.*"
-requests = ">=2.32.4,<3"
-loguru = ">=0.7.3,<0.8"
-inquirerpy = ">=0.3.4,<0.4"
-snakemake = ">=9.9.0,<10"
-fastapi = ">=0.116.1,<0.117"
-uvicorn = ">=0.35.0,<0.36"
-hypothesis = ">=6.136.9,<7"
-nc-time-axis = ">=1.4.1,<2"
-nbconvert = ">=7.16.6,<8"
-papermill = ">=2.6.0,<3"
-textual = ">=5.3.0,<6"
-networkx = ">=3.0.0,<4"
+# Note: Core dependencies are now defined in [project] dependencies above
+# Pixi will automatically install those via the editable install
 
 [tool.pixi.feature.docs.dependencies]
 jupyter-book = "*"
@@ -198,6 +206,7 @@ release-prod = { cmd = "cz bump --prerelease alpha && python -m build && python 
 
 [tool.setuptools_scm]
 # Dynamic versioning from git tags
+root = "."
 
 [tool.commitizen]
 name = "cz_conventional_commits"
