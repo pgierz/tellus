@@ -6,9 +6,17 @@ from rich.console import Console
 # Initialize console for rich output
 console = Console()
 
+def _get_version():
+    """Get the version for the CLI."""
+    try:
+        from ..web.version import get_version_info
+        return get_version_info()["tellus_version"]
+    except ImportError:
+        return "unknown"
+
 # Create the main command group
 @click.group(name="tellus")
-@click.version_option()
+@click.version_option(version=_get_version())
 @click.option("--json", "output_json", is_flag=True, help="Output in JSON format (global)")
 @click.pass_context
 def cli(ctx, output_json):

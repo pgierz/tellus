@@ -55,3 +55,6 @@ locations.json
 # Benchmarks and sandbox
 .benchmarks/
 sandbox/
+
+# Exclude unready components
+tellus_chat/
