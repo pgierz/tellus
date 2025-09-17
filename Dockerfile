@@ -29,9 +29,8 @@ COPY scripts/ ./scripts/
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash tellus
 
-# Create directories with proper ownership
-RUN mkdir -p /app/.tellus && chown tellus:tellus /app/.tellus
-RUN mkdir -p /home/tellus/.cache/tellus /home/tellus/data && chown -R tellus:tellus /home/tellus
+# Create directories with proper ownership for database and cache
+RUN mkdir -p /home/tellus/.local/tellus /home/tellus/.cache/tellus && chown -R tellus:tellus /home/tellus
 
 USER tellus
 

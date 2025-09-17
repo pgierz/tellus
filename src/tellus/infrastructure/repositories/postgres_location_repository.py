@@ -185,8 +185,15 @@ class PostgresLocationRepository(ILocationRepository):
     async def _find_by_kind_with_session(self, session: AsyncSession, kind: LocationKind) -> List[LocationEntity]:
         """Find by kind with provided session."""
         try:
-            # Use PostgreSQL array operations to find locations with the specified kind
-            stmt = select(LocationModel).where(LocationModel.kinds.any(kind.name))
+            # Use JSON operations to find locations with the specified kind
+            # For SQLite/JSON: use JSON_EXTRACT or simple string matching
+            # For PostgreSQL: use JSON operators
+            from sqlalchemy import text
+            stmt = select(LocationModel).where(
+                text("JSON_EXTRACT(kinds, '$') LIKE :kind_pattern").params(
+                    kind_pattern=f'%"{kind.name}"%'
+                )
+            )
             result = await session.execute(stmt)
             loc_models = result.scalars().all()
 

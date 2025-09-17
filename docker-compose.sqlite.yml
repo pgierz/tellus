@@ -1,0 +1,28 @@
+# Simple Docker Compose for SQLite-only deployment
+# Use this for single-node deployments without PostgreSQL
+services:
+  tellus-api:
+    build: .
+    ports:
+      - "1968:1968"
+    volumes:
+      # Mount tellus data and SQLite database
+      - ~/.local/tellus:/home/tellus/.local/tellus
+      - tellus-cache:/home/tellus/.cache/tellus
+      # Optional: mount SSH keys for remote storage access
+      # - ~/.ssh:/home/tellus/.ssh:ro
+    environment:
+      # Force SQLite usage (though it's the default fallback)
+      - TELLUS_LOG_LEVEL=INFO
+      - TELLUS_DB_TYPE=sqlite
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:1968/api/v0a7/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  tellus-cache:
+    driver: local

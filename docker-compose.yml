@@ -4,24 +4,51 @@ services:
     ports:
       - "1968:1968"
     volumes:
-      # Mount merged tellus data from ~/.local/tellus directly to .tellus
-      - ~/.local/tellus:/home/tellus/.tellus
+      # Mount tellus data and SQLite database
+      - ~/.local/tellus:/home/tellus/.local/tellus
       - tellus-cache:/home/tellus/.cache/tellus
       # Optional: mount SSH keys for remote storage access
       # - ~/.ssh:/home/tellus/.ssh:ro
     environment:
-      # Optional: configure default settings
+      # Database configuration (defaults to SQLite fallback)
       - TELLUS_LOG_LEVEL=INFO
+      # Uncomment to use PostgreSQL instead of SQLite
+      # - TELLUS_DB_TYPE=postgresql
+      # - TELLUS_DB_HOST=postgres
+      # - TELLUS_DB_NAME=tellus
+      # - TELLUS_DB_USER=tellus
+      # - TELLUS_DB_PASSWORD=tellus_password
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:1968/api/v0a3/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:1968/api/v0a7/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: tellus
+      POSTGRES_USER: tellus
+      POSTGRES_PASSWORD: tellus_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      # Uncomment to expose PostgreSQL port for development
+      # - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tellus -d tellus"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
-  tellus-data:
-    driver: local
   tellus-cache:
+    driver: local
+  postgres-data:
     driver: local
