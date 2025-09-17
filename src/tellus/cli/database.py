@@ -30,17 +30,25 @@ def init(database_url, drop_tables):
 
     async def run_init():
         try:
-            from tellus.infrastructure.database.config import DatabaseConfig, DatabaseManager
+            from tellus.infrastructure.database.config import get_database_manager, reset_database_manager, DatabaseConfig
 
-            # Setup database configuration
+            # Use fallback logic unless specific URL provided
             if database_url:
-                db_config = DatabaseConfig.from_url(database_url)
+                config = DatabaseConfig.from_url(database_url)
+                from tellus.infrastructure.database.config import DatabaseManager
+                db_manager = DatabaseManager(config)
             else:
-                db_config = DatabaseConfig.from_env()
+                # Reset any cached manager to ensure fresh fallback logic
+                reset_database_manager()
+                db_manager = get_database_manager()
+                config = db_manager.config
 
-            console.print(f"[blue]Connecting to database:[/blue] {db_config.get_database_url()}")
+            console.print(f"[blue]Connecting to database:[/blue] {config.get_database_url()}")
 
-            db_manager = DatabaseManager(db_config)
+            if config.database_type == "sqlite":
+                console.print("[green]Using local SQLite database[/green]")
+            elif config.database_type == "postgresql":
+                console.print("[green]Using PostgreSQL database[/green]")
 
             try:
                 if drop_tables:
@@ -108,29 +116,58 @@ def migrate_from_json(simulations_file, locations_file, database_url, dry_run):
 @database.command()
 @click.option(
     "--database-url", "-d",
-    help="Database URL (default: from environment variables)",
+    help="Database URL (default: from environment variables or fallback to SQLite)",
     envvar="TELLUS_DB_URL"
 )
 def status(database_url):
-    """Check database status and show table information."""
+    """Show current database configuration and status."""
 
     async def run_status():
         try:
-            from tellus.infrastructure.database.config import DatabaseConfig, DatabaseManager
-            from tellus.infrastructure.repositories.postgres_simulation_repository import PostgresSimulationRepository
-            from tellus.infrastructure.repositories.postgres_location_repository import PostgresLocationRepository
+            from tellus.infrastructure.database.config import get_database_manager, reset_database_manager, DatabaseConfig
 
-            # Setup database configuration
+            # Use fallback logic unless specific URL provided
             if database_url:
-                db_config = DatabaseConfig.from_url(database_url)
+                config = DatabaseConfig.from_url(database_url)
+                from tellus.infrastructure.database.config import DatabaseManager
+                db_manager = DatabaseManager(config)
             else:
-                db_config = DatabaseConfig.from_env()
+                # Reset any cached manager to ensure fresh fallback logic
+                reset_database_manager()
+                db_manager = get_database_manager()
+                config = db_manager.config
 
-            console.print(f"[blue]Database URL:[/blue] {db_config.get_database_url()}")
+            # Show database configuration
+            console.print("[bold]Database Status[/bold]")
+            console.print("─" * 40)
 
-            db_manager = DatabaseManager(db_config)
+            if config.database_type == "sqlite":
+                console.print(f"[green]Type:[/green] SQLite (Local)")
+                console.print(f"[green]Path:[/green] {config.sqlite_path}")
 
+                # Check if file exists
+                import os
+                if os.path.exists(config.sqlite_path):
+                    file_size = os.path.getsize(config.sqlite_path)
+                    console.print(f"[green]Size:[/green] {file_size:,} bytes")
+                    console.print("[green]Status:[/green] ✅ Database file exists")
+                else:
+                    console.print("[yellow]Status:[/yellow] ⚠️  Database file not yet created")
+
+            elif config.database_type == "postgresql":
+                console.print(f"[green]Type:[/green] PostgreSQL (Remote)")
+                console.print(f"[green]Host:[/green] {config.host}:{config.port}")
+                console.print(f"[green]Database:[/green] {config.database}")
+                console.print(f"[green]User:[/green] {config.username}")
+
+            console.print(f"[green]URL:[/green] {config.get_database_url()}")
+            console.print()
+
+            # Show table status if possible
             try:
+                from tellus.infrastructure.repositories.postgres_simulation_repository import PostgresSimulationRepository
+                from tellus.infrastructure.repositories.postgres_location_repository import PostgresLocationRepository
+
                 async with db_manager.get_session() as session:
                     sim_repo = PostgresSimulationRepository(session)
                     loc_repo = PostgresLocationRepository(session)
@@ -142,11 +179,15 @@ def status(database_url):
                     console.print(f"[blue]Simulations:[/blue] {sim_count}")
                     console.print(f"[blue]Locations:[/blue] {loc_count}")
 
+            except Exception as db_error:
+                console.print(f"[yellow]⚠️  Database accessible but couldn't query tables: {db_error}[/yellow]")
+                console.print("[dim]Run 'tellus database init' if tables don't exist yet[/dim]")
+
             finally:
                 await db_manager.close()
 
         except Exception as e:
-            console.print(f"[red]❌ Database connection failed:[/red] {e}")
+            console.print(f"[red]❌ Database status check failed:[/red] {e}")
             sys.exit(1)
 
     asyncio.run(run_status())

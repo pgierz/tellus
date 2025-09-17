@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from sqlalchemy import Column, DateTime, ForeignKey, String, Text, Table, JSON, Boolean
-from sqlalchemy.dialects.postgresql import UUID, ARRAY
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -76,7 +76,7 @@ class LocationModel(Base):
     name: Mapped[str] = mapped_column(String, primary_key=True)
 
     # Core location attributes
-    kinds: Mapped[List[str]] = mapped_column(ARRAY(String), nullable=False)
+    kinds: Mapped[List[str]] = mapped_column(JSON, nullable=False)
     protocol: Mapped[str] = mapped_column(String, nullable=False)
     path: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
