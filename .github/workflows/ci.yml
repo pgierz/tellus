@@ -42,7 +42,7 @@ jobs:
         echo $SERVER_PID > api_server.pid
 
         # Wait for server to be ready
-        timeout 30 bash -c 'until curl -f http://localhost:1968/api/v0a8/health; do sleep 1; done'
+        timeout 30 bash -c 'until curl -f http://localhost:1968/api/v0a7/health; do sleep 1; done'
 
     - name: Run CLI integration tests (REST API mode)
       env:
@@ -218,11 +218,11 @@ jobs:
         docker compose -f docker-compose.sqlite.yml up -d
 
         # Wait for service to be ready
-        timeout 30 bash -c 'until curl -f http://localhost:1968/api/v0a8/health; do sleep 2; done'
+        timeout 30 bash -c 'until curl -f http://localhost:1968/api/v0a7/health; do sleep 2; done'
 
         # Test API endpoints
-        curl -f http://localhost:1968/api/v0a8/health
-        curl -f http://localhost:1968/api/v0a8/simulations
+        curl -f http://localhost:1968/api/v0a7/health
+        curl -f http://localhost:1968/api/v0a7/simulations
 
         # Cleanup
         docker compose -f docker-compose.sqlite.yml down
@@ -233,11 +233,11 @@ jobs:
         docker compose up -d
 
         # Wait for both services to be ready
-        timeout 60 bash -c 'until curl -f http://localhost:1968/api/v0a8/health; do sleep 2; done'
+        timeout 60 bash -c 'until curl -f http://localhost:1968/api/v0a7/health; do sleep 2; done'
 
         # Test API endpoints
-        curl -f http://localhost:1968/api/v0a8/health
-        curl -f http://localhost:1968/api/v0a8/simulations
+        curl -f http://localhost:1968/api/v0a7/health
+        curl -f http://localhost:1968/api/v0a7/simulations
 
         # Test database connection (should be using PostgreSQL)
         docker compose exec -T tellus-api tellus database init --drop-tables

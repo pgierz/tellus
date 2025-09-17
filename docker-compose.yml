@@ -37,9 +37,9 @@ services:
       POSTGRES_INITDB_ARGS: "--encoding=UTF8"
     volumes:
       - postgres-data:/var/lib/postgresql/data
-    ports:
-      # Uncomment to expose PostgreSQL port for development
-      # - "5432:5432"
+    # Uncomment to expose PostgreSQL port for development
+    # ports:
+    #   - "5432:5432"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U tellus -d tellus"]
