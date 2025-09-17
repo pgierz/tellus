@@ -33,19 +33,37 @@ jobs:
     
     - name: Run CLI integration tests (direct mode)
       run: pixi run -e ${{ matrix.pixi-environment }} pytest tests/test_cli_integration_working.py -v --cov=src/tellus/interfaces/cli --cov-append
-      
+
+    - name: Start API server for REST API tests
+      run: |
+        # Start API server in background
+        pixi run -e ${{ matrix.pixi-environment }} uvicorn src.tellus.interfaces.web.main:app --host 0.0.0.0 --port 1968 &
+        SERVER_PID=$!
+        echo $SERVER_PID > api_server.pid
+
+        # Wait for server to be ready
+        timeout 30 bash -c 'until curl -f http://localhost:1968/api/v0a8/health; do sleep 1; done'
+
     - name: Run CLI integration tests (REST API mode)
       env:
         TELLUS_CLI_USE_REST_API: true
       run: pixi run -e ${{ matrix.pixi-environment }} pytest tests/test_cli_integration_working.py -v --cov=src/tellus/interfaces/cli --cov-append
-      
+
     - name: Run working CLI specification tests (direct mode)
       run: pixi run -e ${{ matrix.pixi-environment }} pytest tests/test_cli_specification.py -v --cov=src/tellus/interfaces/cli --cov-append
-      
+
     - name: Run working CLI specification tests (REST API mode)
       env:
         TELLUS_CLI_USE_REST_API: true
       run: pixi run -e ${{ matrix.pixi-environment }} pytest tests/test_cli_specification.py -v --cov=src/tellus/interfaces/cli --cov-append
+
+    - name: Stop API server
+      if: always()
+      run: |
+        if [ -f api_server.pid ]; then
+          kill $(cat api_server.pid) || true
+          rm api_server.pid
+        fi
     
     - name: Upload coverage reports
       uses: codecov/codecov-action@v4
@@ -163,6 +181,7 @@ jobs:
       with:
         context: .
         push: false
+        load: true  # Load image into local Docker daemon
         tags: tellus:test
         cache-from: type=gha
         cache-to: type=gha,mode=max
@@ -190,37 +209,40 @@ jobs:
       with:
         fetch-depth: 0  # Need full git history for version detection
 
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
     - name: Test SQLite-only compose
       run: |
-        # Test SQLite-only deployment
-        docker-compose -f docker-compose.sqlite.yml up -d
+        # Test SQLite-only deployment (use docker compose v2)
+        docker compose -f docker-compose.sqlite.yml up -d
 
         # Wait for service to be ready
-        timeout 30 bash -c 'until curl -f http://localhost:1968/api/v0a7/health; do sleep 2; done'
+        timeout 30 bash -c 'until curl -f http://localhost:1968/api/v0a8/health; do sleep 2; done'
 
         # Test API endpoints
-        curl -f http://localhost:1968/api/v0a7/health
-        curl -f http://localhost:1968/api/v0a7/simulations
+        curl -f http://localhost:1968/api/v0a8/health
+        curl -f http://localhost:1968/api/v0a8/simulations
 
         # Cleanup
-        docker-compose -f docker-compose.sqlite.yml down
+        docker compose -f docker-compose.sqlite.yml down
 
     - name: Test full PostgreSQL compose
       run: |
-        # Test full PostgreSQL deployment
-        docker-compose up -d
+        # Test full PostgreSQL deployment (use docker compose v2)
+        docker compose up -d
 
         # Wait for both services to be ready
-        timeout 60 bash -c 'until curl -f http://localhost:1968/api/v0a7/health; do sleep 2; done'
+        timeout 60 bash -c 'until curl -f http://localhost:1968/api/v0a8/health; do sleep 2; done'
 
         # Test API endpoints
-        curl -f http://localhost:1968/api/v0a7/health
-        curl -f http://localhost:1968/api/v0a7/simulations
+        curl -f http://localhost:1968/api/v0a8/health
+        curl -f http://localhost:1968/api/v0a8/simulations
 
         # Test database connection (should be using PostgreSQL)
-        docker-compose exec -T tellus-api tellus database init --drop-tables
-        docker-compose exec -T tellus-api tellus database status
+        docker compose exec -T tellus-api tellus database init --drop-tables
+        docker compose exec -T tellus-api tellus database status
 
         # Cleanup
-        docker-compose down
+        docker compose down
 
