@@ -436,13 +436,24 @@ class TemplateApplicationService:
                         if location_name:
                             try:
                                 from ..dtos import SimulationLocationAssociationDto
+
+                                # Use the discovered path as context override
+                                context_overrides = {}
+                                if "path" in match and match["path"]:
+                                    # Extract the parent directory of the discovered simulation
+                                    import os
+                                    discovered_path = match["path"]
+                                    parent_dir = os.path.dirname(discovered_path) if discovered_path != match["simulation_name"] else discovered_path
+                                    if parent_dir and parent_dir != ".":
+                                        context_overrides[location_name] = {"path_prefix": parent_dir}
+
                                 assoc_dto = SimulationLocationAssociationDto(
                                     simulation_id=simulation_id,
                                     location_names=[location_name],
-                                    context_overrides={}
+                                    context_overrides=context_overrides
                                 )
                                 self._simulation_service.associate_locations(assoc_dto)
-                                self._logger.debug(f"Associated simulation {simulation_id} with location {location_name}")
+                                self._logger.debug(f"Associated simulation {simulation_id} with location {location_name} at path {match.get('path', 'unknown')}")
                             except Exception as e:
                                 self._logger.warning(f"Failed to associate location for {simulation_id}: {str(e)}")
 
