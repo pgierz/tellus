@@ -158,7 +158,7 @@ def list_simulations(ctx, location: str = None):
                 for sim in simulations:
                     # Check if simulation has locations matching the pattern
                     if hasattr(sim, 'associated_locations') and sim.associated_locations:
-                        for loc_name in sim.associated_locations.keys():
+                        for loc_name in sim.associated_locations:
                             if location_pattern.search(loc_name):
                                 filtered_simulations.append(sim)
                                 break
@@ -227,14 +227,15 @@ def list_simulations(ctx, location: str = None):
 
 @simulation.command(name="create")
 @click.argument("expid", required=False)
-@click.option("--location", help="Location where simulation will be stored")
+@click.option("--location", help="Primary location where simulation will be stored (interactive mode allows multiple)")
 @click.option("--model-id", help="Model identifier")
 @click.option("--path", help="Simulation path")
 @click.pass_context
 def create_simulation(ctx, expid: str = None, location: str = None, model_id: str = None, path: str = None):
     """Create a new simulation.
-    
+
     If no expid is provided, launches an interactive wizard to gather information.
+    The wizard allows selecting multiple storage locations (e.g., tape, disk, compute cluster).
     """
     output_json = ctx.obj.get('output_json', False) if ctx.obj else False
     try:
@@ -262,23 +263,33 @@ def create_simulation(ctx, expid: str = None, location: str = None, model_id: st
                     return
                 
         # If no location provided and interactive mode
+        selected_locations = []
         if not location:
             try:
                 import questionary
-                
+
                 # Get available locations
                 location_service = get_service_container().service_factory.location_service
                 locations_result = location_service.list_locations()
-                
+
                 if locations_result.locations:
                     location_choices = [loc.name for loc in locations_result.locations]
-                    location = questionary.select(
-                        "Select location for simulation:",
-                        choices=location_choices
+                    selected_locations = questionary.checkbox(
+                        "Select locations for simulation (multiple allowed):",
+                        choices=location_choices,
+                        instruction="Space to select/deselect, Enter to confirm"
                     ).ask()
+
+                    if selected_locations:
+                        console.print(f"[green]Selected locations:[/green] {', '.join(selected_locations)}")
+                    else:
+                        console.print("[dim]No locations selected - you can add them later with 'tellus simulation location add'[/dim]")
             except Exception as e:
                 console.print(f"[yellow]Warning: Interactive selection failed ({str(e)}), skipping location[/yellow]")
-                location = None
+                selected_locations = []
+        else:
+            # Single location provided via CLI argument
+            selected_locations = [location]
         
         dto = CreateSimulationDto(
             simulation_id=expid,
@@ -287,13 +298,32 @@ def create_simulation(ctx, expid: str = None, location: str = None, model_id: st
         )
         
         result = service.create_simulation(dto)
-        
+
+        # Associate locations if any were selected
+        if selected_locations:
+            try:
+                association_dto = SimulationLocationAssociationDto(
+                    simulation_id=expid,
+                    location_names=selected_locations,
+                    context_overrides={}  # Use default context for each location
+                )
+                service.associate_locations(association_dto)
+
+                if not output_json:
+                    if len(selected_locations) == 1:
+                        console.print(f"[green]✓[/green] Associated with location: {selected_locations[0]}")
+                    else:
+                        console.print(f"[green]✓[/green] Associated with {len(selected_locations)} locations: {', '.join(selected_locations)}")
+            except Exception as e:
+                console.print(f"[yellow]Warning:[/yellow] Failed to associate locations: {str(e)}")
+                console.print("[dim]You can manually associate locations later with 'tellus simulation location add'[/dim]")
+
         if output_json:
             console.print(result.pretty_json())
         else:
             console.print(f"[green]✓[/green] Created simulation: {result.simulation_id}")
-            if location:
-                console.print(f"[dim]Location: {location}[/dim]")
+            if not selected_locations:
+                console.print("[dim]No locations associated - add them later with 'tellus simulation location add'[/dim]")
         
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")

@@ -696,15 +696,17 @@ def ls_location(sim_id: str, location_name: str, path: str = ".",
                 full_path = path_service.resolve_simulation_location_path(sim_id, location_name, path)
                 console.print(f"[dim]Listing: {location_name}:{full_path}[/dim]")
                 
-                # Calculate the relative path for filesystem access
-                if location is not None:
+                # Calculate the path for filesystem access
+                if location is not None and not full_path.startswith('/'):
+                    # For relative paths, combine with location base path
                     base_path = location.get_base_path().rstrip('/')
                     if full_path.startswith(base_path):
                         resolved_path = full_path[len(base_path):].lstrip('/')
                     else:
                         resolved_path = full_path
                 else:
-                    resolved_path = path
+                    # For absolute paths, use the resolved path directly
+                    resolved_path = full_path
             
         except Exception as e:
             console.print(f"[yellow]Warning:[/yellow] Path resolution failed: {str(e)}")

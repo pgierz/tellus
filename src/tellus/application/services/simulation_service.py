@@ -436,9 +436,24 @@ class SimulationApplicationService:
             if simulation is None:
                 raise EntityNotFoundError("Simulation", simulation_id)
 
-            # Only attributes participate in templating context
+            # Build template context from both entity properties and attributes
+            context = {}
+
+            # Add commonly used template variables from entity properties
+            if hasattr(simulation, 'simulation_id') and simulation.simulation_id:
+                context['expid'] = str(simulation.simulation_id)  # Common alias for simulation_id
+                context['simulation_id'] = str(simulation.simulation_id)
+
+            if hasattr(simulation, 'model_id') and simulation.model_id:
+                context['model'] = str(simulation.model_id)  # Common alias for model_id
+                context['model_id'] = str(simulation.model_id)
+
+            # Add user-defined attributes
             attrs = getattr(simulation, "attrs", {}) or {}
-            return {str(k): str(v) for k, v in attrs.items()}
+            for k, v in attrs.items():
+                context[str(k)] = str(v)
+
+            return context
 
         except SimulationNotFoundError as e:
             raise EntityNotFoundError("Simulation", e.simulation_id)
