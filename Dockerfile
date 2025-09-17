@@ -18,13 +18,13 @@ COPY .git/ ./.git/
 COPY pyproject.toml ./
 COPY README.md ./
 
+# Copy source code (needed before installing the package)
+COPY src/ ./src/
+COPY scripts/ ./scripts/
+
 # Install Python dependencies (now git is available for version detection)
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -e .
-
-# Copy source code
-COPY src/ ./src/
-COPY scripts/ ./scripts/
 
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash tellus
