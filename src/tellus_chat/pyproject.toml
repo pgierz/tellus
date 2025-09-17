@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "tellus-chat"
 version = "0.1.0"
 description = "Natural language interface for Tellus Earth System Model data and simulations"
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 authors = [
     { name = "Paul Gierz", email = "pgierz@awi.de" },
 ]

@@ -36,10 +36,11 @@ Stay within the Python ecosystem for easier maintenance and team expertise.
 ```python
 # Example Reflex component
 import reflex as rx
+from typing import List
 from tellus.application.dtos import SimulationDto
 
 class SimulationState(rx.State):
-    simulations: list[SimulationDto] = []
+    simulations: List[SimulationDto] = []
     
     async def load_simulations(self):
         # Direct Python API calls

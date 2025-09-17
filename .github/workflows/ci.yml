@@ -12,8 +12,12 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
         include:
+          - python-version: "3.9"
+            pixi-environment: "test-py39"
+          - python-version: "3.10"
+            pixi-environment: "test-py310"
           - python-version: "3.11"
             pixi-environment: "test-py311"
           - python-version: "3.12"
