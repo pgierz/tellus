@@ -9,7 +9,9 @@ from rich.table import Table
 from ...application.container import get_service_container
 from ...application.dtos import (CreateSimulationDto,
                                  SimulationLocationAssociationDto,
-                                 UpdateSimulationDto)
+                                 UpdateSimulationDto,
+                                 CreateSimulationTemplateDto,
+                                 ApplyTemplateDto)
 from .main import cli, console
 from .rest_client import get_rest_simulation_service, get_rest_location_service, RestClientError, handle_rest_errors
 
@@ -685,6 +687,330 @@ def delete_simulation(ctx, expid: str = None, force: bool = False):
         else:
             console.print(f"[green]✓[/green] Deleted simulation: {expid}")
             
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+# Simulation Template subcommands
+
+@simulation.group()
+def template():
+    """Manage simulation templates for creating simulation series."""
+    pass
+
+
+@template.command(name="create")
+@click.argument("template_name")
+@click.option("--from-simulation", help="Create template from existing simulation ID")
+@click.option("--pattern", help="Naming pattern with {variable} placeholders")
+@click.option("--description", help="Template description")
+@click.option("--variables", help="JSON string defining template variables")
+@click.option("--tags", help="Comma-separated template tags")
+@click.pass_context
+def create_template(ctx, template_name: str, from_simulation: str = None,
+                   pattern: str = None, description: str = None,
+                   variables: str = None, tags: str = None):
+    """
+    Create a new simulation template.
+
+    Examples:
+        tellus simulation template create eem-series --from-simulation Eem125-S2 --pattern "Eem{time_period}-S2"
+        tellus simulation template create paleo-runs --pattern "{model}-{period}-{variant}"
+    """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
+
+    try:
+        container = get_service_container()
+        template_service = container.service_factory.template_service
+
+        if from_simulation:
+            # Create template from existing simulation
+            if not pattern:
+                console.print("[red]Error:[/red] --pattern is required when using --from-simulation")
+                return
+
+            # Parse variables if provided
+            var_dict = {}
+            if variables:
+                import json
+                try:
+                    var_dict = json.loads(variables)
+                except json.JSONDecodeError as e:
+                    console.print(f"[red]Error:[/red] Invalid JSON in --variables: {str(e)}")
+                    return
+
+            template_dto = template_service.create_template_from_simulation(
+                simulation_id=from_simulation,
+                template_name=template_name,
+                pattern=pattern,
+                variables=var_dict,
+                description=description
+            )
+        else:
+            # Create template from scratch
+            if not pattern:
+                console.print("[red]Error:[/red] --pattern is required")
+                return
+
+            # Parse variables and tags
+            var_dict = {}
+            if variables:
+                import json
+                try:
+                    var_dict = json.loads(variables)
+                except json.JSONDecodeError as e:
+                    console.print(f"[red]Error:[/red] Invalid JSON in --variables: {str(e)}")
+                    return
+
+            tag_set = set()
+            if tags:
+                tag_set = set(tag.strip() for tag in tags.split(','))
+
+            create_dto = CreateSimulationTemplateDto(
+                name=template_name,
+                description=description,
+                pattern=pattern,
+                variables=var_dict,
+                tags=tag_set
+            )
+
+            template_dto = template_service.create_template(create_dto)
+
+        if output_json:
+            import json
+            console.print(json.dumps(template_dto.model_dump(), indent=2))
+        else:
+            console.print(f"[green]✓[/green] Created template: {template_name}")
+            console.print(f"Pattern: {template_dto.pattern}")
+            if template_dto.description:
+                console.print(f"Description: {template_dto.description}")
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@template.command(name="list")
+@click.option("--tags", help="Filter by comma-separated tags")
+@click.pass_context
+def list_templates(ctx, tags: str = None):
+    """List all simulation templates."""
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
+
+    try:
+        container = get_service_container()
+        template_service = container.service_factory.template_service
+
+        # Parse tags filter
+        tag_filter = None
+        if tags:
+            tag_filter = set(tag.strip() for tag in tags.split(','))
+
+        template_list = template_service.list_templates(tags=tag_filter)
+
+        if output_json:
+            import json
+            console.print(json.dumps(template_list.model_dump(), indent=2))
+        else:
+            if template_list.templates:
+                table = Table(title="Simulation Templates")
+                table.add_column("Name", style="cyan")
+                table.add_column("Pattern", style="green")
+                table.add_column("Variables", style="yellow")
+                table.add_column("Description", style="dim")
+
+                for template in template_list.templates:
+                    variables = ", ".join(template.variables.keys()) if template.variables else "-"
+                    description = template.description or "-"
+                    if len(description) > 50:
+                        description = description[:47] + "..."
+
+                    table.add_row(
+                        template.name,
+                        template.pattern,
+                        variables,
+                        description
+                    )
+
+                console.print(table)
+                console.print(f"\nTotal templates: {template_list.total_count}")
+            else:
+                console.print("No templates found.")
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@template.command(name="apply")
+@click.argument("template_name")
+@click.option("--variables", help="JSON string with variable values", required=True)
+@click.option("--attrs", help="JSON string with additional simulation attributes")
+@click.pass_context
+def apply_template(ctx, template_name: str, variables: str, attrs: str = None):
+    """
+    Apply a template to create a new simulation.
+
+    Examples:
+        tellus simulation template apply eem-series --variables '{"time_period": 130}'
+        tellus simulation template apply paleo-runs --variables '{"model": "cesm", "period": "lgm", "variant": "a"}'
+    """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
+
+    try:
+        container = get_service_container()
+        template_service = container.service_factory.template_service
+
+        # Parse variables
+        import json
+        try:
+            var_values = json.loads(variables)
+        except json.JSONDecodeError as e:
+            console.print(f"[red]Error:[/red] Invalid JSON in --variables: {str(e)}")
+            return
+
+        # Parse additional attributes
+        override_attrs = {}
+        if attrs:
+            try:
+                override_attrs = json.loads(attrs)
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in --attrs: {str(e)}")
+                return
+
+        # Apply template
+        apply_dto = ApplyTemplateDto(
+            template_name=template_name,
+            variable_values=var_values,
+            override_attrs=override_attrs
+        )
+
+        simulation_id = template_service.apply_template(apply_dto)
+
+        if output_json:
+            result = {"simulation_id": simulation_id, "template": template_name, "variables": var_values}
+            console.print(json.dumps(result, indent=2))
+        else:
+            console.print(f"[green]✓[/green] Created simulation: {simulation_id}")
+            console.print(f"From template: {template_name}")
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@template.command(name="show")
+@click.argument("template_name")
+@click.pass_context
+def show_template(ctx, template_name: str):
+    """Show detailed information about a template."""
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
+
+    try:
+        container = get_service_container()
+        template_service = container.service_factory.template_service
+
+        template = template_service.get_template(template_name)
+
+        if output_json:
+            import json
+            console.print(json.dumps(template.model_dump(), indent=2))
+        else:
+            # Create detailed display
+            console.print(f"[bold]Template: {template.name}[/bold]")
+            if template.description:
+                console.print(f"Description: {template.description}")
+            console.print(f"Pattern: [green]{template.pattern}[/green]")
+
+            if template.variables:
+                console.print("\n[bold]Variables:[/bold]")
+                for var_name, var_def in template.variables.items():
+                    var_type = var_def.get('type', 'str')
+                    default = var_def.get('default', 'None')
+                    console.print(f"  {var_name}: {var_type} (default: {default})")
+
+                    if 'range' in var_def:
+                        console.print(f"    Range: {var_def['range']}")
+                    if 'choices' in var_def:
+                        console.print(f"    Choices: {var_def['choices']}")
+
+            if template.default_attrs:
+                console.print(f"\n[bold]Default Attributes:[/bold]")
+                for key, value in template.default_attrs.items():
+                    console.print(f"  {key}: {value}")
+
+            if template.location_associations:
+                console.print(f"\n[bold]Location Associations:[/bold]")
+                for loc_name, loc_config in template.location_associations.items():
+                    console.print(f"  {loc_name}: {loc_config}")
+
+            if template.tags:
+                console.print(f"\n[bold]Tags:[/bold] {', '.join(template.tags)}")
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
+@simulation.command(name="scan")
+@click.argument("scan_path")
+@click.option("--template", help="Template name to match against")
+@click.option("--pattern", help="Custom pattern to match directory names")
+@click.option("--auto-import", is_flag=True, help="Automatically import matching simulations")
+@click.pass_context
+def scan_simulations(ctx, scan_path: str, template: str = None,
+                    pattern: str = None, auto_import: bool = False):
+    """
+    Scan a filesystem path for potential simulations.
+
+    Examples:
+        tellus simulation scan /path/to/simulations --template eem-series
+        tellus simulation scan /path/to/simulations --pattern "Eem*-S2"
+        tellus simulation scan /path/to/simulations --template eem-series --auto-import
+    """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
+
+    try:
+        container = get_service_container()
+        template_service = container.service_factory.template_service
+
+        # Perform scan
+        template_names = [template] if template else None
+        scan_result = template_service.scan_for_simulations(
+            scan_path=scan_path,
+            template_names=template_names,
+            pattern=pattern
+        )
+
+        if output_json:
+            import json
+            console.print(json.dumps(scan_result.model_dump(), indent=2))
+        else:
+            console.print(f"[bold]Scan Results for: {scan_path}[/bold]")
+            console.print(f"Found {scan_result.scan_summary['total_found']} potential simulations")
+
+            if scan_result.template_matches:
+                console.print(f"\n[bold]Template Matches:[/bold]")
+                for template_name, matches in scan_result.template_matches.items():
+                    console.print(f"\n  [cyan]{template_name}[/cyan] ({len(matches)} matches):")
+                    for match in matches:
+                        variables = ", ".join(f"{k}={v}" for k, v in match["variables"].items())
+                        console.print(f"    {match['simulation_name']} ({variables})")
+
+            if scan_result.warnings:
+                console.print(f"\n[yellow]Warnings:[/yellow]")
+                for warning in scan_result.warnings:
+                    console.print(f"  • {warning}")
+
+            # Auto-import if requested
+            if auto_import and template and template in scan_result.template_matches:
+                console.print(f"\n[blue]Auto-importing simulations...[/blue]")
+                created_ids = template_service.bulk_import_from_scan(
+                    scan_result=scan_result,
+                    template_name=template,
+                    auto_create=True
+                )
+
+                console.print(f"[green]✓[/green] Created {len(created_ids)} simulations:")
+                for sim_id in created_ids:
+                    console.print(f"  • {sim_id}")
+
     except Exception as e:
         console.print(f"[red]Error:[/red] {str(e)}")
 

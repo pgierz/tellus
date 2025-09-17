@@ -1539,7 +1539,7 @@ class FileRegistrationResultDto(BaseModel, JsonSerializableMixin):
 class SyncResultDto(BaseModel, JsonSerializableMixin):
     """DTO for results of simulation-archive file synchronization."""
     model_config = BaseDtoConfig.model_config
-    
+
     simulation_id: str
     success: bool
     archives_processed: int = 0
@@ -1551,4 +1551,65 @@ class SyncResultDto(BaseModel, JsonSerializableMixin):
     error_message: Optional[str] = None
     warnings: List[str] = Field(default_factory=list)
     processing_time: Optional[float] = None
+
+
+# Template-related DTOs
+
+class CreateSimulationTemplateDto(BaseModel, JsonSerializableMixin):
+    """DTO for creating a new simulation template."""
+    model_config = BaseDtoConfig.model_config
+
+    name: str
+    description: Optional[str] = None
+    pattern: str
+    variables: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    default_attrs: Dict[str, Any] = Field(default_factory=dict)
+    default_model_id: Optional[str] = None
+    location_associations: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    tags: Set[str] = Field(default_factory=set)
+
+
+class SimulationTemplateDto(BaseModel, JsonSerializableMixin):
+    """DTO for simulation template data."""
+    model_config = BaseDtoConfig.model_config
+
+    template_id: str
+    name: str
+    description: Optional[str] = None
+    pattern: str
+    variables: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    default_attrs: Dict[str, Any] = Field(default_factory=dict)
+    default_model_id: Optional[str] = None
+    location_associations: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    created_by: Optional[str] = None
+    tags: Set[str] = Field(default_factory=set)
+
+
+class TemplateListDto(BaseModel, JsonSerializableMixin):
+    """DTO for template lists."""
+    model_config = BaseDtoConfig.model_config
+
+    templates: List[SimulationTemplateDto]
+    total_count: int
+
+
+class ScanResultDto(BaseModel, JsonSerializableMixin):
+    """DTO for simulation scan results."""
+    model_config = BaseDtoConfig.model_config
+
+    path: str
+    discovered_simulations: List[Dict[str, Any]]
+    template_matches: Dict[str, List[Dict[str, Any]]] = Field(default_factory=dict)
+    scan_summary: Dict[str, Any] = Field(default_factory=dict)
+    warnings: List[str] = Field(default_factory=list)
+
+
+class ApplyTemplateDto(BaseModel, JsonSerializableMixin):
+    """DTO for applying a template to create simulations."""
+    model_config = BaseDtoConfig.model_config
+
+    template_name: str
+    variable_values: Dict[str, Any]
+    override_attrs: Dict[str, Any] = Field(default_factory=dict)
+    location_overrides: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
 

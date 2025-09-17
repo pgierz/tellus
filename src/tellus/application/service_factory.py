@@ -18,6 +18,8 @@ from .dtos import CacheConfigurationDto
 from .services import (LocationApplicationService,
                        PathResolutionService, SimulationApplicationService,
                        WorkflowApplicationService, WorkflowExecutionService)
+from .services.template_service import TemplateApplicationService
+from ..infrastructure.repositories.template_repository import JsonTemplateRepository
 from .services.unified_file_service import UnifiedFileService
 from .services.file_transfer_service import FileTransferApplicationService
 from .services.progress_tracking_service import IProgressTrackingService
@@ -87,6 +89,7 @@ class ApplicationServiceFactory:
         self._workflow_execution_service: Optional[WorkflowExecutionService] = None
         self._file_transfer_service: Optional[FileTransferApplicationService] = None
         self._path_resolution_service: Optional[PathResolutionService] = None
+        self._template_service: Optional[TemplateApplicationService] = None
     
     @property
     def simulation_service(self) -> SimulationApplicationService:
@@ -186,6 +189,19 @@ class ApplicationServiceFactory:
                 location_service=self.location_service
             )
         return self._path_resolution_service
+
+    @property
+    def template_service(self) -> TemplateApplicationService:
+        """Get or create template application service."""
+        if self._template_service is None:
+            self._logger.debug("Creating TemplateApplicationService")
+            # Create template repository (JSON-based for now)
+            template_repo = JsonTemplateRepository()
+            self._template_service = TemplateApplicationService(
+                template_repo=template_repo,
+                simulation_service=self.simulation_service
+            )
+        return self._template_service
     
     @property
     def progress_tracking_service(self) -> IProgressTrackingService:
