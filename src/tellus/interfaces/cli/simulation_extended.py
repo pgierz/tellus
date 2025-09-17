@@ -2395,6 +2395,237 @@ def mget_files(sim_id: str, location_name: str, pattern: str = None,
         console.print(f"[red]Error:[/red] {str(e)}")
 
 
+@simulation_location.command(name="scan")
+@click.argument("location_name")
+@click.argument("scan_path", required=False, default=".")
+@click.option("--template", help="Template name to match against")
+@click.option("--pattern", help="Custom pattern to match directory names")
+@click.option("--auto-import", is_flag=True, help="Automatically import matching simulations")
+@click.pass_context
+def scan_location(ctx, location_name: str, scan_path: str = ".",
+                 template: str = None, pattern: str = None, auto_import: bool = False):
+    """
+    Scan a location's filesystem for potential simulations.
+
+    This command uses the location's configured filesystem (SSH, local, etc.)
+    to scan for simulation directories that match templates or patterns.
+
+    Examples:
+        tellus simulation location scan hsm simulations_pgierz --template eem-series
+        tellus simulation location scan hsm . --pattern "Eem*-S2"
+        tellus simulation location scan tape /archives --template eem-series --auto-import
+    """
+    output_json = ctx.obj.get('output_json', False) if ctx.obj else False
+
+    try:
+        from ...application.container import get_service_container
+
+        # Get services
+        container = get_service_container()
+        template_service = container.service_factory.template_service
+        location_service = container.service_factory.location_service
+
+        # Get location filesystem
+        try:
+            location_fs = location_service.get_location_filesystem(location_name)
+        except Exception as e:
+            console.print(f"[red]Error:[/red] Cannot access location '{location_name}': {str(e)}")
+            console.print(f"[dim]Use 'tellus location list' to see available locations[/dim]")
+            return
+
+        # Get location base path
+        base_path = location_fs.get_base_path().rstrip('/')
+
+        # Construct full scan path
+        if scan_path == ".":
+            full_scan_path = base_path
+        elif scan_path.startswith('/'):
+            # Absolute path - use directly
+            full_scan_path = scan_path
+        else:
+            # Relative path - combine with base
+            full_scan_path = f"{base_path}/{scan_path.lstrip('/')}"
+
+        console.print(f"[dim]Scanning location '{location_name}' at: {full_scan_path}[/dim]")
+
+        # Use the location's filesystem for scanning
+        discovered = []
+        template_matches = {}
+        warnings = []
+
+        # Get templates to match against
+        templates = []
+        if template:
+            try:
+                template_obj = template_service.get_template(template)
+                # Convert DTO back to entity for scanning logic
+                from ...domain.entities.simulation_template import SimulationTemplate
+                template_entity = SimulationTemplate(
+                    name=template_obj.name,
+                    pattern=template_obj.pattern,
+                    variables=template_obj.variables,
+                    template_id=template_obj.template_id,
+                    description=template_obj.description,
+                    default_attrs=template_obj.default_attrs,
+                    default_model_id=template_obj.default_model_id,
+                    location_associations=template_obj.location_associations,
+                    created_by=template_obj.created_by,
+                    tags=template_obj.tags
+                )
+                templates = [template_entity]
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Template '{template}' not found: {str(e)}")
+                return
+        else:
+            # Get all templates if none specified
+            all_templates = template_service.list_templates()
+            from ...domain.entities.simulation_template import SimulationTemplate
+            templates = [
+                SimulationTemplate(
+                    name=t.name,
+                    pattern=t.pattern,
+                    variables=t.variables,
+                    template_id=t.template_id,
+                    description=t.description,
+                    default_attrs=t.default_attrs,
+                    default_model_id=t.default_model_id,
+                    location_associations=t.location_associations,
+                    created_by=t.created_by,
+                    tags=t.tags
+                )
+                for t in all_templates.templates
+            ]
+
+        # Scan using location's filesystem
+        try:
+            fs = location_service._create_location_filesystem(location_fs)
+
+            # Check if scan path exists
+            if not fs.exists(full_scan_path):
+                console.print(f"[red]Error:[/red] Path does not exist: {full_scan_path}")
+                return
+
+            # List directory contents
+            try:
+                entries = fs.ls(full_scan_path, detail=True)
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Cannot list directory: {str(e)}")
+                return
+
+            # Process entries
+            import re
+            for entry in entries:
+                if entry.get('type') == 'directory':
+                    # Extract directory name
+                    entry_path = entry['name']
+                    if '/' in entry_path:
+                        dir_name = entry_path.split('/')[-1]
+                    else:
+                        dir_name = entry_path
+
+                    # Check if matches custom pattern
+                    pattern_match = True
+                    if pattern:
+                        # Convert shell pattern to regex
+                        regex_pattern = pattern.replace('*', '.*').replace('?', '.')
+                        pattern_match = re.match(f"^{regex_pattern}$", dir_name) is not None
+
+                    if pattern_match:
+                        discovered.append({
+                            "name": dir_name,
+                            "path": entry_path,
+                            "is_directory": True
+                        })
+
+                        # Check against templates
+                        for template_obj in templates:
+                            extracted_vars = template_obj.extract_variables_from_string(dir_name)
+                            if extracted_vars:
+                                if template_obj.name not in template_matches:
+                                    template_matches[template_obj.name] = []
+
+                                template_matches[template_obj.name].append({
+                                    "simulation_name": dir_name,
+                                    "path": entry_path,
+                                    "variables": extracted_vars,
+                                    "template_pattern": template_obj.pattern
+                                })
+
+        except Exception as e:
+            warnings.append(f"Error scanning location filesystem: {str(e)}")
+
+        # Create scan result
+        total_template_matches = sum(len(matches) for matches in template_matches.values())
+        summary = {
+            "total_found": len(discovered),
+            "template_matches": total_template_matches,
+            "templates_used": len(template_matches),
+            "scan_path": full_scan_path,
+            "location": location_name
+        }
+
+        # Display results
+        if output_json:
+            import json
+            result = {
+                "location": location_name,
+                "path": full_scan_path,
+                "discovered_simulations": discovered,
+                "template_matches": template_matches,
+                "scan_summary": summary,
+                "warnings": warnings
+            }
+            console.print(json.dumps(result, indent=2))
+        else:
+            console.print(f"[bold]Scan Results for location '{location_name}':[/bold]")
+            console.print(f"Path: {full_scan_path}")
+            console.print(f"Found {summary['total_found']} potential simulations")
+
+            if template_matches:
+                console.print(f"\n[bold]Template Matches:[/bold]")
+                for template_name, matches in template_matches.items():
+                    console.print(f"\n  [cyan]{template_name}[/cyan] ({len(matches)} matches):")
+                    for match in matches:
+                        variables = ", ".join(f"{k}={v}" for k, v in match["variables"].items())
+                        console.print(f"    {match['simulation_name']} ({variables})")
+
+            if warnings:
+                console.print(f"\n[yellow]Warnings:[/yellow]")
+                for warning in warnings:
+                    console.print(f"  • {warning}")
+
+            # Auto-import if requested
+            if auto_import and template and template in template_matches:
+                console.print(f"\n[blue]Auto-importing simulations...[/blue]")
+
+                # Create scan result DTO for bulk import
+                from ...application.dtos import ScanResultDto
+                scan_result_dto = ScanResultDto(
+                    path=full_scan_path,
+                    discovered_simulations=discovered,
+                    template_matches=template_matches,
+                    scan_summary=summary,
+                    warnings=warnings
+                )
+
+                try:
+                    created_ids = template_service.bulk_import_from_scan(
+                        scan_result=scan_result_dto,
+                        template_name=template,
+                        auto_create=True
+                    )
+
+                    console.print(f"[green]✓[/green] Created {len(created_ids)} simulations:")
+                    for sim_id in created_ids:
+                        console.print(f"  • {sim_id}")
+
+                except Exception as e:
+                    console.print(f"[red]Error during auto-import:[/red] {str(e)}")
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+
+
 @simulation.group(name="files")
 def simulation_files():
     """Manage simulation files."""

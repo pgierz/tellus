@@ -957,12 +957,15 @@ def show_template(ctx, template_name: str):
 def scan_simulations(ctx, scan_path: str, template: str = None,
                     pattern: str = None, auto_import: bool = False):
     """
-    Scan a filesystem path for potential simulations.
+    Scan a local filesystem path for potential simulations.
+
+    For remote locations (SSH, cloud storage), use:
+        tellus simulation location scan <location_name> <path>
 
     Examples:
-        tellus simulation scan /path/to/simulations --template eem-series
-        tellus simulation scan /path/to/simulations --pattern "Eem*-S2"
-        tellus simulation scan /path/to/simulations --template eem-series --auto-import
+        tellus simulation scan /local/path/to/simulations --template eem-series
+        tellus simulation scan /local/path/to/simulations --pattern "Eem*-S2"
+        tellus simulation location scan hsm simulations_pgierz --template eem-series
     """
     output_json = ctx.obj.get('output_json', False) if ctx.obj else False
 
