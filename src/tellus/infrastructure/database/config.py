@@ -203,7 +203,10 @@ def _test_postgres_connection(config: DatabaseConfig) -> bool:
             pass  # Just test the connection
         return True
     except Exception as e:
-        logger.debug(f"PostgreSQL connection test failed: {e}")
+        # Don't log at debug level to avoid noise in CLI output
+        # Only log if we have a specific environment variable for database debugging
+        if os.getenv("TELLUS_DEBUG_DATABASE"):
+            logger.debug(f"PostgreSQL connection test failed: {e}")
         return False
 
 

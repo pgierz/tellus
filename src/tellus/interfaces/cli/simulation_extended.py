@@ -2612,7 +2612,8 @@ def scan_location(ctx, location_name: str, scan_path: str = ".",
                     created_ids = template_service.bulk_import_from_scan(
                         scan_result=scan_result_dto,
                         template_name=template,
-                        auto_create=True
+                        auto_create=True,
+                        location_name=location_name
                     )
 
                     console.print(f"[green]✓[/green] Created {len(created_ids)} simulations:")

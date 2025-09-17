@@ -389,7 +389,8 @@ class TemplateApplicationService:
         self,
         scan_result: ScanResultDto,
         template_name: str,
-        auto_create: bool = False
+        auto_create: bool = False,
+        location_name: Optional[str] = None
     ) -> List[str]:
         """
         Bulk import simulations from scan results using a template.
@@ -398,6 +399,7 @@ class TemplateApplicationService:
             scan_result: Results from a previous scan operation
             template_name: Template to use for import
             auto_create: Whether to automatically create simulations
+            location_name: Optional location name to associate with created simulations
 
         Returns:
             List of created simulation IDs
@@ -429,6 +431,20 @@ class TemplateApplicationService:
                         simulation_id = self.apply_template(apply_dto)
                         created_ids.append(simulation_id)
                         self._logger.info(f"Created simulation: {simulation_id}")
+
+                        # Associate with location if provided
+                        if location_name:
+                            try:
+                                from ..dtos import SimulationLocationAssociationDto
+                                assoc_dto = SimulationLocationAssociationDto(
+                                    simulation_id=simulation_id,
+                                    location_names=[location_name],
+                                    context_overrides={}
+                                )
+                                self._simulation_service.associate_locations(assoc_dto)
+                                self._logger.debug(f"Associated simulation {simulation_id} with location {location_name}")
+                            except Exception as e:
+                                self._logger.warning(f"Failed to associate location for {simulation_id}: {str(e)}")
 
                 except Exception as e:
                     self._logger.warning(f"Failed to create simulation for {match['simulation_name']}: {str(e)}")
