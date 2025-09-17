@@ -579,7 +579,7 @@ class OptimizedJsonSimulationRepository(JsonSimulationRepository):
 class BatchOptimizedJsonSimulationRepository(JsonSimulationRepository):
     """Repository optimized for batch operations."""
     
-    def save_all(self, entities: list[SimulationEntity]) -> list[SimulationEntity]:
+    def save_all(self, entities: List[SimulationEntity]) -> List[SimulationEntity]:
         """Optimized batch save operation."""
         
         # Load current data once
@@ -599,7 +599,7 @@ class BatchOptimizedJsonSimulationRepository(JsonSimulationRepository):
         
         return entities
     
-    def find_by_ids(self, simulation_ids: list[str]) -> list[SimulationEntity]:
+    def find_by_ids(self, simulation_ids: List[str]) -> List[SimulationEntity]:
         """Optimized batch find operation."""
         
         # Single read operation

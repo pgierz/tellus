@@ -10,7 +10,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Pattern
+from typing import Dict, List, Optional, Pattern, Tuple
 
 from .simulation_file import FileContentType, FileImportance
 
@@ -137,7 +137,7 @@ class FileTypeConfiguration:
                 return rule
         return None
     
-    def classify_file(self, filename: str) -> tuple[FileContentType, FileImportance]:
+    def classify_file(self, filename: str) -> Tuple[FileContentType, FileImportance]:
         """
         Classify a file based on configured rules.
         

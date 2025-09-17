@@ -137,6 +137,8 @@ wind_field = ai_atmosphere_model(
 
 ### Installation
 
+**Requirements**: Python 3.9+ (for HPC compatibility until Python 3.9 EOL in October 2025)
+
 ```bash
 # Clone the repository
 git clone https://github.com/yourusername/tellus.git
@@ -145,8 +147,11 @@ cd tellus
 # Install with pixi (recommended)
 pixi install
 
-# Or with pip
+# Or with pip for HPC systems
 pip install -e .
+
+# For HPC systems with older Python, ensure you have Python 3.9+:
+module load python/3.9  # or similar on your HPC system
 ```
 
 ### Configuration
@@ -191,7 +196,7 @@ for sim in core_sims:
 ## 🛠️ Development
 
 ### Prerequisites
-- Python 3.8+
+- Python 3.9+ (3.9 until October 2025, then 3.10+)
 - pixi or conda for environment management
 - Git for version control
 - SSH access to compute resources (optional)

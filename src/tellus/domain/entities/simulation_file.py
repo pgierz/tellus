@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 # Checksum value object (formerly from archive entity)
 @dataclass(frozen=True)
@@ -830,34 +830,34 @@ class FileInventory:
         """Get a file by its relative path."""
         return self.files.get(relative_path)
     
-    def list_files(self) -> list[SimulationFile]:
+    def list_files(self) -> List[SimulationFile]:
         """Get list of all files."""
         return list(self.files.values())
     
-    def filter_by_content_type(self, content_type: FileContentType) -> list[SimulationFile]:
+    def filter_by_content_type(self, content_type: FileContentType) -> List[SimulationFile]:
         """Filter files by content type."""
         return [f for f in self.files.values() if f.content_type == content_type]
     
-    def filter_by_importance(self, importance: FileImportance) -> list[SimulationFile]:
+    def filter_by_importance(self, importance: FileImportance) -> List[SimulationFile]:
         """Filter files by importance level."""
         return [f for f in self.files.values() if f.importance == importance]
     
-    def filter_by_tags(self, tags: Set[str], match_all: bool = False) -> list[SimulationFile]:
+    def filter_by_tags(self, tags: Set[str], match_all: bool = False) -> List[SimulationFile]:
         """Filter files by tags."""
         if match_all:
             return [f for f in self.files.values() if f.matches_all_tags(tags)]
         else:
             return [f for f in self.files.values() if f.matches_any_tag(tags)]
     
-    def filter_by_pattern(self, pattern: str) -> list[SimulationFile]:
+    def filter_by_pattern(self, pattern: str) -> List[SimulationFile]:
         """Filter files by glob pattern."""
         return [f for f in self.files.values() if f.matches_pattern(pattern)]
     
-    def filter_by_directory(self, directory: str) -> list[SimulationFile]:
+    def filter_by_directory(self, directory: str) -> List[SimulationFile]:
         """Filter files within a specific directory."""
         return [f for f in self.files.values() if f.is_in_directory(directory)]
     
-    def get_archivable_files(self) -> list[SimulationFile]:
+    def get_archivable_files(self) -> List[SimulationFile]:
         """Get files that should be included in archives."""
         return [f for f in self.files.values() if f.is_archivable()]
     
