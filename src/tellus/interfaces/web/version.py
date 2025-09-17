@@ -9,42 +9,19 @@ from functools import lru_cache
 @lru_cache(maxsize=1)
 def get_tellus_version() -> str:
     """
-    Get the current Tellus version using commitizen.
-    
+    Get the current Tellus version from package metadata.
+
+    The version is automatically determined by setuptools-scm from git tags.
+
     Returns:
-        Version string (e.g., "0.1.0a3")
+        Version string (e.g., "0.1.0a8.dev3+g02b3cdd")
     """
     try:
-        result = subprocess.run(
-            ["cz", "version", "--project"],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except (subprocess.SubprocessError, FileNotFoundError):
-        pass
-    
-    # Fallback to parsing git tags if commitizen fails
-    try:
-        result = subprocess.run(
-            ["git", "describe", "--tags", "--abbrev=0"],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        if result.returncode == 0:
-            tag = result.stdout.strip()
-            # Remove 'v' prefix if present
-            if tag.startswith('v'):
-                tag = tag[1:]
-            return tag
-    except (subprocess.SubprocessError, FileNotFoundError):
-        pass
-    
-    # Final fallback
-    return "0.1.0a3"
+        import importlib.metadata
+        return importlib.metadata.version("tellus")
+    except Exception as e:
+        # This should never happen in a properly installed package
+        raise RuntimeError(f"Could not determine tellus version: {e}") from e
 
 
 def get_api_version() -> str:
