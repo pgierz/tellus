@@ -7,7 +7,49 @@ defined in the CLI redesign document.
 import json
 import pytest
 from click.testing import CliRunner
+from unittest.mock import patch, AsyncMock
 
+
+@pytest.fixture(autouse=True)
+def mock_database_manager():
+    """Mock the database manager to avoid real database connections."""
+    from unittest.mock import MagicMock
+
+    class MockSessionContext:
+        def __init__(self, session):
+            self.session = session
+
+        async def __aenter__(self):
+            return self.session
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            return None
+
+    with patch('tellus.infrastructure.database.config.get_database_manager') as mock_get_manager:
+        mock_manager = MagicMock()
+        mock_session = AsyncMock()
+
+        # Mock database operations with proper chain
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        mock_scalars.one_or_none.return_value = None
+        mock_result.scalars.return_value = mock_scalars
+        mock_result.scalar_one_or_none.return_value = None
+
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_session.rollback = AsyncMock()
+        mock_session.close = AsyncMock()
+
+        # Make get_session() return a context manager
+        def get_session():
+            return MockSessionContext(mock_session)
+
+        mock_manager.get_session = get_session
+        mock_get_manager.return_value = mock_manager
+        yield mock_manager
 
 @pytest.fixture
 def app():

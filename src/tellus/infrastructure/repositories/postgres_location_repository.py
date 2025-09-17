@@ -35,21 +35,29 @@ class PostgresLocationRepository(ILocationRepository):
         self._session = session
         self._owns_session = session is None
 
+    def _get_db_manager(self):
+        """Get database manager for session creation."""
+        from ..database.config import get_database_manager
+        return get_database_manager()
+
     async def _get_session(self) -> AsyncSession:
-        """Get async session for database operations."""
+        """Get an async database session."""
         if self._session:
             return self._session
-
-        # This would need to be implemented properly with dependency injection
-        raise RuntimeError(
-            "No session provided and global session factory not available. "
-            "Please provide a session or configure the database manager."
-        )
+        db_manager = self._get_db_manager()
+        return db_manager.get_session()
 
     async def save(self, location: LocationEntity) -> None:
         """Save a location entity to the database."""
-        session = await self._get_session()
+        if self._session:
+            await self._save_with_session(self._session, location)
+        else:
+            db_manager = self._get_db_manager()
+            async with db_manager.get_session() as session:
+                await self._save_with_session(session, location)
 
+    async def _save_with_session(self, session: AsyncSession, location: LocationEntity) -> None:
+        """Save with provided session."""
         try:
             # Check if location already exists
             stmt = select(LocationModel).where(LocationModel.name == location.name)
@@ -78,8 +86,15 @@ class PostgresLocationRepository(ILocationRepository):
 
     async def get_by_name(self, name: str) -> Optional[LocationEntity]:
         """Retrieve a location by its name."""
-        session = await self._get_session()
+        if self._session:
+            return await self._get_by_name_with_session(self._session, name)
+        else:
+            db_manager = self._get_db_manager()
+            async with db_manager.get_session() as session:
+                return await self._get_by_name_with_session(session, name)
 
+    async def _get_by_name_with_session(self, session: AsyncSession, name: str) -> Optional[LocationEntity]:
+        """Get by name with provided session."""
         try:
             stmt = select(LocationModel).where(LocationModel.name == name)
             result = await session.execute(stmt)
@@ -95,8 +110,15 @@ class PostgresLocationRepository(ILocationRepository):
 
     async def list_all(self) -> List[LocationEntity]:
         """List all locations."""
-        session = await self._get_session()
+        if self._session:
+            return await self._list_all_with_session(self._session)
+        else:
+            db_manager = self._get_db_manager()
+            async with db_manager.get_session() as session:
+                return await self._list_all_with_session(session)
 
+    async def _list_all_with_session(self, session: AsyncSession) -> List[LocationEntity]:
+        """List all with provided session."""
         try:
             stmt = select(LocationModel)
             result = await session.execute(stmt)
@@ -109,8 +131,15 @@ class PostgresLocationRepository(ILocationRepository):
 
     async def delete(self, name: str) -> bool:
         """Delete a location by its name."""
-        session = await self._get_session()
+        if self._session:
+            return await self._delete_with_session(self._session, name)
+        else:
+            db_manager = self._get_db_manager()
+            async with db_manager.get_session() as session:
+                return await self._delete_with_session(session, name)
 
+    async def _delete_with_session(self, session: AsyncSession, name: str) -> bool:
+        """Delete with provided session."""
         try:
             stmt = delete(LocationModel).where(LocationModel.name == name)
             result = await session.execute(stmt)
@@ -127,8 +156,15 @@ class PostgresLocationRepository(ILocationRepository):
 
     async def exists(self, name: str) -> bool:
         """Check if a location exists."""
-        session = await self._get_session()
+        if self._session:
+            return await self._exists_with_session(self._session, name)
+        else:
+            db_manager = self._get_db_manager()
+            async with db_manager.get_session() as session:
+                return await self._exists_with_session(session, name)
 
+    async def _exists_with_session(self, session: AsyncSession, name: str) -> bool:
+        """Check existence with provided session."""
         try:
             stmt = select(LocationModel.name).where(LocationModel.name == name)
             result = await session.execute(stmt)
@@ -139,8 +175,15 @@ class PostgresLocationRepository(ILocationRepository):
 
     async def find_by_kind(self, kind: LocationKind) -> List[LocationEntity]:
         """Find all locations that have a specific kind."""
-        session = await self._get_session()
+        if self._session:
+            return await self._find_by_kind_with_session(self._session, kind)
+        else:
+            db_manager = self._get_db_manager()
+            async with db_manager.get_session() as session:
+                return await self._find_by_kind_with_session(session, kind)
 
+    async def _find_by_kind_with_session(self, session: AsyncSession, kind: LocationKind) -> List[LocationEntity]:
+        """Find by kind with provided session."""
         try:
             # Use PostgreSQL array operations to find locations with the specified kind
             stmt = select(LocationModel).where(LocationModel.kinds.any(kind.name))
@@ -154,8 +197,15 @@ class PostgresLocationRepository(ILocationRepository):
 
     async def find_by_protocol(self, protocol: str) -> List[LocationEntity]:
         """Find all locations that use a specific protocol."""
-        session = await self._get_session()
+        if self._session:
+            return await self._find_by_protocol_with_session(self._session, protocol)
+        else:
+            db_manager = self._get_db_manager()
+            async with db_manager.get_session() as session:
+                return await self._find_by_protocol_with_session(session, protocol)
 
+    async def _find_by_protocol_with_session(self, session: AsyncSession, protocol: str) -> List[LocationEntity]:
+        """Find by protocol with provided session."""
         try:
             stmt = select(LocationModel).where(LocationModel.protocol == protocol)
             result = await session.execute(stmt)
@@ -168,8 +218,15 @@ class PostgresLocationRepository(ILocationRepository):
 
     async def count(self) -> int:
         """Get the total number of locations."""
-        session = await self._get_session()
+        if self._session:
+            return await self._count_with_session(self._session)
+        else:
+            db_manager = self._get_db_manager()
+            async with db_manager.get_session() as session:
+                return await self._count_with_session(session)
 
+    async def _count_with_session(self, session: AsyncSession) -> int:
+        """Count with provided session."""
         try:
             stmt = select(LocationModel)
             result = await session.execute(stmt)
@@ -186,13 +243,13 @@ class PostgresLocationRepository(ILocationRepository):
         return LocationModel(
             name=entity.name,
             kinds=kind_strings,
-            protocol=entity.protocol,
-            path=entity.path,
-            storage_options=entity.storage_options,
-            additional_config=entity.additional_config,
-            is_remote=entity.is_remote,
-            is_accessible=entity.is_accessible,
-            last_verified=entity.last_verified,
+            protocol=entity.config.get('protocol', ''),
+            path=entity.config.get('path', ''),
+            storage_options=entity.config.get('storage_options', {}),
+            additional_config=entity.config.get('additional_config', {}),
+            is_remote=entity.config.get('is_remote', True),
+            is_accessible=entity.config.get('is_accessible', True),
+            last_verified=entity.config.get('last_verified'),
             path_templates=self._path_templates_to_dict(entity.path_templates),
         )
 
@@ -201,13 +258,13 @@ class PostgresLocationRepository(ILocationRepository):
         kind_strings = [kind.name for kind in entity.kinds]
 
         model.kinds = kind_strings
-        model.protocol = entity.protocol
-        model.path = entity.path
-        model.storage_options = entity.storage_options
-        model.additional_config = entity.additional_config
-        model.is_remote = entity.is_remote
-        model.is_accessible = entity.is_accessible
-        model.last_verified = entity.last_verified
+        model.protocol = entity.config.get('protocol', '')
+        model.path = entity.config.get('path', '')
+        model.storage_options = entity.config.get('storage_options', {})
+        model.additional_config = entity.config.get('additional_config', {})
+        model.is_remote = entity.config.get('is_remote', True)
+        model.is_accessible = entity.config.get('is_accessible', True)
+        model.last_verified = entity.config.get('last_verified')
         model.path_templates = self._path_templates_to_dict(entity.path_templates)
 
     def _model_to_entity(self, model: LocationModel) -> LocationEntity:
@@ -215,16 +272,20 @@ class PostgresLocationRepository(ILocationRepository):
         # Convert string list back to enum kinds
         kinds = [LocationKind.from_str(kind_str) for kind_str in model.kinds]
 
+        config = {
+            'protocol': model.protocol,
+            'path': model.path,
+            'storage_options': model.storage_options,
+            'additional_config': model.additional_config,
+            'is_remote': model.is_remote,
+            'is_accessible': model.is_accessible,
+            'last_verified': model.last_verified,
+        }
+
         return LocationEntity(
             name=model.name,
             kinds=kinds,
-            protocol=model.protocol,
-            path=model.path,
-            storage_options=model.storage_options,
-            additional_config=model.additional_config,
-            is_remote=model.is_remote,
-            is_accessible=model.is_accessible,
-            last_verified=model.last_verified,
+            config=config,
             path_templates=self._dict_to_path_templates(model.path_templates),
         )
 

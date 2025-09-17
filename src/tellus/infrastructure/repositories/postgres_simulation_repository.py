@@ -41,6 +41,13 @@ class PostgresSimulationRepository(ISimulationRepository):
         from ..database.config import get_database_manager
         return get_database_manager()
 
+    async def _get_session(self) -> AsyncSession:
+        """Get an async database session."""
+        if self._session:
+            return self._session
+        db_manager = self._get_db_manager()
+        return db_manager.get_session()
+
     async def save(self, simulation: SimulationEntity) -> None:
         """Save a simulation entity to the database."""
         if self._session:
@@ -116,8 +123,15 @@ class PostgresSimulationRepository(ISimulationRepository):
 
     async def list_all(self) -> List[SimulationEntity]:
         """List all simulations."""
-        session = await self._get_session()
+        if self._session:
+            return await self._list_all_with_session(self._session)
+        else:
+            db_manager = self._get_db_manager()
+            async with db_manager.get_session() as session:
+                return await self._list_all_with_session(session)
 
+    async def _list_all_with_session(self, session: AsyncSession) -> List[SimulationEntity]:
+        """List all with provided session."""
         try:
             stmt = select(SimulationModel)
             result = await session.execute(stmt)
@@ -138,8 +152,15 @@ class PostgresSimulationRepository(ISimulationRepository):
 
     async def delete(self, simulation_id: str) -> bool:
         """Delete a simulation by its ID."""
-        session = await self._get_session()
+        if self._session:
+            return await self._delete_with_session(self._session, simulation_id)
+        else:
+            db_manager = self._get_db_manager()
+            async with db_manager.get_session() as session:
+                return await self._delete_with_session(session, simulation_id)
 
+    async def _delete_with_session(self, session: AsyncSession, simulation_id: str) -> bool:
+        """Delete with provided session."""
         try:
             # First delete location contexts (cascading should handle this, but let's be explicit)
             await session.execute(
@@ -166,8 +187,15 @@ class PostgresSimulationRepository(ISimulationRepository):
 
     async def exists(self, simulation_id: str) -> bool:
         """Check if a simulation exists."""
-        session = await self._get_session()
+        if self._session:
+            return await self._exists_with_session(self._session, simulation_id)
+        else:
+            db_manager = self._get_db_manager()
+            async with db_manager.get_session() as session:
+                return await self._exists_with_session(session, simulation_id)
 
+    async def _exists_with_session(self, session: AsyncSession, simulation_id: str) -> bool:
+        """Check existence with provided session."""
         try:
             stmt = select(SimulationModel.simulation_id).where(
                 SimulationModel.simulation_id == simulation_id
@@ -180,8 +208,15 @@ class PostgresSimulationRepository(ISimulationRepository):
 
     async def count(self) -> int:
         """Get the total number of simulations."""
-        session = await self._get_session()
+        if self._session:
+            return await self._count_with_session(self._session)
+        else:
+            db_manager = self._get_db_manager()
+            async with db_manager.get_session() as session:
+                return await self._count_with_session(session)
 
+    async def _count_with_session(self, session: AsyncSession) -> int:
+        """Count with provided session."""
         try:
             stmt = select(SimulationModel)
             result = await session.execute(stmt)
