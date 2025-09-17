@@ -440,12 +440,10 @@ class TemplateApplicationService:
                                 # Use the discovered path as context override
                                 context_overrides = {}
                                 if "path" in match and match["path"]:
-                                    # Extract the parent directory of the discovered simulation
-                                    import os
+                                    # Use the full path to the simulation directory
                                     discovered_path = match["path"]
-                                    parent_dir = os.path.dirname(discovered_path) if discovered_path != match["simulation_name"] else discovered_path
-                                    if parent_dir and parent_dir != ".":
-                                        context_overrides[location_name] = {"path_prefix": parent_dir}
+                                    if discovered_path and discovered_path != ".":
+                                        context_overrides[location_name] = {"path_prefix": discovered_path}
 
                                 assoc_dto = SimulationLocationAssociationDto(
                                     simulation_id=simulation_id,
