@@ -81,13 +81,16 @@ class ServiceContainer:
             # Initialize PostgreSQL repositories directly
             from ..infrastructure.repositories.postgres_simulation_repository import AsyncSimulationRepositoryWrapper, PostgresSimulationRepository
             from ..infrastructure.repositories.postgres_location_repository import AsyncLocationRepositoryWrapper, PostgresLocationRepository
+            from ..infrastructure.repositories.postgres_workflow_repository import AsyncWorkflowRepositoryWrapper, PostgresWorkflowRepository
 
             # Create database-backed repositories
             async_sim_repo = PostgresSimulationRepository()
             async_loc_repo = PostgresLocationRepository()
+            async_workflow_repo = PostgresWorkflowRepository()
 
             simulation_repo = AsyncSimulationRepositoryWrapper(async_sim_repo)
             location_repo = AsyncLocationRepositoryWrapper(async_loc_repo)
+            workflow_repo = AsyncWorkflowRepositoryWrapper(async_workflow_repo)
 
             # Keep JSON for other services that haven't been migrated yet
             progress_tracking_repo = JsonProgressTrackingRepository(
@@ -113,10 +116,18 @@ class ServiceContainer:
                 notification_queue_size=1000
             )
             
+            # Create template repository (JSON-based for now)
+            from ..infrastructure.repositories.template_repository import JsonTemplateRepository
+            workflow_template_repo = JsonTemplateRepository(
+                file_path=str(self._global_data_path / "workflow_templates.json")
+            )
+
             self._service_factory = ApplicationServiceFactory(
                 simulation_repository=simulation_repo,
                 location_repository=location_repo,
                 simulation_file_repository=simulation_file_repo,
+                workflow_repository=workflow_repo,
+                workflow_template_repository=workflow_template_repo,
                 progress_tracking_service=self._progress_tracking_service,
                 cache_config=cache_config
             )

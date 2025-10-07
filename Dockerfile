@@ -4,11 +4,12 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies for SSH and other tools
+# Install system dependencies for SSH, PostgreSQL client, and other tools
 RUN apt-get update && apt-get install -y \
     openssh-client \
     git \
     curl \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy git metadata first (needed for version detection)
@@ -25,9 +26,14 @@ COPY README.md ./
 COPY src/ ./src/
 COPY scripts/ ./scripts/
 
+# Copy entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # Install Python dependencies (now git is available for version detection)
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -e .
+    pip install --no-cache-dir -e . && \
+    pip install --no-cache-dir psycopg2-binary
 
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash tellus
@@ -50,5 +56,5 @@ EXPOSE 1968
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f $(tellus api-info --url-only) || exit 1
 
-# Default command - run the API server (using module path that works from /home/tellus)
-CMD ["uvicorn", "tellus.interfaces.web.main:app", "--host", "0.0.0.0", "--port", "1968"]
+# Default command - run the entrypoint script which sets up DB and starts API
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

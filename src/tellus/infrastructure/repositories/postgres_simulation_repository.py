@@ -306,37 +306,52 @@ class AsyncSimulationRepositoryWrapper:
     Wrapper to adapt the async repository to sync interface.
 
     This allows gradual migration from sync to async patterns.
+    Detects if already in an async event loop (like FastAPI) and adapts accordingly.
     """
 
     def __init__(self, async_repo: PostgresSimulationRepository):
         self.async_repo = async_repo
 
+    def _run_async(self, coro):
+        """Run async coroutine, detecting if we're already in an event loop."""
+        import asyncio
+        try:
+            # Check if there's already a running event loop
+            loop = asyncio.get_running_loop()
+            # We're in an async context (like FastAPI), run in separate thread
+            import concurrent.futures
+
+            # Run in a separate thread with its own event loop
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                future = pool.submit(asyncio.run, coro)
+                return future.result()
+        except RuntimeError:
+            # No event loop running, just use asyncio.run() directly
+            # Reset the database manager to ensure fresh engine for new event loop
+            from ..database.config import reset_database_manager
+            reset_database_manager()
+            return asyncio.run(coro)
+
     def save(self, simulation: SimulationEntity) -> None:
         """Sync wrapper for save operation."""
-        import asyncio
-        asyncio.run(self.async_repo.save(simulation))
+        self._run_async(self.async_repo.save(simulation))
 
     def get_by_id(self, simulation_id: str) -> Optional[SimulationEntity]:
         """Sync wrapper for get_by_id operation."""
-        import asyncio
-        return asyncio.run(self.async_repo.get_by_id(simulation_id))
+        return self._run_async(self.async_repo.get_by_id(simulation_id))
 
     def list_all(self) -> List[SimulationEntity]:
         """Sync wrapper for list_all operation."""
-        import asyncio
-        return asyncio.run(self.async_repo.list_all())
+        return self._run_async(self.async_repo.list_all())
 
     def delete(self, simulation_id: str) -> bool:
         """Sync wrapper for delete operation."""
-        import asyncio
-        return asyncio.run(self.async_repo.delete(simulation_id))
+        return self._run_async(self.async_repo.delete(simulation_id))
 
     def exists(self, simulation_id: str) -> bool:
         """Sync wrapper for exists operation."""
-        import asyncio
-        return asyncio.run(self.async_repo.exists(simulation_id))
+        return self._run_async(self.async_repo.exists(simulation_id))
 
     def count(self) -> int:
         """Sync wrapper for count operation."""
-        import asyncio
-        return asyncio.run(self.async_repo.count())
+        return self._run_async(self.async_repo.count())

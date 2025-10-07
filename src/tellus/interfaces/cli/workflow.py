@@ -6,6 +6,7 @@ to fall back to, so USE_NEW_WORKFLOW_SERVICE feature flag is not checked here.
 
 # import asyncio - not needed as services are not async
 import json
+import os
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -37,17 +38,34 @@ from ...infrastructure.repositories.postgres_location_repository import \
 from ...infrastructure.repositories.json_workflow_repository import (
     JsonWorkflowRepository, JsonWorkflowRunRepository,
     JsonWorkflowTemplateRepository)
+from .rest_client import get_rest_workflow_service, RestClientError
 
 # Initialize console
 console = Console()
 
 # Initialize services using container
 def _get_workflow_services():
-    """Get workflow services using the application container."""
+    """
+    Get workflow services from the service container or REST API.
+
+    Returns
+    -------
+    tuple[WorkflowApplicationService or RestWorkflowService, JsonWorkflowRunRepository or None]
+        Configured workflow service and run repository. Uses REST API if TELLUS_CLI_USE_REST_API=true.
+    """
+    use_rest_api = os.getenv('TELLUS_CLI_USE_REST_API', 'false').lower() == 'true'
+
+    if use_rest_api:
+        console.print("✨ Using REST API backend", style="dim")
+        workflow_service = get_rest_workflow_service()
+        # REST API doesn't use run repository
+        return workflow_service, None
+
+    # Use local JSON repositories
     from ...application.container import get_service_container
-    
+
     container = get_service_container()
-    
+
     # Create workflow-specific repositories using container paths
     workflow_repo = JsonWorkflowRepository(
         workflows_file=str(container.project_data_path / "workflows.json")
@@ -58,16 +76,16 @@ def _get_workflow_services():
     template_repo = JsonWorkflowTemplateRepository(
         templates_file=str(container.project_data_path / "workflow_templates.json")
     )
-    
+
     # Use location service from container
     location_service = container.service_factory.location_service
-    
+
     workflow_service = WorkflowApplicationService(
         workflow_repository=workflow_repo,
         template_repository=template_repo,
         location_repository=location_service._location_repo  # Access underlying repo
     )
-    
+
     return workflow_service, run_repo
 
 def _get_execution_service():
@@ -383,24 +401,31 @@ def list_workflows(workflow_type: Optional[str], status: Optional[str], verbose:
 def show_workflow(workflow_id: str):
     """Show detailed information about a workflow."""
     workflow = get_workflow_or_exit(workflow_id)
-    
+
+    # Handle both WorkflowEntity and WorkflowDto
+    workflow_type = getattr(workflow.workflow_type, 'name', None) if hasattr(workflow, 'workflow_type') else workflow.engine
+    status = getattr(workflow.status, 'name', 'N/A') if hasattr(workflow, 'status') else 'N/A'
+    created_at = workflow.created_at.strftime('%Y-%m-%d %H:%M:%S') if hasattr(workflow.created_at, 'strftime') else (workflow.created_at or 'Unknown')
+    updated_at = workflow.updated_at.strftime('%Y-%m-%d %H:%M:%S') if hasattr(workflow, 'updated_at') and hasattr(workflow.updated_at, 'strftime') else 'N/A'
+    parameters = getattr(workflow, 'global_parameters', None) or getattr(workflow, 'parameters', {})
+
     # Main workflow panel
     info_text = f"""[bold]Name:[/bold] {workflow.name}
-[bold]Type:[/bold] {workflow.workflow_type.name}
-[bold]Status:[/bold] {workflow.status.name}
+[bold]Type/Engine:[/bold] {workflow_type}
+[bold]Status:[/bold] {status}
 [bold]Version:[/bold] {workflow.version}
 [bold]Author:[/bold] {workflow.author or 'Unknown'}
-[bold]Created:[/bold] {workflow.created_at.strftime('%Y-%m-%d %H:%M:%S')}
-[bold]Updated:[/bold] {workflow.updated_at.strftime('%Y-%m-%d %H:%M:%S')}
+[bold]Created:[/bold] {created_at}
+[bold]Updated:[/bold] {updated_at}
 [bold]Description:[/bold] {workflow.description or 'No description'}"""
-    
+
     if workflow.tags:
-        tags_str = ", ".join(workflow.tags)
+        tags_str = ", ".join(workflow.tags) if isinstance(workflow.tags, (list, set)) else str(workflow.tags)
         info_text += f"\n[bold]Tags:[/bold] {tags_str}"
-    
+
     panel = Panel(info_text, title=f"Workflow: {workflow_id}", border_style="blue")
     console.print(panel)
-    
+
     # Steps table
     if workflow.steps:
         console.print("\n[bold]Workflow Steps:[/bold]")
@@ -409,31 +434,37 @@ def show_workflow(workflow_id: str):
         steps_table.add_column("Name", style="white")
         steps_table.add_column("Dependencies", style="yellow")
         steps_table.add_column("Resources", style="magenta")
-        
+
         for step in workflow.steps:
             deps_str = ", ".join(step.dependencies) if step.dependencies else "None"
-            
+
             if step.resource_requirements:
                 req = step.resource_requirements
-                resources_str = f"CPU:{req.cpu_cores} MEM:{req.memory_gb}GB DISK:{req.disk_space_gb}GB"
-                if req.gpu_count > 0:
-                    resources_str += f" GPU:{req.gpu_count}"
+                # Handle both entity (cpu_cores) and DTO (cores) field names
+                cpu = getattr(req, 'cores', None) or getattr(req, 'cpu_cores', 1)
+                mem = getattr(req, 'memory_gb', 1.0)
+                disk = getattr(req, 'disk_gb', None) or getattr(req, 'disk_space_gb', 1.0)
+                gpu = getattr(req, 'gpu_count', 0)
+
+                resources_str = f"CPU:{cpu} MEM:{mem}GB DISK:{disk}GB"
+                if gpu > 0:
+                    resources_str += f" GPU:{gpu}"
             else:
                 resources_str = "Default"
-            
+
             steps_table.add_row(
                 step.step_id,
                 step.name,
                 deps_str,
                 resources_str
             )
-        
+
         console.print(steps_table)
-    
+
     # Parameters
-    if workflow.parameters:
+    if parameters:
         console.print("\n[bold]Parameters:[/bold]")
-        for key, value in workflow.parameters.items():
+        for key, value in parameters.items():
             console.print(f"  [cyan]{key}:[/cyan] {value}")
 
 

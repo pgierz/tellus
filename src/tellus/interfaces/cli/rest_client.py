@@ -18,7 +18,8 @@ from ...application.dtos import (
     SimulationDto, CreateSimulationDto, UpdateSimulationDto,
     SimulationListDto, LocationDto, CreateLocationDto, UpdateLocationDto,
     LocationListDto, LocationTestResult, FilterOptions,
-    SimulationLocationAssociationDto
+    SimulationLocationAssociationDto, WorkflowDto, CreateWorkflowDto,
+    WorkflowListDto, WorkflowTemplateDto, WorkflowTemplateListDto
 )
 
 console = Console()
@@ -498,6 +499,90 @@ class RestLocationService:
         return LocationTestResult(**data)
 
 
+class RestWorkflowService:
+    """REST API implementation of workflow service."""
+
+    def __init__(self, client: RestApiClient):
+        self.client = client
+
+    def list_workflows(
+        self,
+        page: int = 1,
+        page_size: int = 50,
+        filters: Optional[FilterOptions] = None
+    ) -> WorkflowListDto:
+        """List workflows via REST API."""
+        params = {'page': page, 'page_size': page_size}
+        if filters and filters.search_term:
+            params['search'] = filters.search_term
+
+        response = self.client.client.get(
+            urljoin(self.client.base_url, 'workflows/'),
+            params=params
+        )
+        data = self.client._handle_response(response)
+        return WorkflowListDto(**data)
+
+    def create_workflow(self, workflow_data: CreateWorkflowDto) -> WorkflowDto:
+        """Create a new workflow via REST API."""
+        response = self.client.client.post(
+            urljoin(self.client.base_url, 'workflows/'),
+            json=workflow_data.model_dump()
+        )
+        data = self.client._handle_response(response)
+        return WorkflowDto(**data)
+
+    def get_workflow(self, workflow_id: str) -> WorkflowDto:
+        """Get workflow details via REST API."""
+        response = self.client.client.get(
+            urljoin(self.client.base_url, f'workflows/{workflow_id}')
+        )
+        data = self.client._handle_response(response)
+        return WorkflowDto(**data)
+
+    def delete_workflow(self, workflow_id: str) -> None:
+        """Delete a workflow via REST API."""
+        response = self.client.client.delete(
+            urljoin(self.client.base_url, f'workflows/{workflow_id}')
+        )
+        self.client._handle_response(response)
+
+    def list_templates(self) -> WorkflowTemplateListDto:
+        """List workflow templates via REST API."""
+        response = self.client.client.get(
+            urljoin(self.client.base_url, 'workflows/templates/')
+        )
+        data = self.client._handle_response(response)
+        return WorkflowTemplateListDto(**data)
+
+    def get_template(self, template_id: str) -> WorkflowTemplateDto:
+        """Get workflow template details via REST API."""
+        response = self.client.client.get(
+            urljoin(self.client.base_url, f'workflows/templates/{template_id}')
+        )
+        data = self.client._handle_response(response)
+        return WorkflowTemplateDto(**data)
+
+    def instantiate_workflow_from_template(
+        self,
+        template_id: str,
+        workflow_id: str,
+        parameters: Dict[str, Any]
+    ) -> WorkflowDto:
+        """Instantiate a workflow from a template via REST API."""
+        payload = {
+            'template_id': template_id,
+            'workflow_id': workflow_id,
+            'parameters': parameters
+        }
+        response = self.client.client.post(
+            urljoin(self.client.base_url, 'workflows/instantiate/'),
+            json=payload
+        )
+        data = self.client._handle_response(response)
+        return WorkflowDto(**data)
+
+
 def get_rest_api_client() -> RestApiClient:
     """
     Get a configured REST API client.
@@ -522,9 +607,20 @@ def get_rest_simulation_service() -> RestSimulationService:
 def get_rest_location_service() -> RestLocationService:
     """
     Get REST location service.
-    
+
     Returns:
         RestLocationService instance
     """
     client = get_rest_api_client()
     return RestLocationService(client)
+
+
+def get_rest_workflow_service() -> RestWorkflowService:
+    """
+    Get REST workflow service.
+
+    Returns:
+        RestWorkflowService instance
+    """
+    client = get_rest_api_client()
+    return RestWorkflowService(client)

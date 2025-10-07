@@ -334,47 +334,60 @@ class AsyncLocationRepositoryWrapper:
     Wrapper to adapt the async repository to sync interface.
 
     This allows gradual migration from sync to async patterns.
+    Detects if already in an async event loop (like FastAPI) and adapts accordingly.
     """
 
     def __init__(self, async_repo: PostgresLocationRepository):
         self.async_repo = async_repo
 
+    def _run_async(self, coro):
+        """Run async coroutine, detecting if we're already in an event loop."""
+        import asyncio
+        try:
+            # Check if there's already a running event loop
+            loop = asyncio.get_running_loop()
+            # We're in an async context (like FastAPI), run in separate thread
+            import concurrent.futures
+
+            # Run in a separate thread with its own event loop
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                future = pool.submit(asyncio.run, coro)
+                return future.result()
+        except RuntimeError:
+            # No event loop running, just use asyncio.run() directly
+            # Reset the database manager to ensure fresh engine for new event loop
+            from ..database.config import reset_database_manager
+            reset_database_manager()
+            return asyncio.run(coro)
+
     def save(self, location: LocationEntity) -> None:
         """Sync wrapper for save operation."""
-        import asyncio
-        asyncio.run(self.async_repo.save(location))
+        self._run_async(self.async_repo.save(location))
 
     def get_by_name(self, name: str) -> Optional[LocationEntity]:
         """Sync wrapper for get_by_name operation."""
-        import asyncio
-        return asyncio.run(self.async_repo.get_by_name(name))
+        return self._run_async(self.async_repo.get_by_name(name))
 
     def list_all(self) -> List[LocationEntity]:
         """Sync wrapper for list_all operation."""
-        import asyncio
-        return asyncio.run(self.async_repo.list_all())
+        return self._run_async(self.async_repo.list_all())
 
     def delete(self, name: str) -> bool:
         """Sync wrapper for delete operation."""
-        import asyncio
-        return asyncio.run(self.async_repo.delete(name))
+        return self._run_async(self.async_repo.delete(name))
 
     def exists(self, name: str) -> bool:
         """Sync wrapper for exists operation."""
-        import asyncio
-        return asyncio.run(self.async_repo.exists(name))
+        return self._run_async(self.async_repo.exists(name))
 
     def find_by_kind(self, kind: LocationKind) -> List[LocationEntity]:
         """Sync wrapper for find_by_kind operation."""
-        import asyncio
-        return asyncio.run(self.async_repo.find_by_kind(kind))
+        return self._run_async(self.async_repo.find_by_kind(kind))
 
     def find_by_protocol(self, protocol: str) -> List[LocationEntity]:
         """Sync wrapper for find_by_protocol operation."""
-        import asyncio
-        return asyncio.run(self.async_repo.find_by_protocol(protocol))
+        return self._run_async(self.async_repo.find_by_protocol(protocol))
 
     def count(self) -> int:
         """Sync wrapper for count operation."""
-        import asyncio
-        return asyncio.run(self.async_repo.count())
+        return self._run_async(self.async_repo.count())

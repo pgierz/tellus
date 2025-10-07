@@ -306,6 +306,42 @@ class PostgresWorkflowRepository:
                 f"Failed to delete workflow '{workflow_id}': {e}"
             ) from e
 
+    async def exists(self, workflow_id: str) -> bool:
+        """
+        Check if a workflow exists by its ID.
+
+        Args:
+            workflow_id: ID of the workflow to check
+
+        Returns:
+            True if workflow exists, False otherwise
+
+        Raises:
+            RepositoryError: If check fails
+        """
+        if self._session:
+            return await self._exists_with_session(self._session, workflow_id)
+        else:
+            db_manager = self._get_db_manager()
+            async with db_manager.get_session() as session:
+                return await self._exists_with_session(session, workflow_id)
+
+    async def _exists_with_session(
+        self, session: AsyncSession, workflow_id: str
+    ) -> bool:
+        """Check existence with provided session."""
+        try:
+            stmt = select(WorkflowModel).where(
+                WorkflowModel.workflow_id == workflow_id
+            )
+            result = await session.execute(stmt)
+            return result.scalar_one_or_none() is not None
+
+        except Exception as e:
+            raise RepositoryError(
+                f"Failed to check workflow existence '{workflow_id}': {e}"
+            ) from e
+
     async def list_all(
         self, skip: int = 0, limit: int = 100
     ) -> List[WorkflowEntity]:
@@ -683,44 +719,70 @@ class AsyncWorkflowRepositoryWrapper:
     Wrapper to adapt the async repository to sync interface.
 
     This allows gradual migration from sync to async patterns.
+    Detects if already in an async event loop (like FastAPI) and adapts accordingly.
     """
 
     def __init__(self, async_repo: PostgresWorkflowRepository):
         self.async_repo = async_repo
 
+    def _run_async(self, coro):
+        """Run async coroutine, detecting if we're already in an event loop."""
+        import asyncio
+        try:
+            # Check if there's already a running event loop
+            loop = asyncio.get_running_loop()
+            # We're in an async context (like FastAPI), create a task
+            import concurrent.futures
+
+            # Run in a separate thread with its own event loop
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                future = pool.submit(asyncio.run, coro)
+                return future.result()
+        except RuntimeError:
+            # No event loop running, just use asyncio.run() directly
+            # Reset the database manager to ensure fresh engine for new event loop
+            from ..database.config import reset_database_manager
+            reset_database_manager()
+            return asyncio.run(coro)
+
     def create(self, workflow: WorkflowEntity) -> WorkflowEntity:
         """Sync wrapper for create operation."""
-        import asyncio
-        return asyncio.run(self.async_repo.create(workflow))
+        return self._run_async(self.async_repo.create(workflow))
 
     def get_by_id(self, workflow_id: str) -> Optional[WorkflowEntity]:
         """Sync wrapper for get_by_id operation."""
-        import asyncio
-        return asyncio.run(self.async_repo.get_by_id(workflow_id))
+        return self._run_async(self.async_repo.get_by_id(workflow_id))
 
     def get_by_simulation(self, simulation_id: str) -> List[WorkflowEntity]:
         """Sync wrapper for get_by_simulation operation."""
-        import asyncio
-        return asyncio.run(self.async_repo.get_by_simulation(simulation_id))
+        return self._run_async(self.async_repo.get_by_simulation(simulation_id))
 
     def update(self, workflow: WorkflowEntity) -> WorkflowEntity:
         """Sync wrapper for update operation."""
-        import asyncio
-        return asyncio.run(self.async_repo.update(workflow))
+        return self._run_async(self.async_repo.update(workflow))
 
     def delete(self, workflow_id: str) -> bool:
         """Sync wrapper for delete operation."""
-        import asyncio
-        return asyncio.run(self.async_repo.delete(workflow_id))
+        return self._run_async(self.async_repo.delete(workflow_id))
+
+    def exists(self, workflow_id: str) -> bool:
+        """Sync wrapper for exists operation."""
+        return self._run_async(self.async_repo.exists(workflow_id))
+
+    def save(self, workflow: WorkflowEntity) -> WorkflowEntity:
+        """Sync wrapper for save operation (create or update)."""
+        # Check if workflow exists to determine create vs update
+        if self.exists(workflow.workflow_id):
+            return self.update(workflow)
+        else:
+            return self.create(workflow)
 
     def list_all(self, skip: int = 0, limit: int = 100) -> List[WorkflowEntity]:
         """Sync wrapper for list_all operation."""
-        import asyncio
-        return asyncio.run(self.async_repo.list_all(skip, limit))
+        return self._run_async(self.async_repo.list_all(skip, limit))
 
     def update_fingerprint(
         self, workflow_id: str, fingerprint: Dict[str, Any]
     ) -> WorkflowEntity:
         """Sync wrapper for update_fingerprint operation."""
-        import asyncio
-        return asyncio.run(self.async_repo.update_fingerprint(workflow_id, fingerprint))
+        return self._run_async(self.async_repo.update_fingerprint(workflow_id, fingerprint))

@@ -13,7 +13,7 @@ from ...domain.entities.location import LocationEntity
 from ...domain.entities.workflow import (ExecutionEnvironment,
                                          ResourceRequirement, WorkflowEngine,
                                          WorkflowEntity, WorkflowStep,
-                                         WorkflowTemplateEntity)
+                                         WorkflowTemplateEntity, WorkflowType)
 from ...domain.repositories.location_repository import ILocationRepository
 from ..dtos import (CreateWorkflowDto, CreateWorkflowTemplateDto,
                     FilterOptions, PaginationInfo, ResourceRequirementDto,
@@ -137,16 +137,14 @@ class WorkflowApplicationService:
             workflow = WorkflowEntity(
                 workflow_id=dto.workflow_id,
                 name=dto.name,
-                description=dto.description,
-                engine=WorkflowEngine(dto.engine),
-                workflow_file=dto.workflow_file,
+                workflow_type=WorkflowType.MODEL_EXECUTION,  # Default for now
+                description=dto.description or "",
+                workflow_system=dto.engine,
                 steps=steps,
-                global_parameters=dto.global_parameters.copy(),
-                input_schema=dto.input_schema.copy(),
-                output_schema=dto.output_schema.copy(),
-                tags=dto.tags.copy(),
-                version=dto.version,
-                author=dto.author
+                parameters=dto.global_parameters.copy() if dto.global_parameters else {},
+                tags=dto.tags.copy() if dto.tags else set(),
+                version=dto.version or "1.0",
+                author=dto.author or ""
             )
             
             # Persist the workflow
@@ -715,58 +713,50 @@ class WorkflowApplicationService:
             resource_dto = None
             if step.resource_requirements:
                 req = step.resource_requirements
+                # Map entity fields to DTO fields
                 resource_dto = ResourceRequirementDto(
-                    cores=req.cores,
+                    cores=req.cpu_cores,
                     memory_gb=req.memory_gb,
-                    disk_gb=req.disk_gb,
+                    disk_gb=req.disk_space_gb,
                     gpu_count=req.gpu_count,
-                    walltime_hours=req.walltime_hours,
-                    queue_name=req.queue_name,
-                    custom_requirements=req.custom_requirements.copy()
+                    walltime_hours=req.estimated_runtime.total_seconds() / 3600 if req.estimated_runtime else None,
+                    queue_name=None,  # Not in entity
+                    custom_requirements=req.special_requirements.copy()
                 )
-            
+
+            # Map entity step fields to DTO fields
             steps_dto.append(WorkflowStepDto(
                 step_id=step.step_id,
                 name=step.name,
                 command=step.command,
-                script_path=step.script_path,
-                input_files=step.input_files.copy(),
-                output_files=step.output_files.copy(),
-                parameters=step.parameters.copy(),
+                script_path=None,  # Not in entity
+                input_files=[],  # Not in entity
+                output_files=[],  # Not in entity
+                parameters=step.metadata.copy(),  # Use metadata as parameters
                 dependencies=step.dependencies.copy(),
                 resource_requirements=resource_dto,
                 retry_count=step.retry_count,
-                max_retries=step.max_retries
+                max_retries=step.retry_count  # Use same value
             ))
-        
-        estimated = workflow.estimate_resources()
-        estimated_dto = ResourceRequirementDto(
-            cores=estimated.cores,
-            memory_gb=estimated.memory_gb,
-            disk_gb=estimated.disk_gb,
-            gpu_count=estimated.gpu_count,
-            walltime_hours=estimated.walltime_hours,
-            queue_name=estimated.queue_name,
-            custom_requirements=estimated.custom_requirements
-        )
-        
+
+        # Map entity fields to DTO fields
         return WorkflowDto(
             workflow_id=workflow.workflow_id,
-            uid=workflow.uid,
+            uid=workflow.workflow_id,  # Use workflow_id as uid
             name=workflow.name,
-            description=workflow.description,
-            engine=workflow.engine.value,
-            workflow_file=workflow.workflow_file,
+            description=workflow.description or "",
+            engine=workflow.workflow_system,  # Map workflow_system to engine
+            workflow_file=None,  # Not in entity
             steps=steps_dto,
-            global_parameters=workflow.global_parameters.copy(),
-            input_schema=workflow.input_schema.copy(),
-            output_schema=workflow.output_schema.copy(),
-            tags=workflow.tags.copy(),
-            version=workflow.version,
-            author=workflow.author,
+            global_parameters=workflow.parameters.copy(),  # Map parameters to global_parameters
+            input_schema={},  # Not in entity
+            output_schema={},  # Not in entity
+            tags=workflow.tags.copy() if workflow.tags else set(),
+            version=workflow.version or "1.0",
+            author=workflow.author or "",
             created_at=workflow.created_at.isoformat() if workflow.created_at else None,
-            estimated_resources=estimated_dto,
-            associated_locations=workflow.get_associated_locations(),
+            estimated_resources=None,  # No estimate_resources method
+            associated_locations=list(workflow.associated_locations),  # Convert set to list
             location_contexts=workflow.location_contexts.copy(),
             input_location_mapping=workflow.input_location_mapping.copy(),
             output_location_mapping=workflow.output_location_mapping.copy()

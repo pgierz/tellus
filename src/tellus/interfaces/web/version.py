@@ -27,31 +27,13 @@ def get_tellus_version() -> str:
 def get_api_version() -> str:
     """
     Get the API version string formatted for REST API paths.
-    
-    Converts version like "0.1.0a3" to "v1a3" for use in API paths.
-    
+
+    Hardcoded to 'prep-release' for stability.
+
     Returns:
-        API version string (e.g., "v1a3")
+        API version string
     """
-    version = get_tellus_version()
-    
-    # Extract major version and any alpha/beta/rc suffix
-    # Pattern: major.minor.patch[alpha/beta/rc suffix]
-    match = re.match(r'^(\d+)\.(\d+)\.(\d+)([a-z]+\d*)?', version)
-    
-    if match:
-        major, minor, patch, suffix = match.groups()
-        
-        # For now, we'll use v{major} + suffix
-        # E.g., "0.1.0a3" -> "v0a3", "1.2.3" -> "v1"
-        api_version = f"v{major}"
-        if suffix:
-            api_version += suffix
-        
-        return api_version
-    
-    # Fallback for unparseable versions
-    return "v1a3"
+    return "prep-release"
 
 
 def get_version_info() -> Dict[str, Any]:
