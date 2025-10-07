@@ -11,6 +11,7 @@ from ...application.container import ServiceContainer
 from ...application.services.simulation_service import SimulationApplicationService
 from ...application.services.location_service import LocationApplicationService
 from ...application.services.unified_file_service import UnifiedFileService
+from ...application.services.workflow_service import WorkflowApplicationService
 
 
 def get_service_container(request: Request) -> ServiceContainer:
@@ -67,11 +68,26 @@ def get_unified_file_service(
 ) -> UnifiedFileService:
     """
     Get the unified file service from the container.
-    
+
     Args:
         container: Service container instance
-        
+
     Returns:
         Unified file service instance
     """
     return container.service_factory.unified_file_service
+
+
+def get_workflow_service(
+    container: ServiceContainer = Depends(get_service_container)
+) -> WorkflowApplicationService:
+    """
+    Get the workflow service from the container.
+
+    Args:
+        container: Service container instance
+
+    Returns:
+        Workflow service instance
+    """
+    return container.service_factory.workflow_service

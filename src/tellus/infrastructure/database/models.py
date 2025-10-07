@@ -45,7 +45,6 @@ class SimulationModel(Base):
     # JSON storage for flexible attributes
     attrs: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     namelists: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
-    workflows: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)  # Previously snakemakes
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -151,3 +150,90 @@ class SimulationLocationContextModel(Base):
 
     def __repr__(self) -> str:
         return f"<SimulationLocationContextModel(simulation_id='{self.simulation_id}', location_name='{self.location_name}')>"
+
+
+class WorkflowModel(Base):
+    """SQLAlchemy model for WorkflowEntity with hybrid storage approach."""
+
+    __tablename__ = 'workflows'
+
+    # Primary key
+    workflow_id: Mapped[str] = mapped_column(String, primary_key=True)
+
+    # Foreign key to simulation (nullable - workflows can exist independently)
+    simulation_id: Mapped[Optional[str]] = mapped_column(
+        String,
+        ForeignKey('simulations.simulation_id', ondelete='SET NULL'),
+        nullable=True,
+        index=True
+    )
+
+    # Core workflow attributes
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    workflow_type: Mapped[str] = mapped_column(String, nullable=False)  # Stored as enum name
+    description: Mapped[str] = mapped_column(Text, default="")
+    version: Mapped[str] = mapped_column(String, default="1.0")
+    author: Mapped[str] = mapped_column(String, default="")
+    status: Mapped[str] = mapped_column(String, default="DRAFT")  # WorkflowStatus enum name
+
+    # Workflow steps stored as JSON (List[WorkflowStep] -> JSON)
+    steps: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+
+    # Workflow parameters and metadata
+    tags: Mapped[List[str]] = mapped_column(JSON, default=list)  # Set -> List for JSON
+    parameters: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    workflow_metadata: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)  # Renamed from metadata to avoid SQLAlchemy conflict
+
+    # Simulation context
+    simulation_context: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+
+    # Location associations (Set -> List for JSON)
+    associated_locations: Mapped[List[str]] = mapped_column(JSON, default=list)
+    location_contexts: Mapped[Dict[str, Dict[str, Any]]] = mapped_column(JSON, default=dict)
+
+    # Step-specific location mappings
+    input_location_mapping: Mapped[Dict[str, str]] = mapped_column(JSON, default=dict)
+    output_location_mapping: Mapped[Dict[str, str]] = mapped_column(JSON, default=dict)
+
+    # Workflow system identification
+    workflow_system: Mapped[str] = mapped_column(String, default="", index=True)
+
+    # Deployment configuration
+    deployment_path: Mapped[str] = mapped_column(String, default="")
+    deployment_config: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+
+    # Polling configuration
+    polling_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    polling_interval_minutes: Mapped[int] = mapped_column(default=15)
+
+    # Hybrid fingerprint storage - structured fields for queries
+    current_phases: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+    observed_file_count: Mapped[int] = mapped_column(default=0, index=True)
+    latest_observation_time: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True
+    )
+    current_status: Mapped[str] = mapped_column(
+        String,
+        default="unknown",
+        index=True
+    )  # unknown, pending, running, completed, failed
+
+    # Full RunFingerprint storage as JSON blobs
+    current_fingerprint: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    fingerprint_history: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now()
+    )
+
+    # Relationship to simulation (optional)
+    simulation = relationship("SimulationModel", backref="workflows", lazy="selectin")
+
+    def __repr__(self) -> str:
+        return f"<WorkflowModel(workflow_id='{self.workflow_id}', name='{self.name}', system='{self.workflow_system}')>"

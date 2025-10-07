@@ -72,6 +72,52 @@ class WorkflowValidationError(Exception):
 
 
 @dataclass
+class WorkflowPhase:
+    """Represents a phase in workflow execution (prepare, compute, cleanup, post-process)."""
+    phase_id: str
+    name: str
+    status: str  # PENDING, RUNNING, COMPLETED, FAILED
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    log_files: List[str] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        if not self.phase_id:
+            raise ValueError("Phase ID cannot be empty")
+        if not self.name:
+            raise ValueError("Phase name cannot be empty")
+        if self.status not in {"PENDING", "RUNNING", "COMPLETED", "FAILED"}:
+            raise ValueError(f"Invalid phase status: {self.status}")
+
+    def get_duration(self) -> Optional[timedelta]:
+        """Get phase duration if both start and end times are set."""
+        if self.start_time and self.end_time:
+            return self.end_time - self.start_time
+        return None
+
+
+@dataclass
+class ObservedFile:
+    """Represents a file observed during workflow execution."""
+    path: str
+    classification: str  # OUTPUT, RESTART, CONFIG, LOG
+    component: Optional[str] = None  # echam6, fesom, mpiom
+    size_bytes: int = 0
+    temporal_info: Optional[Dict[str, Any]] = None
+    location_name: str = ""
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        if not self.path:
+            raise ValueError("File path cannot be empty")
+        if not self.classification:
+            raise ValueError("File classification cannot be empty")
+        if self.size_bytes < 0:
+            raise ValueError("File size cannot be negative")
+
+
+@dataclass
 class ResourceRequirement:
     """Resource requirements for workflow execution."""
 
@@ -152,6 +198,27 @@ class WorkflowEntity:
     input_location_mapping: Dict[str, str] = field(default_factory=dict)  # step_id -> location_name
     output_location_mapping: Dict[str, str] = field(default_factory=dict)  # step_id -> location_name
 
+    # Workflow system identification (generic for modularity)
+    workflow_system: str = ""  # "esm-tools", "autosubmit", "custom", "snakemake"
+
+    # Deployment configuration
+    deployment_path: str = ""
+    deployment_config: Dict[str, Any] = field(default_factory=dict)
+
+    # Polling configuration
+    polling_enabled: bool = False
+    polling_interval_minutes: int = 15
+
+    # Hybrid fingerprint storage (structured + JSON)
+    current_phases: List[WorkflowPhase] = field(default_factory=list)
+    observed_file_count: int = 0
+    latest_observation_time: Optional[datetime] = None
+    current_status: str = "unknown"  # unknown, pending, running, completed, failed
+
+    # Full RunFingerprint storage
+    current_fingerprint: Optional[Dict[str, Any]] = None
+    fingerprint_history: List[Dict[str, Any]] = field(default_factory=list)
+
     def __post_init__(self):
         if not self.workflow_id:
             raise ValueError("Workflow ID cannot be empty")
@@ -169,6 +236,18 @@ class WorkflowEntity:
             raise ValueError("Input location mapping must be a dictionary")
         if not isinstance(self.output_location_mapping, dict):
             raise ValueError("Output location mapping must be a dictionary")
+
+        # Validate workflow system
+        if not isinstance(self.workflow_system, str):
+            raise ValueError("Workflow system must be a string")
+
+        # Validate fingerprint fields
+        if not isinstance(self.current_phases, list):
+            raise ValueError("Current phases must be a list")
+        if self.observed_file_count < 0:
+            raise ValueError("Observed file count cannot be negative")
+        if self.current_status not in {"unknown", "pending", "running", "completed", "failed"}:
+            raise ValueError(f"Invalid current status: {self.current_status}")
 
     def validate(self) -> List[str]:
         """
@@ -450,6 +529,67 @@ class WorkflowEntity:
     def get_step_output_location(self, step_id: str) -> Optional[str]:
         """Get the output location for a step."""
         return self.output_location_mapping.get(step_id)
+
+    def update_from_fingerprint(self, fingerprint: Dict[str, Any]) -> None:
+        """
+        Update workflow state from a RunFingerprint.
+
+        Args:
+            fingerprint: RunFingerprint dictionary from workflow observation system
+        """
+        if not isinstance(fingerprint, dict):
+            raise ValueError("Fingerprint must be a dictionary")
+
+        # Update observation timestamp
+        self.latest_observation_time = datetime.now()
+
+        # Extract and store phases
+        phases_data = fingerprint.get("phases", [])
+        self.current_phases = []
+        for phase_data in phases_data:
+            phase = WorkflowPhase(
+                phase_id=phase_data.get("phase_id", ""),
+                name=phase_data.get("name", ""),
+                status=phase_data.get("status", "PENDING"),
+                start_time=self._parse_datetime(phase_data.get("start_time")),
+                end_time=self._parse_datetime(phase_data.get("end_time")),
+                log_files=phase_data.get("log_files", []),
+                metadata=phase_data.get("metadata", {})
+            )
+            self.current_phases.append(phase)
+
+        # Update file count
+        observed_files = fingerprint.get("observed_files", [])
+        self.observed_file_count = len(observed_files)
+
+        # Determine overall status from phases
+        if any(p.status == "FAILED" for p in self.current_phases):
+            self.current_status = "failed"
+        elif any(p.status == "RUNNING" for p in self.current_phases):
+            self.current_status = "running"
+        elif all(p.status == "COMPLETED" for p in self.current_phases) and self.current_phases:
+            self.current_status = "completed"
+        elif any(p.status == "PENDING" for p in self.current_phases):
+            self.current_status = "pending"
+
+        # Store full fingerprint for history
+        self.current_fingerprint = copy.deepcopy(fingerprint)
+        self.fingerprint_history.append({
+            "timestamp": self.latest_observation_time.isoformat(),
+            "fingerprint": copy.deepcopy(fingerprint)
+        })
+
+        self.updated_at = datetime.now()
+
+    def _parse_datetime(self, dt_str: Optional[str]) -> Optional[datetime]:
+        """Parse datetime string to datetime object."""
+        if not dt_str:
+            return None
+        try:
+            from datetime import datetime as dt
+            return dt.fromisoformat(dt_str.replace('Z', '+00:00'))
+        except (ValueError, AttributeError):
+            return None
 
     def resolve_context_variables(self, template: str, location_name: Optional[str] = None) -> str:
         """

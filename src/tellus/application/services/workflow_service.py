@@ -868,3 +868,389 @@ class WorkflowApplicationService:
         # - Validating storage capacity for expected outputs
         # - Ensuring compute locations can access data locations
         # - Validating network connectivity between locations
+
+    # Location Management Methods (Simple API)
+
+    def associate_location(self, workflow_id: str, location_name: str, context: Optional[Dict] = None) -> WorkflowDto:
+        """
+        Associate a single location with a workflow.
+
+        This is a simplified API compared to associate_workflow_with_locations which
+        handles multiple locations and mappings.
+
+        Args:
+            workflow_id: The ID of the workflow
+            location_name: Name of the location to associate
+            context: Optional location-specific context/configuration
+
+        Returns:
+            Updated workflow DTO
+
+        Raises:
+            EntityNotFoundError: If workflow or location doesn't exist
+            ValidationError: If association data is invalid
+        """
+        self._logger.info(f"Associating location {location_name} with workflow {workflow_id}")
+
+        try:
+            # Get the workflow
+            workflow = self._workflow_repo.get_by_id(workflow_id)
+            if not workflow:
+                raise EntityNotFoundError("Workflow", workflow_id)
+
+            # Verify location exists
+            if not self._location_repo.exists(location_name):
+                raise EntityNotFoundError("Location", location_name)
+
+            # Associate location using entity method
+            workflow.associate_location(location_name, context)
+
+            # Save the updated workflow
+            self._workflow_repo.save(workflow)
+
+            self._logger.info(f"Successfully associated location {location_name} with workflow {workflow_id}")
+            return self._entity_to_dto(workflow)
+
+        except ValueError as e:
+            raise ValidationError(f"Invalid association data: {str(e)}")
+        except Exception as e:
+            self._logger.error(f"Error during location association: {str(e)}")
+            raise
+
+    def dissociate_location(self, workflow_id: str, location_name: str) -> WorkflowDto:
+        """
+        Remove association between a workflow and a location.
+
+        Args:
+            workflow_id: The ID of the workflow
+            location_name: The name of the location to disassociate
+
+        Returns:
+            Updated workflow DTO
+
+        Raises:
+            EntityNotFoundError: If workflow doesn't exist
+            ValidationError: If location is not associated
+        """
+        self._logger.info(f"Disassociating location {location_name} from workflow {workflow_id}")
+
+        try:
+            # Get the workflow
+            workflow = self._workflow_repo.get_by_id(workflow_id)
+            if not workflow:
+                raise EntityNotFoundError("Workflow", workflow_id)
+
+            # Check if location is associated
+            if not workflow.is_location_associated(location_name):
+                raise ValidationError(f"Location '{location_name}' is not associated with workflow '{workflow_id}'")
+
+            # Remove the association
+            workflow.disassociate_location(location_name)
+
+            # Save the updated workflow
+            self._workflow_repo.save(workflow)
+
+            self._logger.info(f"Successfully disassociated location {location_name} from workflow {workflow_id}")
+            return self._entity_to_dto(workflow)
+
+        except ValueError as e:
+            raise ValidationError(f"Invalid disassociation request: {str(e)}")
+        except Exception as e:
+            self._logger.error(f"Error during location disassociation: {str(e)}")
+            raise
+
+    # Simulation Association Methods
+
+    def associate_with_simulation(self, workflow_id: str, simulation_id: str) -> WorkflowDto:
+        """
+        Associate a workflow with a simulation.
+
+        Args:
+            workflow_id: The ID of the workflow
+            simulation_id: The ID of the simulation to associate with
+
+        Returns:
+            Updated workflow DTO
+
+        Raises:
+            EntityNotFoundError: If workflow doesn't exist
+            ValidationError: If simulation_id is invalid
+        """
+        self._logger.info(f"Associating workflow {workflow_id} with simulation {simulation_id}")
+
+        try:
+            # Get the workflow
+            workflow = self._workflow_repo.get_by_id(workflow_id)
+            if not workflow:
+                raise EntityNotFoundError("Workflow", workflow_id)
+
+            # Validate simulation_id
+            if not simulation_id or not isinstance(simulation_id, str):
+                raise ValidationError("Simulation ID must be a non-empty string")
+
+            # Set simulation association
+            workflow.simulation_id = simulation_id
+            workflow.updated_at = datetime.now()
+
+            # Save the updated workflow
+            self._workflow_repo.save(workflow)
+
+            self._logger.info(f"Successfully associated workflow {workflow_id} with simulation {simulation_id}")
+            return self._entity_to_dto(workflow)
+
+        except ValueError as e:
+            raise ValidationError(f"Invalid association data: {str(e)}")
+        except Exception as e:
+            self._logger.error(f"Error during simulation association: {str(e)}")
+            raise
+
+    def get_simulation_workflows(self, simulation_id: str) -> List[WorkflowDto]:
+        """
+        Get all workflows associated with a simulation.
+
+        Args:
+            simulation_id: The ID of the simulation
+
+        Returns:
+            List of workflow DTOs associated with the simulation
+        """
+        self._logger.debug(f"Retrieving workflows for simulation: {simulation_id}")
+
+        try:
+            # Get all workflows
+            all_workflows = self._workflow_repo.list_all()
+
+            # Filter workflows by simulation_id
+            simulation_workflows = [
+                wf for wf in all_workflows
+                if wf.simulation_id == simulation_id
+            ]
+
+            # Convert to DTOs
+            return [self._entity_to_dto(wf) for wf in simulation_workflows]
+
+        except Exception as e:
+            self._logger.error(f"Error retrieving simulation workflows: {str(e)}")
+            raise
+
+    # Fingerprint Update Methods
+
+    def update_fingerprint(self, workflow_id: str, fingerprint: Dict[str, Any]) -> WorkflowDto:
+        """
+        Update the workflow's RunFingerprint data from external observation systems.
+
+        This method stores the complete fingerprint data and extracts key metrics
+        for quick access (phases, file counts, observation time, status).
+
+        Args:
+            workflow_id: The ID of the workflow
+            fingerprint: Dictionary containing RunFingerprint data with keys:
+                - phases: List of phase dictionaries
+                - observed_files: List of observed file dictionaries
+                - status: Current workflow status
+                - timestamp: Observation timestamp
+
+        Returns:
+            Updated workflow DTO
+
+        Raises:
+            EntityNotFoundError: If workflow doesn't exist
+            ValidationError: If fingerprint data is invalid
+        """
+        self._logger.info(f"Updating fingerprint for workflow: {workflow_id}")
+
+        try:
+            # Get the workflow
+            workflow = self._workflow_repo.get_by_id(workflow_id)
+            if not workflow:
+                raise EntityNotFoundError("Workflow", workflow_id)
+
+            # Validate fingerprint structure
+            if not isinstance(fingerprint, dict):
+                raise ValidationError("Fingerprint must be a dictionary")
+
+            # Archive current fingerprint to history if it exists
+            if workflow.current_fingerprint:
+                workflow.fingerprint_history.append(workflow.current_fingerprint.copy())
+
+            # Store new fingerprint
+            workflow.current_fingerprint = fingerprint.copy()
+
+            # Extract and update quick-access metrics
+            if "phases" in fingerprint and isinstance(fingerprint["phases"], list):
+                workflow.current_phases = []
+                for phase_dict in fingerprint["phases"]:
+                    try:
+                        # Import the WorkflowPhase class from domain entities
+                        from ...domain.entities.workflow import WorkflowPhase
+
+                        phase = WorkflowPhase(
+                            phase_id=phase_dict.get("phase_id", ""),
+                            name=phase_dict.get("name", ""),
+                            status=phase_dict.get("status", "PENDING"),
+                            start_time=datetime.fromisoformat(phase_dict["start_time"]) if phase_dict.get("start_time") else None,
+                            end_time=datetime.fromisoformat(phase_dict["end_time"]) if phase_dict.get("end_time") else None,
+                            log_files=phase_dict.get("log_files", []),
+                            metadata=phase_dict.get("metadata", {})
+                        )
+                        workflow.current_phases.append(phase)
+                    except (ValueError, KeyError) as e:
+                        self._logger.warning(f"Invalid phase data in fingerprint: {e}")
+
+            if "observed_files" in fingerprint and isinstance(fingerprint["observed_files"], list):
+                workflow.observed_file_count = len(fingerprint["observed_files"])
+
+            if "timestamp" in fingerprint:
+                try:
+                    workflow.latest_observation_time = datetime.fromisoformat(fingerprint["timestamp"])
+                except (ValueError, TypeError) as e:
+                    self._logger.warning(f"Invalid timestamp in fingerprint: {e}")
+                    workflow.latest_observation_time = datetime.now()
+            else:
+                workflow.latest_observation_time = datetime.now()
+
+            if "status" in fingerprint:
+                workflow.current_status = str(fingerprint["status"])
+
+            workflow.updated_at = datetime.now()
+
+            # Save the updated workflow
+            self._workflow_repo.save(workflow)
+
+            self._logger.info(f"Successfully updated fingerprint for workflow {workflow_id}")
+            return self._entity_to_dto(workflow)
+
+        except ValueError as e:
+            raise ValidationError(f"Invalid fingerprint data: {str(e)}")
+        except Exception as e:
+            self._logger.error(f"Error updating fingerprint: {str(e)}")
+            raise
+
+    def get_latest_fingerprint(self, workflow_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get the most recent RunFingerprint data for a workflow.
+
+        Args:
+            workflow_id: The ID of the workflow
+
+        Returns:
+            Latest fingerprint dictionary or None if no fingerprint exists
+
+        Raises:
+            EntityNotFoundError: If workflow doesn't exist
+        """
+        self._logger.debug(f"Retrieving latest fingerprint for workflow: {workflow_id}")
+
+        workflow = self._workflow_repo.get_by_id(workflow_id)
+        if not workflow:
+            raise EntityNotFoundError("Workflow", workflow_id)
+
+        return workflow.current_fingerprint.copy() if workflow.current_fingerprint else None
+
+    def get_fingerprint_history(self, workflow_id: str) -> List[Dict[str, Any]]:
+        """
+        Get the complete history of RunFingerprint observations for a workflow.
+
+        This returns all previous fingerprints in chronological order, useful for
+        tracking workflow progress over time and debugging execution issues.
+
+        Args:
+            workflow_id: The ID of the workflow
+
+        Returns:
+            List of fingerprint dictionaries in chronological order (oldest first)
+
+        Raises:
+            EntityNotFoundError: If workflow doesn't exist
+        """
+        self._logger.debug(f"Retrieving fingerprint history for workflow: {workflow_id}")
+
+        workflow = self._workflow_repo.get_by_id(workflow_id)
+        if not workflow:
+            raise EntityNotFoundError("Workflow", workflow_id)
+
+        # Return a copy to prevent external modification
+        return [fp.copy() for fp in workflow.fingerprint_history]
+
+    # Polling Control Methods
+
+    def enable_polling(self, workflow_id: str, interval_minutes: int = 15) -> WorkflowDto:
+        """
+        Enable automatic polling of workflow status from external observation systems.
+
+        Args:
+            workflow_id: The ID of the workflow
+            interval_minutes: Polling interval in minutes (default: 15)
+
+        Returns:
+            Updated workflow DTO
+
+        Raises:
+            EntityNotFoundError: If workflow doesn't exist
+            ValidationError: If interval_minutes is invalid
+        """
+        self._logger.info(f"Enabling polling for workflow {workflow_id} with interval {interval_minutes}min")
+
+        try:
+            # Get the workflow
+            workflow = self._workflow_repo.get_by_id(workflow_id)
+            if not workflow:
+                raise EntityNotFoundError("Workflow", workflow_id)
+
+            # Validate interval
+            if interval_minutes < 1:
+                raise ValidationError("Polling interval must be at least 1 minute")
+            if interval_minutes > 1440:  # 24 hours
+                raise ValidationError("Polling interval cannot exceed 1440 minutes (24 hours)")
+
+            # Enable polling
+            workflow.polling_enabled = True
+            workflow.polling_interval_minutes = interval_minutes
+            workflow.updated_at = datetime.now()
+
+            # Save the updated workflow
+            self._workflow_repo.save(workflow)
+
+            self._logger.info(f"Successfully enabled polling for workflow {workflow_id}")
+            return self._entity_to_dto(workflow)
+
+        except ValueError as e:
+            raise ValidationError(f"Invalid polling configuration: {str(e)}")
+        except Exception as e:
+            self._logger.error(f"Error enabling polling: {str(e)}")
+            raise
+
+    def disable_polling(self, workflow_id: str) -> WorkflowDto:
+        """
+        Disable automatic polling of workflow status.
+
+        Args:
+            workflow_id: The ID of the workflow
+
+        Returns:
+            Updated workflow DTO
+
+        Raises:
+            EntityNotFoundError: If workflow doesn't exist
+        """
+        self._logger.info(f"Disabling polling for workflow: {workflow_id}")
+
+        try:
+            # Get the workflow
+            workflow = self._workflow_repo.get_by_id(workflow_id)
+            if not workflow:
+                raise EntityNotFoundError("Workflow", workflow_id)
+
+            # Disable polling
+            workflow.polling_enabled = False
+            workflow.updated_at = datetime.now()
+
+            # Save the updated workflow
+            self._workflow_repo.save(workflow)
+
+            self._logger.info(f"Successfully disabled polling for workflow {workflow_id}")
+            return self._entity_to_dto(workflow)
+
+        except Exception as e:
+            self._logger.error(f"Error disabling polling: {str(e)}")
+            raise

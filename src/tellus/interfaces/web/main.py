@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from ...application.container import get_service_container
-from .routers import health, simulations, locations
+from .routers import health, simulations, locations, workflows
 from .version import get_version_info
 
 # Create console for output (avoiding core.cli import)
@@ -116,6 +116,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router, prefix=api_path, tags=["Health"])
     app.include_router(simulations.router, prefix=f"{api_path}/simulations", tags=["Simulations"])
     app.include_router(locations.router, prefix=f"{api_path}/locations", tags=["Locations"])
+    app.include_router(workflows.router, prefix=f"{api_path}/workflows", tags=["Workflows"])
     
     return app
 
