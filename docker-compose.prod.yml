@@ -1,0 +1,154 @@
+# Production Docker Compose configuration for Tellus REST API
+# Usage: docker-compose -f docker-compose.prod.yml up -d
+
+services:
+  tellus-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: tellus-api:${TELLUS_VERSION:-latest}
+    container_name: tellus-api-prod
+    ports:
+      - "${TELLUS_API_PORT:-1968}:1968"
+    volumes:
+      # Persistent data directories
+      - ${TELLUS_DATA_DIR:-./data/tellus}:/home/tellus/.local/tellus
+      - tellus-cache:/home/tellus/.cache/tellus
+      # SSH keys for remote storage access (read-only)
+      - ${SSH_KEY_DIR:-~/.ssh}:/home/tellus/.ssh:ro
+      # Optional: mount simulation directories for local access
+      # - /path/to/simulations:/mnt/simulations:ro
+    environment:
+      # Application settings
+      - TELLUS_LOG_LEVEL=${TELLUS_LOG_LEVEL:-INFO}
+      - TELLUS_ENV=production
+
+      # Database configuration (PostgreSQL)
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-tellus}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-tellus}
+      - TELLUS_DB_TYPE=postgresql
+      - TELLUS_DB_HOST=postgres
+      - TELLUS_DB_NAME=${POSTGRES_DB:-tellus}
+      - TELLUS_DB_USER=${POSTGRES_USER:-tellus}
+      - TELLUS_DB_PASSWORD=${POSTGRES_PASSWORD}
+
+      # API configuration
+      - TELLUS_API_WORKERS=${API_WORKERS:-4}
+      - TELLUS_API_TIMEOUT=${API_TIMEOUT:-300}
+
+      # Security
+      - TELLUS_API_KEY=${TELLUS_API_KEY:-}  # Set this in .env file
+      - TELLUS_CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,https://your-domain.com}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:1968/api/prep-release/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s  # Increased for initial DB setup
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - tellus-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: tellus-postgres-prod
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-tellus}
+      POSTGRES_USER: ${POSTGRES_USER:-tellus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Database password required}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
+      # Performance tuning
+      POSTGRES_MAX_CONNECTIONS: ${POSTGRES_MAX_CONNECTIONS:-100}
+      POSTGRES_SHARED_BUFFERS: ${POSTGRES_SHARED_BUFFERS:-256MB}
+      POSTGRES_WORK_MEM: ${POSTGRES_WORK_MEM:-4MB}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./backups:/backups  # For database backups
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"  # Expose on different port to avoid conflicts
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tellus} -d ${POSTGRES_DB:-tellus}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tellus-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Resource limits for production
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 512M
+
+  # Nginx reverse proxy with SSL
+  nginx:
+    image: nginx:alpine
+    container_name: tellus-nginx-prod
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro  # SSL certificates
+      - nginx-logs:/var/log/nginx
+    depends_on:
+      - tellus-api
+    restart: unless-stopped
+    networks:
+      - tellus-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Optional: Database backup service
+  postgres-backup:
+    image: prodrigestivill/postgres-backup-local:16-alpine
+    container_name: tellus-postgres-backup
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=${POSTGRES_DB:-tellus}
+      - POSTGRES_USER=${POSTGRES_USER:-tellus}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - SCHEDULE=@daily  # Daily backups at midnight
+      - BACKUP_KEEP_DAYS=7
+      - BACKUP_KEEP_WEEKS=4
+      - BACKUP_KEEP_MONTHS=6
+      - HEALTHCHECK_PORT=8080
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - tellus-network
+
+volumes:
+  tellus-cache:
+    driver: local
+  postgres-data:
+    driver: local
+  nginx-logs:
+    driver: local
+
+networks:
+  tellus-network:
+    driver: bridge
