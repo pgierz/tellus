@@ -1,5 +1,17 @@
 # Tellus REST API Production Deployment Guide
 
+## Important: Read Before Deployment
+
+**CRITICAL:** Before deploying to production, you MUST review:
+
+1. **[Deployment Validation Report](docs/DEPLOYMENT_VALIDATION.md)** - Security audit with critical issues that must be fixed
+2. **[Deployment Checklist](docs/DEPLOYMENT_CHECKLIST.md)** - Step-by-step checklist for production deployment
+3. **[Preflight Check](deploy-preflight.sh)** - Run this script before deployment: `./deploy-preflight.sh`
+
+**Status:** This deployment configuration requires addressing 6 critical issues before production use. See validation report for details.
+
+---
+
 ## Overview
 
 This guide covers deploying the Tellus REST API to a production server using Docker Compose with PostgreSQL, Nginx reverse proxy, SSL certificates, and automated backups.
