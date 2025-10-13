@@ -15,36 +15,36 @@ Tellus is a domain-driven Python framework that abstracts climate model simulati
 ## ⚡ Quick Start
 
 ```python
-import tellus
+from tellus import Simulation, Location, LocationKind
 
-# Connect to your storage locations
-tellus.add_location("levante_scratch", 
-                   protocol="sftp", 
-                   host="levante.dkrz.de",
-                   path="/scratch/a270077/experiments")
-
-tellus.add_location("local_archive", 
-                   protocol="file",
-                   path="/Users/pgierz/climate_data")
+# Create a storage location
+scratch = Location(
+    name="levante_scratch",
+    kinds=[LocationKind.COMPUTE],
+    config={
+        "protocol": "sftp",
+        "host": "levante.dkrz.de",
+        "base_path": "/scratch/a270077/experiments"
+    }
+)
 
 # Register your simulation
-arctic_sim = SimulationEntity(
+arctic_sim = Simulation(
     simulation_id="CMIP6_historical_r1i1p1f1",
     model_id="AWI-CM-1-1-MR",
     attrs={
-        "experiment": "historical", 
+        "experiment": "historical",
         "domain": "Arctic",
         "resolution": "T127_CORE2"
     }
 )
 
-# Intelligent file discovery
-restart_files = tellus.find_files(
-    simulation="CMIP6_historical_r1i1p1f1",
-    content_type=FileContentType.RESTART,
-    domain="Arctic", 
-    years=(2000, 2014)
-)
+# Associate simulation with location
+arctic_sim.associate_location("levante_scratch")
+
+# Get simulation files
+files = arctic_sim.get_files()
+restart_files = arctic_sim.get_files_by_content_type(FileContentType.RESTART)
 ```
 
 ## 🏗️ Architecture
@@ -64,9 +64,11 @@ src/tellus/
 
 ### Core Entities
 
-- **`SimulationEntity`** - Climate model runs with metadata, provenance, and file management
-- **`LocationEntity`** - Multi-protocol storage abstraction (SSH, SFTP, tape, cloud)
+- **`Simulation`** (`SimulationEntity`) - Climate model runs with metadata, provenance, and file management
+- **`Location`** (`LocationEntity`) - Multi-protocol storage abstraction (SSH, SFTP, tape, cloud)
 - **`SimulationFile`** - Semantic file classification with content types and importance levels
+
+> **Note**: Tellus exports both short aliases (`Simulation`, `Location`) and full names (`SimulationEntity`, `LocationEntity`) for flexibility.
 
 ## 🎯 Current Features
 
