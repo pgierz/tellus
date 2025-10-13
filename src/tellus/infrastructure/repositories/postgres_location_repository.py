@@ -346,12 +346,22 @@ class AsyncLocationRepositoryWrapper:
         try:
             # Check if there's already a running event loop
             loop = asyncio.get_running_loop()
-            # We're in an async context (like FastAPI), run in separate thread
+            # We're in an async context (like FastAPI or pytest), run in separate thread
             import concurrent.futures
+
+            def run_in_new_loop(coroutine):
+                """Run coroutine in a new event loop in the thread."""
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+                try:
+                    return new_loop.run_until_complete(coroutine)
+                finally:
+                    new_loop.close()
+                    asyncio.set_event_loop(None)
 
             # Run in a separate thread with its own event loop
             with concurrent.futures.ThreadPoolExecutor() as pool:
-                future = pool.submit(asyncio.run, coro)
+                future = pool.submit(run_in_new_loop, coro)
                 return future.result()
         except RuntimeError:
             # No event loop running, just use asyncio.run() directly
