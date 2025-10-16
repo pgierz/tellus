@@ -2,8 +2,8 @@
 *.sql
 *.sql.gz
 *.dump
-*.backup
+*.tar.gz
 
-# Allow README
-!README.md
+# But keep this .gitignore and README
 !.gitignore
+!README.md

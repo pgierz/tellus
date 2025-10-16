@@ -11,7 +11,7 @@ Provides CRUD operations for climate simulations including:
 
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, Depends, Query, Request
+from fastapi import APIRouter, HTTPException, Depends, Query, Request, Security
 from fastapi import status
 from pydantic import BaseModel, Field
 
@@ -23,6 +23,7 @@ from ....application.dtos import (
 from ....application.services.simulation_service import SimulationApplicationService
 from ....application.services.unified_file_service import UnifiedFileService
 from ..dependencies import get_simulation_service, get_unified_file_service
+from ..auth import verify_api_key
 
 router = APIRouter()
 
@@ -124,19 +125,23 @@ async def list_simulations(
 @router.post("/", response_model=SimulationDto, status_code=status.HTTP_201_CREATED)
 async def create_simulation(
     simulation_data: CreateSimulationDto,
-    simulation_service: SimulationApplicationService = Depends(get_simulation_service)
+    simulation_service: SimulationApplicationService = Depends(get_simulation_service),
+    api_key: str = Security(verify_api_key)
 ):
     """
     Create a new simulation.
-    
+
+    Requires API key authentication when enabled.
+
     Args:
         simulation_data: Simulation creation data
-        
+
     Returns:
         Created simulation with generated UID
-        
+
     Raises:
         400: If simulation ID already exists
+        401: If API key is invalid or missing (when authentication is enabled)
         422: If validation fails
     """
     try:

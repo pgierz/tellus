@@ -71,8 +71,50 @@ X-RateLimit-Reset: 1633024800
 
 ### Authentication
 
-**Current Status:** No authentication required
-**Future:** JWT-based authentication planned
+**API Key Authentication (Optional)**
+
+Tellus supports optional API key authentication to protect write operations. When `TELLUS_API_KEY` is set, all POST/PUT/DELETE operations require authentication.
+
+**Providing API Keys:**
+
+Option 1: X-API-Key header (recommended):
+```bash
+curl -H "X-API-Key: your_api_key_here" \
+     -X POST https://tellus.awi.de/api/v0/simulations/...
+```
+
+Option 2: Authorization Bearer token:
+```bash
+curl -H "Authorization: Bearer your_api_key_here" \
+     -X POST https://tellus.awi.de/api/v0/simulations/...
+```
+
+**Python Example:**
+```python
+import httpx
+
+client = httpx.Client(
+    base_url="https://tellus.awi.de/api/v0",
+    headers={"X-API-Key": "your_api_key_here"}
+)
+
+# All requests will include authentication
+response = client.post("/simulations/", json={...})
+```
+
+**Authentication Behavior:**
+- **GET requests**: No authentication required (read-only access)
+- **POST/PUT/DELETE requests**: Require API key when enabled
+- **Health endpoints**: Always accessible without authentication
+
+**Error Response (401):**
+```json
+{
+  "detail": "Invalid or missing API key"
+}
+```
+
+See [docs/SECURITY.md](/Users/pgierz/work/Code/worktree-checkouts/github.com/pgierz/tellus/prep-release/docs/SECURITY.md) for complete authentication documentation.
 
 ### Error Codes
 
@@ -82,9 +124,11 @@ X-RateLimit-Reset: 1633024800
 | 201 | Created - Resource created successfully |
 | 204 | No Content - Request succeeded, no response body |
 | 400 | Bad Request - Invalid request data |
+| 401 | Unauthorized - Invalid or missing API key (when authentication is enabled) |
 | 404 | Not Found - Resource does not exist |
 | 409 | Conflict - Resource already exists |
 | 422 | Unprocessable Entity - Validation failed |
+| 429 | Too Many Requests - Rate limit exceeded |
 | 500 | Internal Server Error - Server error |
 
 ---

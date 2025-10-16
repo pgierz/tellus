@@ -6,6 +6,7 @@ routers, middleware, and dependency injection setup.
 """
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -16,6 +17,7 @@ from fastapi.responses import JSONResponse
 from ...application.container import get_service_container
 from .routers import health, simulations, locations, workflows
 from .version import get_version_info
+from .auth import is_authentication_enabled
 
 # Create console for output (avoiding core.cli import)
 try:
@@ -35,20 +37,27 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     FastAPI lifespan context manager.
-    
+
     Handles application startup and shutdown events.
     """
     # Startup
     console.print("🚀 [bold green]Starting Tellus Climate Data API[/bold green]")
-    
+
     # Initialize service container
     container = get_service_container()
     app.state.container = container
-    
+
+    # Display authentication status
+    if is_authentication_enabled():
+        console.print("🔒 [yellow]API key authentication is ENABLED[/yellow]")
+    else:
+        console.print("⚠️  [red]WARNING: API key authentication is DISABLED[/red]")
+        console.print("   [dim]Set TELLUS_API_KEY environment variable to enable authentication[/dim]")
+
     console.print("✨ [green]API ready at /docs[/green]")
-    
+
     yield
-    
+
     # Shutdown
     console.print("🛑 [yellow]Shutting down Tellus API[/yellow]")
 
@@ -113,11 +122,16 @@ def create_app() -> FastAPI:
         )
     
     # Include routers with versioned API prefix
+    # Health router has no authentication (for monitoring)
     app.include_router(health.router, prefix=api_path, tags=["Health"])
+
+    # API routers with optional authentication
+    # Authentication is controlled via verify_api_key dependency in individual endpoints
+    # When TELLUS_API_KEY is set, POST/PUT/DELETE operations require authentication
     app.include_router(simulations.router, prefix=f"{api_path}/simulations", tags=["Simulations"])
     app.include_router(locations.router, prefix=f"{api_path}/locations", tags=["Locations"])
     app.include_router(workflows.router, prefix=f"{api_path}/workflows", tags=["Workflows"])
-    
+
     return app
 
 
