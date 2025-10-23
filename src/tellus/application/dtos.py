@@ -90,24 +90,20 @@ class FilterOptions(BaseModel):
 class CreateSimulationDto(BaseModel, JsonSerializableMixin):
     """DTO for creating a new simulation."""
     model_config = BaseDtoConfig.model_config
-    
+
     simulation_id: str
     model_id: Optional[str] = None
-    path: Optional[str] = None
-    attrs: Dict[str, Any] = Field(default_factory=dict)
-    namelists: Dict[str, Any] = Field(default_factory=dict)
-    snakemakes: Dict[str, Any] = Field(default_factory=dict)
+    attributes: Dict[str, Any] = Field(default_factory=dict)
+    workflows: Dict[str, Any] = Field(default_factory=dict)
 
 
 class UpdateSimulationDto(BaseModel):
     """DTO for updating an existing simulation."""
     model_config = BaseDtoConfig.model_config
-    
+
     model_id: Optional[str] = None
-    path: Optional[str] = None
-    attrs: Optional[Dict[str, Any]] = None
-    namelists: Optional[Dict[str, Any]] = None
-    snakemakes: Optional[Dict[str, Any]] = None
+    attributes: Optional[Dict[str, Any]] = None
+    workflows: Optional[Dict[str, Any]] = None
 
 
 class SimulationDto(BaseModel, JsonSerializableMixin):

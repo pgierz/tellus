@@ -149,10 +149,8 @@ class SimulationApplicationService:
             simulation = SimulationEntity(
                 simulation_id=dto.simulation_id,
                 model_id=dto.model_id,
-                path=dto.path,
-                attrs=dto.attrs.copy(),
-                namelists=dto.namelists.copy(),
-                snakemakes=dto.snakemakes.copy()
+                attributes=dto.attributes.copy(),
+                workflows=dto.workflows.copy()
             )
             
             # Persist the simulation
@@ -226,21 +224,14 @@ class SimulationApplicationService:
             # Apply updates
             if dto.model_id is not None:
                 simulation.model_id = dto.model_id
-            
-            if dto.path is not None:
-                simulation.path = dto.path
-            
-            if dto.attrs is not None:
-                simulation.attrs.clear()
-                simulation.attrs.update(dto.attrs)
-            
-            if dto.namelists is not None:
-                simulation.namelists.clear()
-                simulation.namelists.update(dto.namelists)
-            
-            if dto.snakemakes is not None:
-                simulation.snakemakes.clear()
-                simulation.snakemakes.update(dto.snakemakes)
+
+            if dto.attributes is not None:
+                simulation.attributes.clear()
+                simulation.attributes.update(dto.attributes)
+
+            if dto.workflows is not None:
+                simulation.workflows.clear()
+                simulation.workflows.update(dto.workflows)
             
             # Validate the updated entity
             validation_errors = simulation.validate()
