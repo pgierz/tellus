@@ -10,12 +10,18 @@ from pydantic import BaseModel, Field, ConfigDict, field_validator, computed_fie
 
 class SimulationEntity(BaseModel):
     """
-    Pure domain entity representing a simulation in the Earth System Model context.
+    Pure domain entity representing a simulation as an RO-Crate container.
+
+    A Simulation combines:
+    - RO-Crate for packaging & provenance
+    - STAC-style assets for geospatial file cataloging
+    - Icechunk/Zarr for versioned array data
+    - Multi-location storage references (HPC, tape, cloud)
 
     This entity contains only the core business data and validation logic,
     without any infrastructure concerns like persistence or file system operations.
     """
-    
+
     model_config = ConfigDict(
         # Allow field validation for private fields
         extra='forbid',
@@ -25,24 +31,97 @@ class SimulationEntity(BaseModel):
         arbitrary_types_allowed=True
     )
 
+    # Core identity
     simulation_id: str
     model_id: Optional[str] = None
-    path: Optional[str] = None
-    attrs: Dict[str, Any] = Field(default_factory=dict)
-    namelists: Dict[str, Any] = Field(default_factory=dict)
-    snakemakes: Dict[str, Any] = Field(default_factory=dict)
-    
+
+    # Flexible metadata (replaces 'attrs', 'namelists')
+    attributes: Dict[str, Any] = Field(default_factory=dict)
+
+    # Workflows (replaces 'snakemakes')
+    workflows: Dict[str, Any] = Field(default_factory=dict)
+
+    # === RO-Crate Integration ===
+    ro_crate_path: Optional[str] = None  # Path to ro-crate-metadata.json
+    ro_crate_id: Optional[str] = None    # @id within RO-Crate
+
+    # === Data Storage ===
+    # Primary data store (Icechunk, Zarr, NetCDF, etc.)
+    data_store: Dict[str, Any] = Field(default_factory=dict)
+    # Example: {"type": "icechunk", "uri": "s3://bucket/sim.ichk", "snapshot_id": "abc123"}
+
+    # === File Assets (STAC-like) ===
+    assets: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    # Example: {
+    #   "restart_files": {"href": "s3://bucket/restarts/", "type": "application/x-netcdf", "roles": ["restart"]},
+    #   "output_data": {"href": "file:///scratch/outputs/", "type": "application/x-zarr", "roles": ["data"]}
+    # }
+
+    # === Multi-Location Storage ===
     # Location associations - tracks which locations this simulation knows about
     associated_locations: Set[str] = Field(default_factory=set)
-    
+
     # Location-specific contexts and configurations
     location_contexts: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
-    
-    # File management - tracks files associated with this simulation  
+
+    # === Provenance & Versioning ===
+    provenance: List[Dict[str, Any]] = Field(default_factory=list)
+    # Analysis accretion history
+
+    # === STAC Catalog Reference (optional) ===
+    stac_catalog_url: Optional[str] = None  # Link to STAC catalog for this simulation
+
+    # File management - tracks files associated with this simulation
     file_inventory: Optional['FileInventory'] = None
 
     # Internal identifier (different from user-facing simulation_id)
     uid_: str = Field(default_factory=lambda: str(uuid.uuid4()), alias='_uid')
+
+    # === DEPRECATED fields for backward compatibility ===
+    # These will be removed in a future version - use 'attributes' instead
+    @property
+    def attrs(self) -> Dict[str, Any]:
+        """DEPRECATED: Use 'attributes' instead."""
+        import warnings
+        warnings.warn(
+            "SimulationEntity.attrs is deprecated, use .attributes instead",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return self.attributes
+
+    @property
+    def path(self) -> Optional[str]:
+        """DEPRECATED: Path is now stored in data_store or assets."""
+        import warnings
+        warnings.warn(
+            "SimulationEntity.path is deprecated, use .data_store['uri'] or .assets instead",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return self.data_store.get('uri') if self.data_store else None
+
+    @property
+    def namelists(self) -> Dict[str, Any]:
+        """DEPRECATED: Namelists are now stored in 'attributes'."""
+        import warnings
+        warnings.warn(
+            "SimulationEntity.namelists is deprecated, store in .attributes instead",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return self.attributes.get('namelists', {})
+
+    @property
+    def snakemakes(self) -> Dict[str, Any]:
+        """DEPRECATED: Use 'workflows' instead."""
+        import warnings
+        warnings.warn(
+            "SimulationEntity.snakemakes is deprecated, use .workflows instead",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return self.workflows
 
     @field_validator('simulation_id')
     @classmethod
@@ -60,14 +139,6 @@ class SimulationEntity(BaseModel):
         """Validate model_id field."""
         if v is not None and not isinstance(v, str):
             raise ValueError('Model ID must be a string if provided')
-        return v
-
-    @field_validator('path')
-    @classmethod
-    def validate_path(cls, v):
-        """Validate path field."""
-        if v is not None and not isinstance(v, str):
-            raise ValueError('Path must be a string if provided')
         return v
 
     def validate(self) -> List[str]:
@@ -100,7 +171,7 @@ class SimulationEntity(BaseModel):
         """Add or update a simulation attribute."""
         if not isinstance(key, str):
             raise ValueError("Attribute key must be a string")
-        self.attrs[key] = value
+        self.attributes[key] = value
 
     def pop_attribute(self, key: str) -> Any:
         """
@@ -109,7 +180,7 @@ class SimulationEntity(BaseModel):
         Returns:
             The removed attribute value
         """
-        return self.attrs.pop(key)
+        return self.attributes.pop(key)
 
     def remove_attribute(self, key: str) -> bool:
         """
@@ -118,50 +189,80 @@ class SimulationEntity(BaseModel):
         Returns:
             True if attribute was removed, False if it didn't exist
         """
-        if key in self.attrs:
-            del self.attrs[key]
+        if key in self.attributes:
+            del self.attributes[key]
             return True
         return False
 
     def add_namelist(self, name: str, namelist_data: Any) -> None:
-        """Add or update a namelist."""
+        """
+        DEPRECATED: Add or update a namelist.
+
+        Namelists should now be stored in attributes['namelists'].
+        """
+        import warnings
+        warnings.warn(
+            "add_namelist is deprecated, store namelists in attributes['namelists'] instead",
+            DeprecationWarning,
+            stacklevel=2
+        )
         if not isinstance(name, str):
             raise ValueError("Namelist name must be a string")
-        self.namelists[name] = namelist_data
+        if 'namelists' not in self.attributes:
+            self.attributes['namelists'] = {}
+        self.attributes['namelists'][name] = namelist_data
 
-    def add_snakemake_rule(self, rule_name: str, smk_file: str) -> None:
+    def add_workflow(self, workflow_name: str, workflow_data: Any) -> None:
         """
-        Add a snakemake rule to the simulation.
+        Add or update a workflow definition.
 
         Args:
-            rule_name: The name of the snakemake rule
-            smk_file: The path to the snakemake file
+            workflow_name: The name of the workflow (e.g., "preprocessing", "analysis")
+            workflow_data: Workflow definition (Snakemake, CWL, script path, etc.)
 
         Raises:
-            ValueError: If rule already exists or if parameters are invalid
+            ValueError: If workflow already exists or if parameters are invalid
         """
-        if not isinstance(rule_name, str) or not rule_name:
-            raise ValueError("Rule name must be a non-empty string")
+        if not isinstance(workflow_name, str) or not workflow_name:
+            raise ValueError("Workflow name must be a non-empty string")
 
-        if not isinstance(smk_file, str) or not smk_file:
-            raise ValueError("Snakemake file path must be a non-empty string")
+        if workflow_name in self.workflows:
+            raise ValueError(f"Workflow '{workflow_name}' already exists")
 
-        if rule_name in self.snakemakes:
-            raise ValueError(f"Snakemake rule '{rule_name}' already exists")
+        self.workflows[workflow_name] = workflow_data
 
-        self.snakemakes[rule_name] = smk_file
-
-    def remove_snakemake_rule(self, rule_name: str) -> bool:
+    def remove_workflow(self, workflow_name: str) -> bool:
         """
-        Remove a snakemake rule.
+        Remove a workflow.
 
         Returns:
-            True if rule was removed, False if it didn't exist
+            True if workflow was removed, False if it didn't exist
         """
-        if rule_name in self.snakemakes:
-            del self.snakemakes[rule_name]
+        if workflow_name in self.workflows:
+            del self.workflows[workflow_name]
             return True
         return False
+
+    # DEPRECATED methods - kept for backward compatibility
+    def add_snakemake_rule(self, rule_name: str, smk_file: str) -> None:
+        """DEPRECATED: Use add_workflow instead."""
+        import warnings
+        warnings.warn(
+            "add_snakemake_rule is deprecated, use add_workflow instead",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        self.add_workflow(rule_name, smk_file)
+
+    def remove_snakemake_rule(self, rule_name: str) -> bool:
+        """DEPRECATED: Use remove_workflow instead."""
+        import warnings
+        warnings.warn(
+            "remove_snakemake_rule is deprecated, use remove_workflow instead",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return self.remove_workflow(rule_name)
 
     def get_context_variables(self) -> Dict[str, str]:
         """
@@ -173,8 +274,8 @@ class SimulationEntity(BaseModel):
         return {
             "simulation_id": str(self.simulation_id),
             "model_id": str(self.model_id or ""),
-            "uid": str(self._uid),
-            **{k: str(v) for k, v in self.attrs.items()},
+            "uid": str(self.uid_),
+            **{k: str(v) for k, v in self.attributes.items()},
         }
 
     # Location management methods
