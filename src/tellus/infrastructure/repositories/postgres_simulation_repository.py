@@ -231,19 +231,17 @@ class PostgresSimulationRepository(ISimulationRepository):
             simulation_id=entity.simulation_id,
             uid=entity.uid,
             model_id=entity.model_id,
-            path=entity.path,
-            attrs=entity.attrs,
-            namelists=entity.namelists,
-            snakemakes=entity.snakemakes,
+            attrs=entity.attributes,  # Use new 'attributes' field
+            namelists=entity.attributes.get('namelists', {}),  # Extract from attributes
+            workflows=entity.workflows,  # Use new 'workflows' field
         )
 
     def _update_model_from_entity(self, model: SimulationModel, entity: SimulationEntity) -> None:
         """Update existing model with entity data."""
         model.model_id = entity.model_id
-        model.path = entity.path
-        model.attrs = entity.attrs
-        model.namelists = entity.namelists
-        model.snakemakes = entity.snakemakes
+        model.attrs = entity.attributes  # Use new 'attributes' field
+        model.namelists = entity.attributes.get('namelists', {})  # Extract from attributes
+        model.workflows = entity.workflows  # Use new 'workflows' field
 
     def _model_to_entity(
         self,
@@ -254,13 +252,16 @@ class PostgresSimulationRepository(ISimulationRepository):
         if location_contexts is None:
             location_contexts = {}
 
+        # Merge namelists into attributes for the new structure
+        attributes = model.attrs.copy() if model.attrs else {}
+        if model.namelists:
+            attributes['namelists'] = model.namelists
+
         return SimulationEntity(
             simulation_id=model.simulation_id,
             model_id=model.model_id,
-            path=model.path,
-            attrs=model.attrs,
-            namelists=model.namelists,
-            snakemakes=model.workflows,  # Map workflows back to snakemakes
+            attributes=attributes,  # Use new 'attributes' field
+            workflows=model.workflows,  # Use new 'workflows' field
             associated_locations=set(location_contexts.keys()),
             location_contexts=location_contexts,
         )
